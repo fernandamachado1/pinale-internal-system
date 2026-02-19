@@ -1,0 +1,170 @@
+## Contexto
+
+O sistema será desenvolvido para uso interno no Ateliê Pinale, com foco em organizar e estruturar os processos operacionais do dia a dia.
+
+Atualmente, o controle de pedidos, estoque e vendas físicas é feito manualmente, utilizando papel e caneta. Esse modelo funciona porque o ateliê é pequeno e conta com duas pessoas na operação.
+
+No entanto, existe uma expectativa de aumento na produção. Com o crescimento do volume de trabalho, o controle manual tende a se tornar arriscado, podendo gerar esquecimentos, desorganização e inconsistências.
+
+O sistema surge como uma forma de estruturar esse crescimento de maneira organizada e sustentável.
+
+---
+
+## Como funciona hoje
+
+- Pedidos são anotados manualmente.
+- Vendas físicas são registradas informalmente, apenas pelo comprovante da maquininha de cartão.
+- Não existe um controle estruturado de estoque de insumos ou artigos produzidos.
+
+---
+
+## Problemas identificados
+
+- Risco de esquecer pedidos.
+- Dificuldade em saber exatamente quais materiais estão em falta.
+- Falta de controle preciso sobre estoque.
+- Ausência de histórico organizado de vendas.
+- Dependência excessiva de memória ou anotações soltas.
+- Risco maior de confusão com o aumento da produção.
+
+---
+
+## O que o sistema precisa resolver
+
+O sistema deve:
+
+- Centralizar informações sobre produção, estoque e vendas.
+- Permitir registrar o que precisa ser produzido.
+- Permitir controlar insumos e artigos disponíveis.
+- Ter a possibilidade de cadastrar a ficha técnica de cada produto.
+- Atualizar automaticamente o estoque quando houver produção ou venda.
+- Permitir acompanhar dados por período (produção e vendas).
+
+# Módulos do MVP – Primeira Versão
+
+## Módulo de Insumos/materiais
+
+Responsável por gerenciar todos os materiais utilizados na produção.
+
+### Permite:
+
+- Cadastrar insumos.
+- Definir unidade de medida.
+- Visualizar quantidade disponível.
+- Registrar entrada de material (ex: compra).
+- Registrar ajustes de estoque quando necessário.
+
+### Objetivo:
+
+Garantir controle estruturado dos materiais utilizados na produção, evitando falta inesperada.
+
+---
+
+## Módulo de Produtos/artigos
+
+Responsável pelo cadastro dos artigos vendidos na loja.
+
+### Permite:
+
+- Cadastrar produtos.
+- Definir preço de venda.
+- Visualizar quantidade disponível em estoque.
+- Incluir ficha técnica ao produto utilizando dos insumos citados acima.
+
+### Objetivo:
+
+Organizar os produtos comercializados e manter controle sobre sua disponibilidade.
+
+---
+
+## Módulo de Ficha Técnica
+
+Responsável por relacionar cada produto aos insumos necessários para sua produção.
+
+### Permite:
+
+- Definir quais insumos são utilizados em cada produto.
+- Definir a quantidade de cada insumo por unidade produzida.
+
+### Objetivo:
+
+Padronizar a produção e permitir que o sistema calcule automaticamente o consumo de materiais.
+
+---
+
+## Módulo de Produção
+
+Responsável pelo registro e controle das ordens de produção.
+
+### Permite:
+
+- Criar ordem de produção.
+- Definir produto e quantidade a ser produzida.
+- Verificar disponibilidade de insumos.
+- Concluir produção.
+- Atualizar automaticamente o estoque de insumos e produtos.
+
+### Objetivo:
+
+Estruturar o processo produtivo e garantir consistência no controle de estoque.
+
+---
+
+## Módulo de Vendas
+
+Responsável pelo registro das vendas realizadas.
+
+### Permite:
+
+- Registrar venda de produto.
+- Registrar forma de pagamento.
+- Atualizar automaticamente o estoque de produtos.
+- Consultar histórico de vendas por período.
+
+### Objetivo:
+
+Manter controle das saídas de produtos e gerar histórico organizado de faturamento.
+
+---
+
+## Módulo de Movimentações de Estoque
+
+Responsável por registrar todas as alterações de quantidade.
+
+### Permite:
+
+- Visualizar histórico de entradas e saídas.
+- Identificar origem da movimentação (produção, venda, ajuste).
+- Garantir rastreabilidade.
+
+### Objetivo:
+
+Oferecer transparência e controle sobre qualquer alteração no estoque.
+
+---
+
+# Fluxo Inicial de Utilização do Sistema
+
+Ao acessar o sistema pela primeira vez, o usuário deverá:
+
+1. Cadastrar os insumos/materiais disponíveis no ateliê.
+2. Cadastrar os produtos/artigos comercializados.
+3. Associar a ficha técnica correspondente a cada produto, definindo os insumos necessários para sua produção.
+
+Após essa fase inicial de configuração, o sistema passará a refletir o estoque disponível de insumos e produtos, permitindo iniciar o processo de produção.
+
+---
+
+# Fluxo de Produção no Sistema
+
+Ao criar uma nova ordem de produção, por exemplo: **“Bolsa Pitanga”**, o usuário deverá:
+
+1. Selecionar o produto previamente cadastrado.
+2. Informar a quantidade a ser produzida.
+3. O sistema realizará automaticamente a verificação dos insumos necessários, com base na ficha técnica vinculada ao produto.
+4. Caso haja insumos suficientes, a produção poderá ser concluída.
+5. Ao concluir:
+    - O estoque de insumos será reduzido conforme as quantidades definidas na ficha técnica.
+    - O estoque do produto final será incrementado com a quantidade produzida.
+
+Caso não haja insumos suficientes, o sistema deverá sinalizar a insuficiência antes da conclusão da produção.
