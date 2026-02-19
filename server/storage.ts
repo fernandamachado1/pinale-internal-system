@@ -300,8 +300,8 @@ export class DatabaseStorage implements IStorage {
 
     return allMovements.map(m => ({
       ...m,
-      product: m.productId ? allProducts.find(p => p.id === m.productId) : null,
-      material: m.materialId ? allMaterials.find(mat => mat.id === m.materialId) : null
+      product: m.productId ? allProducts.find(p => p.id === m.productId) : undefined,
+      material: m.materialId ? allMaterials.find(mat => mat.id === m.materialId) : undefined
     }));
   }
 }
