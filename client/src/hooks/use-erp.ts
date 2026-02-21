@@ -122,7 +122,7 @@ export function useCreateProduction() {
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] }); // Movement logged
       toast({ title: "Sucesso", description: "Produção registrada com sucesso." });
     },
-    onError: (error) => {
+    onError: (error: { message: any; }) => {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
     }
   });
