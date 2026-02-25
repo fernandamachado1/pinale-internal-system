@@ -1,0 +1,110 @@
+import type { IErpGateway } from "@/application/contracts/erp-gateway";
+import type {
+  ConcludeProductionOrderInput,
+  InsertMaterial,
+  InsertProductionOrder,
+  InsertSale,
+  Material,
+  MovementWithDetails,
+  ProductWithBom,
+  ProductionOrderWithProduct,
+  SaleListItem,
+} from "@shared/schema";
+
+export class GetMaterialsUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<Material[]> {
+    return this.gateway.getMaterials();
+  }
+}
+
+export class CreateMaterialUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: InsertMaterial): Promise<Material> {
+    return this.gateway.createMaterial(data);
+  }
+}
+
+export class UpdateMaterialUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: Partial<InsertMaterial>): Promise<Material> {
+    return this.gateway.updateMaterial(id, data);
+  }
+}
+
+export class DeleteMaterialUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number): Promise<void> {
+    return this.gateway.deleteMaterial(id);
+  }
+}
+
+export class GetProductsUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<ProductWithBom[]> {
+    return this.gateway.getProducts();
+  }
+}
+
+export class CreateProductUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: unknown): Promise<ProductWithBom> {
+    return this.gateway.createProduct(data);
+  }
+}
+
+export class UpdateProductUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: unknown): Promise<ProductWithBom> {
+    return this.gateway.updateProduct(id, data);
+  }
+}
+
+export class DeleteProductUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number): Promise<void> {
+    return this.gateway.deleteProduct(id);
+  }
+}
+
+export class GetProductionOrdersUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<ProductionOrderWithProduct[]> {
+    return this.gateway.getProductionOrders();
+  }
+}
+
+export class CreateProductionOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: InsertProductionOrder): Promise<ProductionOrderWithProduct> {
+    return this.gateway.createProductionOrder(data);
+  }
+}
+
+export class ConcludeProductionOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: ConcludeProductionOrderInput): Promise<ProductionOrderWithProduct> {
+    return this.gateway.concludeProductionOrder(id, data);
+  }
+}
+
+export class GetSalesUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<SaleListItem[]> {
+    return this.gateway.getSales();
+  }
+}
+
+export class CreateSaleUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }> {
+    return this.gateway.createSale(data);
+  }
+}
+
+export class GetInventoryMovementsUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<MovementWithDetails[]> {
+    return this.gateway.getInventoryMovements();
+  }
+}

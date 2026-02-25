@@ -1,185 +1,220 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl } from "@shared/routes";
-import { useToast } from "@/hooks/use-toast";
-import type { 
-  Material, InsertMaterial, 
-  Product, InsertProduct, ProductWithSpecs,
-  Production, InsertProduction, ProductionWithProduct,
-  Sale, InsertSale, SaleWithProduct,
-  InventoryMovement, InsertInventoryMovement, MovementWithDetails
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@shared/routes";
+import type {
+  ConcludeProductionOrderInput,
+  InsertMaterial,
+  InsertProductionOrder,
+  InsertSale,
 } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { HttpErpGateway } from "@/infra/repositories/http-erp-gateway";
+import {
+  ConcludeProductionOrderUseCase,
+  CreateMaterialUseCase,
+  CreateProductUseCase,
+  CreateProductionOrderUseCase,
+  CreateSaleUseCase,
+  DeleteMaterialUseCase,
+  DeleteProductUseCase,
+  GetInventoryMovementsUseCase,
+  GetMaterialsUseCase,
+  GetProductionOrdersUseCase,
+  GetProductsUseCase,
+  GetSalesUseCase,
+  UpdateMaterialUseCase,
+  UpdateProductUseCase,
+} from "@/application/use-cases/erp-use-cases";
 
-// --- Materials Hooks ---
+const gateway = new HttpErpGateway();
+
+const getMaterialsUseCase = new GetMaterialsUseCase(gateway);
+const createMaterialUseCase = new CreateMaterialUseCase(gateway);
+const updateMaterialUseCase = new UpdateMaterialUseCase(gateway);
+const deleteMaterialUseCase = new DeleteMaterialUseCase(gateway);
+
+const getProductsUseCase = new GetProductsUseCase(gateway);
+const createProductUseCase = new CreateProductUseCase(gateway);
+const updateProductUseCase = new UpdateProductUseCase(gateway);
+const deleteProductUseCase = new DeleteProductUseCase(gateway);
+
+const getProductionOrdersUseCase = new GetProductionOrdersUseCase(gateway);
+const createProductionOrderUseCase = new CreateProductionOrderUseCase(gateway);
+const concludeProductionOrderUseCase = new ConcludeProductionOrderUseCase(gateway);
+
+const getSalesUseCase = new GetSalesUseCase(gateway);
+const createSaleUseCase = new CreateSaleUseCase(gateway);
+
+const getInventoryMovementsUseCase = new GetInventoryMovementsUseCase(gateway);
+
+function useCrudToast() {
+  const { toast } = useToast();
+  const success = (description: string) => toast({ title: "Sucesso", description });
+  const error = (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" });
+  return { success, error };
+}
 
 export function useMaterials() {
   return useQuery({
     queryKey: [api.materials.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.materials.list.path);
-      if (!res.ok) throw new Error("Falha ao carregar insumos");
-      return await res.json() as Material[];
-    },
+    queryFn: () => getMaterialsUseCase.execute(),
   });
 }
 
 export function useCreateMaterial() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const message = useCrudToast();
 
   return useMutation({
-    mutationFn: async (data: InsertMaterial) => {
-      const res = await fetch(api.materials.create.path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Erro ao criar insumo");
-      return await res.json();
-    },
+    mutationFn: (data: InsertMaterial) => createMaterialUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
-      toast({ title: "Sucesso", description: "Insumo criado com sucesso." });
+      message.success("Material criado com sucesso.");
     },
-    onError: (error) => {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    }
+    onError: message.error,
   });
 }
 
-// --- Products Hooks ---
+export function useUpdateMaterial() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<InsertMaterial> }) => updateMaterialUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
+      message.success("Material atualizado com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useDeleteMaterial() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (id: number) => deleteMaterialUseCase.execute(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
+      message.success("Material inativado com sucesso.");
+    },
+    onError: message.error,
+  });
+}
 
 export function useProducts() {
   return useQuery({
     queryKey: [api.products.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.products.list.path);
-      if (!res.ok) throw new Error("Falha ao carregar produtos");
-      return await res.json() as ProductWithSpecs[];
-    },
+    queryFn: () => getProductsUseCase.execute(),
   });
 }
 
 export function useCreateProduct() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const message = useCrudToast();
 
   return useMutation({
-    mutationFn: async (data: any) => {
-      // The backend expects { product: InsertProduct, specs: {materialId, quantityRequired}[] }
-      const res = await fetch(api.products.create.path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Erro ao criar produto");
-      return await res.json();
-    },
+    mutationFn: (data: unknown) => createProductUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
-      toast({ title: "Sucesso", description: "Produto e ficha técnica criados." });
+      message.success("Produto criado com sucesso.");
     },
-    onError: (error) => {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    }
+    onError: message.error,
   });
 }
 
-// --- Production Hooks ---
-
-export function useProductions() {
-  return useQuery({
-    queryKey: [api.productions.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.productions.list.path);
-      if (!res.ok) throw new Error("Falha ao carregar produções");
-      return await res.json() as ProductionWithProduct[];
-    },
-  });
-}
-
-export function useCreateProduction() {
+export function useUpdateProduct() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const message = useCrudToast();
 
   return useMutation({
-    mutationFn: async (data: InsertProduction) => {
-      const res = await fetch(api.productions.create.path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Erro ao registrar produção");
-      }
-      return await res.json();
-    },
+    mutationFn: ({ id, data }: { id: number; data: unknown }) => updateProductUseCase.execute(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.productions.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.materials.list.path] }); // Materials consumed
-      queryClient.invalidateQueries({ queryKey: [api.products.list.path] });   // Product stock increased
-      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] }); // Movement logged
-      toast({ title: "Sucesso", description: "Produção registrada com sucesso." });
+      queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      message.success("Produto atualizado com sucesso.");
     },
-    onError: (error: { message: any; }) => {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    }
+    onError: message.error,
   });
 }
 
-// --- Sales Hooks ---
+export function useDeleteProduct() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (id: number) => deleteProductUseCase.execute(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      message.success("Produto inativado com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useProductionOrders() {
+  return useQuery({
+    queryKey: [api.productionOrders.list.path],
+    queryFn: () => getProductionOrdersUseCase.execute(),
+  });
+}
+
+export function useCreateProductionOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (data: InsertProductionOrder) => createProductionOrderUseCase.execute(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      message.success("Ordem de produção criada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useConcludeProductionOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: ConcludeProductionOrderInput }) => concludeProductionOrderUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      message.success("Ordem de produção concluída com sucesso.");
+    },
+    onError: message.error,
+  });
+}
 
 export function useSales() {
   return useQuery({
     queryKey: [api.sales.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.sales.list.path);
-      if (!res.ok) throw new Error("Falha ao carregar vendas");
-      return await res.json() as SaleWithProduct[];
-    },
+    queryFn: () => getSalesUseCase.execute(),
   });
 }
 
 export function useCreateSale() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const message = useCrudToast();
 
   return useMutation({
-    mutationFn: async (data: InsertSale) => {
-      const res = await fetch(api.sales.create.path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Erro ao registrar venda");
-      }
-      return await res.json();
-    },
+    mutationFn: (data: InsertSale) => createSaleUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.products.list.path] }); // Product stock decreased
+      queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
-      toast({ title: "Sucesso", description: "Venda registrada com sucesso." });
+      message.success("Venda registrada com sucesso.");
     },
-    onError: (error) => {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    }
+    onError: message.error,
   });
 }
-
-// --- Inventory Hooks ---
 
 export function useInventoryMovements() {
   return useQuery({
     queryKey: [api.inventory.movements.path],
-    queryFn: async () => {
-      const res = await fetch(api.inventory.movements.path);
-      if (!res.ok) throw new Error("Falha ao carregar movimentações");
-      return await res.json() as MovementWithDetails[];
-    },
+    queryFn: () => getInventoryMovementsUseCase.execute(),
   });
 }

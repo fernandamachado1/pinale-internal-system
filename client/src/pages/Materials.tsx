@@ -1,180 +1,193 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Layout } from "@/components/Layout";
-import { useMaterials, useCreateMaterial } from "@/hooks/use-erp";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
+import { useCreateMaterial, useDeleteMaterial, useMaterials, useUpdateMaterial } from "@/hooks/use-erp";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Layers, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Layers, Plus } from "lucide-react";
+
+const groups = ["LEATHER", "HARDWARE", "ADHESIVE", "THREAD", "OTHER"] as const;
+const policyLabels: Record<"STOCK_CONTROLLED" | "CONSUMPTION_TRACKED", string> = {
+  STOCK_CONTROLLED: "Controlado por estoque",
+  CONSUMPTION_TRACKED: "Consumo registrado",
+};
+const groupLabels: Record<(typeof groups)[number], string> = {
+  LEATHER: "Couro",
+  HARDWARE: "Ferragens",
+  ADHESIVE: "Adesivos",
+  THREAD: "Linha",
+  OTHER: "Outros",
+};
 
 export default function Materials() {
-  const { data: materials, isLoading } = useMaterials();
+  const { data: materials } = useMaterials();
   const createMutation = useCreateMaterial();
-  const [searchTerm, setSearchTerm] = useState("");
+  const updateMutation = useUpdateMaterial();
+  const deleteMutation = useDeleteMaterial();
+
   const [isOpen, setIsOpen] = useState(false);
-  
+  const [searchTerm, setSearchTerm] = useState("");
   const [formData, setFormData] = useState({
     name: "",
-    unit: "",
-    quantity: "0"
+    unit: "UN",
+    policy: "STOCK_CONTROLLED" as "STOCK_CONTROLLED" | "CONSUMPTION_TRACKED",
+    stockQty: "0",
+    group: "OTHER" as (typeof groups)[number],
+    isActive: 1,
   });
 
-  const filteredMaterials = materials?.filter(m => 
-    m.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filtered = useMemo(
+    () => materials?.filter((item) => item.name.toLowerCase().includes(searchTerm.toLowerCase())) ?? [],
+    [materials, searchTerm],
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    createMutation.mutate(formData, {
-      onSuccess: () => {
-        setIsOpen(false);
-        setFormData({ name: "", unit: "", quantity: "0" });
-      }
-    });
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    createMutation.mutate(
+      {
+        name: formData.name,
+        unit: formData.unit,
+        policy: formData.policy,
+        stockQty: formData.policy === "STOCK_CONTROLLED" ? formData.stockQty : null,
+        group: formData.group,
+        isActive: 1,
+      },
+      {
+        onSuccess: () => {
+          setIsOpen(false);
+          setFormData({ name: "", unit: "UN", policy: "STOCK_CONTROLLED", stockQty: "0", group: "OTHER", isActive: 1 });
+        },
+      },
+    );
   };
 
   return (
     <Layout>
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
-            <Layers className="w-8 h-8 text-primary" />
-            Insumos
-          </h1>
-          <p className="text-muted-foreground mt-1">Gerencie seu estoque de matérias-primas.</p>
-        </div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold flex items-center gap-3">
+          <Layers className="w-8 h-8 text-primary" />
+          Materiais
+        </h1>
 
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
-            <Button className="shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Insumo
+            <Button>
+              <Plus className="w-4 h-4 mr-2" /> Novo Material
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Adicionar Insumo</DialogTitle>
-              <DialogDescription>
-                Cadastre uma nova matéria-prima no sistema.
-              </DialogDescription>
+              <DialogTitle>Criar Material</DialogTitle>
+              <DialogDescription>Cadastre o material e defina como ele será controlado.</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 py-4">
+
+            <form onSubmit={handleSubmit} className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label htmlFor="name">Nome do Insumo</Label>
-                <Input 
-                  id="name" 
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  placeholder="Ex: Tecido Algodão"
-                  required 
-                />
+                <Label>Nome</Label>
+                <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="unit">Unidade (Kg, M, Un)</Label>
-                  <Input 
-                    id="unit" 
-                    value={formData.unit}
-                    onChange={(e) => setFormData({...formData, unit: e.target.value})}
-                    placeholder="Ex: m"
-                    required 
-                  />
+                  <Label>Unidade</Label>
+                  <Input value={formData.unit} onChange={(e) => setFormData({ ...formData, unit: e.target.value })} required />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="quantity">Estoque Inicial</Label>
-                  <Input 
-                    id="quantity" 
+                  <Label>Grupo do material</Label>
+                  <Select value={formData.group} onValueChange={(value: (typeof groups)[number]) => setFormData({ ...formData, group: value })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {groups.map((group) => <SelectItem key={group} value={group}>{groupLabels[group]}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Tipo de controle</Label>
+                  <Select
+                    value={formData.policy}
+                    onValueChange={(value: "STOCK_CONTROLLED" | "CONSUMPTION_TRACKED") => setFormData({ ...formData, policy: value })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="STOCK_CONTROLLED">{policyLabels.STOCK_CONTROLLED}</SelectItem>
+                      <SelectItem value="CONSUMPTION_TRACKED">{policyLabels.CONSUMPTION_TRACKED}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Estoque inicial</Label>
+                  <Input
                     type="number"
-                    step="0.01"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({...formData, quantity: e.target.value})}
-                    required 
+                    step="0.001"
+                    value={formData.stockQty}
+                    onChange={(e) => setFormData({ ...formData, stockQty: e.target.value })}
+                    disabled={formData.policy === "CONSUMPTION_TRACKED"}
                   />
                 </div>
               </div>
+
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? "Salvando..." : "Salvar Insumo"}
-                </Button>
+                <Button type="submit" disabled={createMutation.isPending}>Salvar</Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="bg-card rounded-xl border border-border/50 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-border/50 bg-muted/30 flex items-center gap-3">
-          <Search className="w-4 h-4 text-muted-foreground" />
-          <Input 
-            placeholder="Buscar insumos..." 
-            className="border-none bg-transparent shadow-none focus-visible:ring-0 max-w-sm p-0 h-auto"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        {isLoading ? (
-          <div className="p-12 flex justify-center text-muted-foreground">
-            <Loader2 className="w-6 h-6 animate-spin" />
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[100px]">ID</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>Unidade</TableHead>
-                <TableHead className="text-right">Estoque Atual</TableHead>
-                <TableHead className="text-right">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMaterials?.map((item) => (
-                <TableRow key={item.id} className="hover:bg-muted/50 transition-colors">
-                  <TableCell className="font-medium text-muted-foreground">#{item.id}</TableCell>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell>{item.unit}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {Number(item.quantity).toLocaleString('pt-BR')}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {Number(item.quantity) < 10 ? (
-                      <Badge variant="destructive" className="font-normal">Baixo Estoque</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 font-normal">Regular</Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {!filteredMaterials?.length && (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    Nenhum insumo encontrado.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        )}
+      <div className="mb-4">
+        <Input placeholder="Buscar material" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
       </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>ID</TableHead>
+            <TableHead>Nome</TableHead>
+            <TableHead>Controle</TableHead>
+            <TableHead>Grupo</TableHead>
+            <TableHead>Unidade</TableHead>
+            <TableHead className="text-right">Estoque</TableHead>
+            <TableHead className="text-right">Ações</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filtered.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell>#{item.id}</TableCell>
+              <TableCell>{item.name}</TableCell>
+              <TableCell><Badge variant="outline">{policyLabels[item.policy]}</Badge></TableCell>
+              <TableCell>{groupLabels[item.group]}</TableCell>
+              <TableCell>{item.unit}</TableCell>
+              <TableCell className="text-right">{item.stockQty ?? "-"}</TableCell>
+              <TableCell className="text-right space-x-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={updateMutation.isPending}
+                  onClick={() => {
+                    const name = window.prompt("Nome", item.name);
+                    if (!name) return;
+                    updateMutation.mutate({ id: item.id, data: { name } });
+                  }}
+                >
+                  Editar
+                </Button>
+                <Button size="sm" variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(item.id)}>
+                  Inativar
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </Layout>
   );
 }

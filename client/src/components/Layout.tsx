@@ -8,7 +8,6 @@ import {
   ShoppingCart, 
   ArrowLeftRight,
   Menu,
-  Box,
   Search,
   Bell
 } from "lucide-react";
@@ -29,8 +28,8 @@ export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
 
   const menuItems = [
-    { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-    { icon: Layers, label: "Insumos", href: "/materials" },
+    { icon: LayoutDashboard, label: "Painel", href: "/" },
+    { icon: Layers, label: "Materiais", href: "/materials" },
     { icon: Package, label: "Produtos", href: "/products" },
     { icon: Factory, label: "Produção", href: "/production" },
     { icon: ShoppingCart, label: "Vendas", href: "/sales" },
@@ -40,11 +39,25 @@ export function Layout({ children }: LayoutProps) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-card border-r border-border/50">
       <div className="p-6 flex items-center gap-3 border-b border-border/50">
-        <div className="bg-primary/10 p-2 rounded-lg text-primary">
-          <Box className="w-6 h-6" />
+        <div className="">
+          <div
+            role="img"
+            aria-label="Pinale ERP"
+            className="w-12 h-12 bg-black"
+            style={{
+              WebkitMaskImage: "url(/logo.png)",
+              maskImage: "url(/logo.png)",
+              WebkitMaskRepeat: "no-repeat",
+              maskRepeat: "no-repeat",
+              WebkitMaskSize: "contain",
+              maskSize: "contain",
+              WebkitMaskPosition: "center",
+              maskPosition: "center",
+            }}
+          />
         </div>
         <span className="font-display font-bold text-xl tracking-tight text-foreground">
-          Nexus ERP
+          Pinale ERP
         </span>
       </div>
       
@@ -80,7 +93,7 @@ export function Layout({ children }: LayoutProps) {
             <AvatarFallback>AD</AvatarFallback>
           </Avatar>
           <div className="flex flex-col">
-            <span className="text-sm font-medium text-foreground">Admin User</span>
+            <span className="text-sm font-medium text-foreground">Usuário Admin</span>
             <span className="text-xs text-muted-foreground">admin@nexus.com</span>
           </div>
         </div>

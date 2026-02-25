@@ -1,0 +1,128 @@
+import { api, buildUrl } from "@shared/routes";
+import type {
+  ConcludeProductionOrderInput,
+  InsertMaterial,
+  InsertProductionOrder,
+  InsertSale,
+  Material,
+  MovementWithDetails,
+  ProductWithBom,
+  ProductionOrderWithProduct,
+  SaleListItem,
+} from "@shared/schema";
+import type { IErpGateway } from "@/application/contracts/erp-gateway";
+
+async function parseJsonResponse<T>(res: Response, fallbackMessage: string): Promise<T> {
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message || fallbackMessage);
+  }
+  return (await res.json()) as T;
+}
+
+async function throwIfNotOk(res: Response, fallbackMessage: string): Promise<void> {
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message || fallbackMessage);
+  }
+}
+
+export class HttpErpGateway implements IErpGateway {
+  async getMaterials(): Promise<Material[]> {
+    const res = await fetch(api.materials.list.path);
+    return parseJsonResponse<Material[]>(res, "Falha ao carregar materiais");
+  }
+
+  async createMaterial(data: InsertMaterial): Promise<Material> {
+    const res = await fetch(api.materials.create.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<Material>(res, "Falha ao criar material");
+  }
+
+  async updateMaterial(id: number, data: Partial<InsertMaterial>): Promise<Material> {
+    const res = await fetch(buildUrl(api.materials.update.path, { id }), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<Material>(res, "Falha ao atualizar material");
+  }
+
+  async deleteMaterial(id: number): Promise<void> {
+    const res = await fetch(buildUrl(api.materials.delete.path, { id }), { method: "DELETE" });
+    await throwIfNotOk(res, "Falha ao excluir material");
+  }
+
+  async getProducts(): Promise<ProductWithBom[]> {
+    const res = await fetch(api.products.list.path);
+    return parseJsonResponse<ProductWithBom[]>(res, "Falha ao carregar produtos");
+  }
+
+  async createProduct(data: unknown): Promise<ProductWithBom> {
+    const res = await fetch(api.products.create.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductWithBom>(res, "Falha ao criar produto");
+  }
+
+  async updateProduct(id: number, data: unknown): Promise<ProductWithBom> {
+    const res = await fetch(buildUrl(api.products.update.path, { id }), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductWithBom>(res, "Falha ao atualizar produto");
+  }
+
+  async deleteProduct(id: number): Promise<void> {
+    const res = await fetch(buildUrl(api.products.delete.path, { id }), { method: "DELETE" });
+    await throwIfNotOk(res, "Falha ao excluir produto");
+  }
+
+  async getProductionOrders(): Promise<ProductionOrderWithProduct[]> {
+    const res = await fetch(api.productionOrders.list.path);
+    return parseJsonResponse<ProductionOrderWithProduct[]>(res, "Falha ao carregar ordens de produção");
+  }
+
+  async createProductionOrder(data: InsertProductionOrder): Promise<ProductionOrderWithProduct> {
+    const res = await fetch(api.productionOrders.create.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao criar ordem de produção");
+  }
+
+  async concludeProductionOrder(id: number, data: ConcludeProductionOrderInput): Promise<ProductionOrderWithProduct> {
+    const res = await fetch(buildUrl(api.productionOrders.conclude.path, { id }), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao concluir ordem de produção");
+  }
+
+  async getSales(): Promise<SaleListItem[]> {
+    const res = await fetch(api.sales.list.path);
+    return parseJsonResponse<SaleListItem[]>(res, "Falha ao carregar vendas");
+  }
+
+  async createSale(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }> {
+    const res = await fetch(api.sales.create.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<{ sale: unknown; items: unknown[] }>(res, "Falha ao criar venda");
+  }
+
+  async getInventoryMovements(): Promise<MovementWithDetails[]> {
+    const res = await fetch(api.inventory.movements.path);
+    return parseJsonResponse<MovementWithDetails[]>(res, "Falha ao carregar movimentações de estoque");
+  }
+}
