@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import type {
+  CreateManyMaterialsInput,
   ConcludeProductionOrderInput,
   InsertMaterial,
   InsertProductionOrder,
@@ -11,14 +12,18 @@ import { HttpErpGateway } from "@/infra/repositories/http-erp-gateway";
 import {
   ConcludeProductionOrderUseCase,
   CreateMaterialUseCase,
+  CreateManyMaterialsUseCase,
   CreateProductUseCase,
+  MoveProductionOrderUseCase,
   CreateProductionOrderUseCase,
   CreateSaleUseCase,
   DeleteMaterialUseCase,
   DeleteProductUseCase,
+  GetDashboardReportUseCase,
   GetInventoryMovementsUseCase,
   GetMaterialsUseCase,
   GetProductionOrdersUseCase,
+  GetProducedProductStocksUseCase,
   GetProductsUseCase,
   GetSalesUseCase,
   UpdateMaterialUseCase,
@@ -29,22 +34,26 @@ const gateway = new HttpErpGateway();
 
 const getMaterialsUseCase = new GetMaterialsUseCase(gateway);
 const createMaterialUseCase = new CreateMaterialUseCase(gateway);
+const createManyMaterialsUseCase = new CreateManyMaterialsUseCase(gateway);
 const updateMaterialUseCase = new UpdateMaterialUseCase(gateway);
 const deleteMaterialUseCase = new DeleteMaterialUseCase(gateway);
 
 const getProductsUseCase = new GetProductsUseCase(gateway);
+const getProducedProductStocksUseCase = new GetProducedProductStocksUseCase(gateway);
 const createProductUseCase = new CreateProductUseCase(gateway);
 const updateProductUseCase = new UpdateProductUseCase(gateway);
 const deleteProductUseCase = new DeleteProductUseCase(gateway);
 
 const getProductionOrdersUseCase = new GetProductionOrdersUseCase(gateway);
 const createProductionOrderUseCase = new CreateProductionOrderUseCase(gateway);
+const moveProductionOrderUseCase = new MoveProductionOrderUseCase(gateway);
 const concludeProductionOrderUseCase = new ConcludeProductionOrderUseCase(gateway);
 
 const getSalesUseCase = new GetSalesUseCase(gateway);
 const createSaleUseCase = new CreateSaleUseCase(gateway);
 
 const getInventoryMovementsUseCase = new GetInventoryMovementsUseCase(gateway);
+const getDashboardReportUseCase = new GetDashboardReportUseCase(gateway);
 
 function useCrudToast() {
   const { toast } = useToast();
@@ -88,6 +97,20 @@ export function useUpdateMaterial() {
   });
 }
 
+export function useCreateManyMaterials() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (data: CreateManyMaterialsInput) => createManyMaterialsUseCase.execute(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
+      message.success("Materiais criados com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
 export function useDeleteMaterial() {
   const queryClient = useQueryClient();
   const message = useCrudToast();
@@ -109,6 +132,13 @@ export function useProducts() {
   });
 }
 
+export function useProducedProductStocks() {
+  return useQuery({
+    queryKey: [api.producedProductStocks.list.path],
+    queryFn: () => getProducedProductStocksUseCase.execute(),
+  });
+}
+
 export function useCreateProduct() {
   const queryClient = useQueryClient();
   const message = useCrudToast();
@@ -117,6 +147,7 @@ export function useCreateProduct() {
     mutationFn: (data: unknown) => createProductUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
       message.success("Produto criado com sucesso.");
     },
     onError: message.error,
@@ -172,6 +203,20 @@ export function useCreateProductionOrder() {
   });
 }
 
+export function useMoveProductionOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { status: "BACKLOG" | "IN_PROGRESS"; orderedIds: number[] } }) => moveProductionOrderUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      message.success("Ordem de produção atualizada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
 export function useConcludeProductionOrder() {
   const queryClient = useQueryClient();
   const message = useCrudToast();
@@ -181,7 +226,7 @@ export function useConcludeProductionOrder() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Ordem de produção concluída com sucesso.");
     },
@@ -204,7 +249,7 @@ export function useCreateSale() {
     mutationFn: (data: InsertSale) => createSaleUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Venda registrada com sucesso.");
     },
@@ -216,5 +261,12 @@ export function useInventoryMovements() {
   return useQuery({
     queryKey: [api.inventory.movements.path],
     queryFn: () => getInventoryMovementsUseCase.execute(),
+  });
+}
+
+export function useDashboardReport(from?: Date, to?: Date) {
+  return useQuery({
+    queryKey: [api.reports.dashboard.path, from?.toISOString(), to?.toISOString()],
+    queryFn: () => getDashboardReportUseCase.execute(from, to),
   });
 }

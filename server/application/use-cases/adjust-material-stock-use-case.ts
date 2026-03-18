@@ -24,10 +24,11 @@ export class AdjustMaterialStockUseCase {
       const material = new Material({
         id: materialRecord.id,
         name: materialRecord.name,
-        unit: materialRecord.unit,
-        policy: materialRecord.policy,
-        stockQty: materialRecord.stockQty === null ? null : Number(materialRecord.stockQty),
-        group: materialRecord.group,
+        unitOfMeasure: materialRecord.unitOfMeasure,
+        stockQty: Number(materialRecord.stockQty),
+        category: materialRecord.category,
+        purchasePrice: Number(materialRecord.purchasePrice),
+        pricePerSquareMeter: materialRecord.pricePerSquareMeter ? Number(materialRecord.pricePerSquareMeter) : null,
         isActive: materialRecord.isActive === 1,
       });
 
@@ -43,7 +44,7 @@ export class AdjustMaterialStockUseCase {
         referenceType: "MANUAL",
         metadata: { reason: input.reason },
       });
-      await txRepository.createInventoryMovement(movement.toPersistence());
+      await txRepository.createInventoryMovement(movement.toData());
 
       return { materialId: material.id };
     });

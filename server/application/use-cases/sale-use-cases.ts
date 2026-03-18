@@ -1,9 +1,9 @@
 import type { SaleListItem } from "@shared/schema";
-import type { IErpRepository } from "../contracts/erp-repository";
+import type { ISalesRepository } from "../contracts/sales-repository";
 import { NotFoundDomainError } from "../../domain/errors/domain-error";
 
 export class ListSalesUseCase {
-  constructor(private readonly repository: IErpRepository) {}
+  constructor(private readonly repository: ISalesRepository) {}
 
   execute(): Promise<SaleListItem[]> {
     return this.repository.getSales();
@@ -11,7 +11,7 @@ export class ListSalesUseCase {
 }
 
 export class GetSaleUseCase {
-  constructor(private readonly repository: IErpRepository) {}
+  constructor(private readonly repository: ISalesRepository) {}
 
   async execute(id: number): Promise<{
     sale: import("@shared/schema").Sale;

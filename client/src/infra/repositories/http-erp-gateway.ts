@@ -1,12 +1,16 @@
 import { api, buildUrl } from "@shared/routes";
+import type { DashboardReport } from "@shared/routes";
 import type {
+  CreateManyMaterialsInput,
   ConcludeProductionOrderInput,
   InsertMaterial,
+  MoveProductionOrderInput,
   InsertProductionOrder,
   InsertSale,
   Material,
   MovementWithDetails,
   ProductWithBom,
+  ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
   SaleListItem,
 } from "@shared/schema";
@@ -42,6 +46,15 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<Material>(res, "Falha ao criar material");
   }
 
+  async createManyMaterials(data: CreateManyMaterialsInput): Promise<Material[]> {
+    const res = await fetch(api.materials.createMany.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<Material[]>(res, "Falha ao criar materiais");
+  }
+
   async updateMaterial(id: number, data: Partial<InsertMaterial>): Promise<Material> {
     const res = await fetch(buildUrl(api.materials.update.path, { id }), {
       method: "PUT",
@@ -54,6 +67,11 @@ export class HttpErpGateway implements IErpGateway {
   async deleteMaterial(id: number): Promise<void> {
     const res = await fetch(buildUrl(api.materials.delete.path, { id }), { method: "DELETE" });
     await throwIfNotOk(res, "Falha ao excluir material");
+  }
+
+  async getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]> {
+    const res = await fetch(api.producedProductStocks.list.path);
+    return parseJsonResponse<ProducedProductStockWithProduct[]>(res, "Falha ao carregar estoque produzido");
   }
 
   async getProducts(): Promise<ProductWithBom[]> {
@@ -98,6 +116,15 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao criar ordem de produção");
   }
 
+  async moveProductionOrder(id: number, data: MoveProductionOrderInput): Promise<ProductionOrderWithProduct> {
+    const res = await fetch(buildUrl(api.productionOrders.move.path, { id }), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao mover ordem de produção");
+  }
+
   async concludeProductionOrder(id: number, data: ConcludeProductionOrderInput): Promise<ProductionOrderWithProduct> {
     const res = await fetch(buildUrl(api.productionOrders.conclude.path, { id }), {
       method: "POST",
@@ -124,5 +151,14 @@ export class HttpErpGateway implements IErpGateway {
   async getInventoryMovements(): Promise<MovementWithDetails[]> {
     const res = await fetch(api.inventory.movements.path);
     return parseJsonResponse<MovementWithDetails[]>(res, "Falha ao carregar movimentações de estoque");
+  }
+
+  async getDashboardReport(from?: Date, to?: Date): Promise<DashboardReport> {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from.toISOString());
+    if (to) params.set("to", to.toISOString());
+    const url = `${api.reports.dashboard.path}?${params.toString()}`;
+    const res = await fetch(url);
+    return parseJsonResponse<DashboardReport>(res, "Falha ao carregar relatório do painel");
   }
 }

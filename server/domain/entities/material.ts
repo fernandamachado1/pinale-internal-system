@@ -1,27 +1,26 @@
 import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error";
 
-export type MaterialPolicy = "STOCK_CONTROLLED" | "CONSUMPTION_TRACKED";
-export type MaterialGroup = "LEATHER" | "HARDWARE" | "ADHESIVE" | "THREAD" | "OTHER";
+export type MaterialCategory = "PACKAGING" | "NOTIONS" | "RAW_MATERIAL";
+export type UnitOfMeasure = "UNIT" | "SQUARE_METER" | "METER";
 
 export interface MaterialProps {
   id: number;
   name: string;
-  unit: string;
-  policy: MaterialPolicy;
-  stockQty: number | null;
-  group: MaterialGroup;
+  unitOfMeasure: UnitOfMeasure;
+  stockQty: number;
+  category: MaterialCategory;
+  purchasePrice: number;
+  pricePerSquareMeter?: number | null;
   isActive: boolean;
 }
 
 export class Material {
   constructor(private readonly props: MaterialProps) {
     if (!props.name.trim()) throw new ValidationDomainError("Material name is required");
-    if (!props.unit.trim()) throw new ValidationDomainError("Material unit is required");
-    if (props.policy === "STOCK_CONTROLLED" && props.stockQty === null) {
-      throw new ValidationDomainError("STOCK_CONTROLLED material must have stock quantity");
-    }
-    if (props.policy === "CONSUMPTION_TRACKED" && props.stockQty !== null) {
-      throw new ValidationDomainError("CONSUMPTION_TRACKED material cannot have stock quantity");
+    if (props.stockQty < 0) throw new ValidationDomainError("Material stock quantity cannot be negative");
+    if (props.purchasePrice < 0) throw new ValidationDomainError("Material purchase price cannot be negative");
+    if (props.category === "RAW_MATERIAL" && (props.pricePerSquareMeter === undefined || props.pricePerSquareMeter === null || props.pricePerSquareMeter < 0)) {
+      throw new ValidationDomainError("Raw material must define price per square meter");
     }
   }
 
@@ -29,20 +28,14 @@ export class Material {
     return this.props.id;
   }
 
-  get policy(): MaterialPolicy {
-    return this.props.policy;
-  }
-
-  get group(): MaterialGroup {
-    return this.props.group;
+  get category(): MaterialCategory {
+    return this.props.category;
   }
 
   consumeStock(quantity: number): void {
     if (quantity <= 0) throw new ValidationDomainError("Consumption quantity must be greater than zero");
-    if (this.props.policy !== "STOCK_CONTROLLED") return;
 
-    const current = this.props.stockQty ?? 0;
-    const next = current - quantity;
+    const next = this.props.stockQty - quantity;
     if (next < 0) {
       throw new InvalidOperationDomainError(`Insufficient stock for material ${this.props.name}`);
     }
@@ -51,27 +44,20 @@ export class Material {
 
   addStock(quantity: number): void {
     if (quantity <= 0) throw new ValidationDomainError("Inbound quantity must be greater than zero");
-    if (this.props.policy !== "STOCK_CONTROLLED") return;
-
-    this.props.stockQty = (this.props.stockQty ?? 0) + quantity;
+    this.props.stockQty += quantity;
   }
 
   adjustStock(delta: number): void {
-    if (this.props.policy !== "STOCK_CONTROLLED") {
-      throw new InvalidOperationDomainError("Cannot adjust stock for CONSUMPTION_TRACKED material");
-    }
-
-    const current = this.props.stockQty ?? 0;
-    const next = current + delta;
+    const next = this.props.stockQty + delta;
     if (next < 0) {
       throw new InvalidOperationDomainError(`Insufficient stock for material ${this.props.name}`);
     }
     this.props.stockQty = next;
   }
 
-  toPersistence(): { stockQty: string | null } {
+  toPersistence(): { stockQty: string } {
     return {
-      stockQty: this.props.stockQty === null ? null : this.props.stockQty.toFixed(3),
+      stockQty: this.props.stockQty.toFixed(3),
     };
   }
 }

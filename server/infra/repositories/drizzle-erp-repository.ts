@@ -1,16 +1,17 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   boms,
   bomItems,
   inventoryMovements,
   materials,
   products,
+  producedProductStocks,
   productionOrders,
-  productionVariableConsumptions,
   saleItems,
   sales,
   type BomItem,
   type BomItemInput,
+  type CreateManyMaterialsInput,
   type InsertInventoryMovement,
   type InsertMaterial,
   type InsertProduct,
@@ -18,23 +19,34 @@ import {
   type InventoryMovement,
   type Material,
   type MovementWithDetails,
+  type MoveProductionOrderInput,
   type Product,
   type ProductWithBom,
+  type ProducedProductStock,
+  type ProducedProductStockWithProduct,
   type ProductionOrder,
   type ProductionOrderWithProduct,
-  type ProductionVariableConsumption,
   type Sale,
   type SaleItem,
   type SaleListItem,
   type UpdateMaterialRequest,
   type UpdateProductInput,
-  type VariableConsumptionInput,
 } from "@shared/schema";
 import type { IErpRepository } from "../../application/contracts/erp-repository";
+import type { CreateInventoryMovementData } from "../../application/contracts/sales-repository";
 import { db } from "../../db";
 
 export class DrizzleErpRepository implements IErpRepository {
   constructor(private readonly database: any = db) {}
+
+  private async getNextProductionSortOrder(status: "BACKLOG" | "IN_PROGRESS" | "DONE"): Promise<number> {
+    const [result] = (await this.database
+      .select({ maxSortOrder: sql<number>`coalesce(max(${productionOrders.sortOrder}), -1)` })
+      .from(productionOrders)
+      .where(eq(productionOrders.status, status))) as Array<{ maxSortOrder: number }>;
+
+    return Number(result?.maxSortOrder ?? -1) + 1;
+  }
 
   async withTransaction<T>(callback: (repository: IErpRepository) => Promise<T>): Promise<T> {
     return this.database.transaction(async (tx: any) => {
@@ -62,6 +74,10 @@ export class DrizzleErpRepository implements IErpRepository {
     return created;
   }
 
+  async createManyMaterials(input: CreateManyMaterialsInput): Promise<Material[]> {
+    return (await this.database.insert(materials).values(input.items).returning()) as Material[];
+  }
+
   async updateMaterial(id: number, updates: UpdateMaterialRequest): Promise<Material> {
     const [updated] = (await this.database
       .update(materials)
@@ -75,7 +91,7 @@ export class DrizzleErpRepository implements IErpRepository {
     await this.database.update(materials).set({ isActive: 0, updatedAt: new Date() }).where(eq(materials.id, id));
   }
 
-  async updateMaterialStockQty(id: number, stockQty: string | null): Promise<void> {
+  async updateMaterialStockQty(id: number, stockQty: string): Promise<void> {
     await this.database.update(materials).set({ stockQty, updatedAt: new Date() }).where(eq(materials.id, id));
   }
 
@@ -107,7 +123,10 @@ export class DrizzleErpRepository implements IErpRepository {
         ? []
         : ((await this.database.select().from(bomItems).where(eq(bomItems.bomId, activeBom.id))) as BomItem[]);
 
-    return { ...product, bomItems: items };
+    return {
+      ...product,
+      bomItems: items,
+    };
   }
 
   async getProductByName(name: string): Promise<Product | undefined> {
@@ -133,8 +152,39 @@ export class DrizzleErpRepository implements IErpRepository {
     await this.database.update(products).set({ isActive: 0, updatedAt: new Date() }).where(eq(products.id, id));
   }
 
-  async updateProductStockQty(id: number, stockQty: number): Promise<void> {
-    await this.database.update(products).set({ stockQty, updatedAt: new Date() }).where(eq(products.id, id));
+  async getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]> {
+    const allStocks = (await this.database.select().from(producedProductStocks).orderBy(producedProductStocks.productId)) as ProducedProductStock[];
+    const allProducts = (await this.database.select().from(products).orderBy(products.name)) as Product[];
+
+    return allStocks
+      .map((stock) => {
+        const product = allProducts.find((entry) => entry.id === stock.productId);
+        if (!product) return undefined;
+        return { ...stock, product };
+      })
+      .filter((item): item is ProducedProductStockWithProduct => item !== undefined);
+  }
+
+  async getProducedProductStockByProductId(productId: number): Promise<ProducedProductStockWithProduct | undefined> {
+    const [stock] = (await this.database.select().from(producedProductStocks).where(eq(producedProductStocks.productId, productId))) as ProducedProductStock[];
+    if (!stock) return undefined;
+
+    const [product] = (await this.database.select().from(products).where(eq(products.id, productId))) as Product[];
+    if (!product) return undefined;
+
+    return { ...stock, product };
+  }
+
+  async createProducedProductStock(productId: number): Promise<ProducedProductStock> {
+    const [created] = (await this.database.insert(producedProductStocks).values({ productId, stockQty: 0 }).returning()) as ProducedProductStock[];
+    return created;
+  }
+
+  async updateProducedProductStockQty(productId: number, stockQty: number): Promise<void> {
+    await this.database
+      .update(producedProductStocks)
+      .set({ stockQty, updatedAt: new Date() })
+      .where(eq(producedProductStocks.productId, productId));
   }
 
   async getActiveBomByProductId(productId: number): Promise<{ id: number; items: BomItem[] } | undefined> {
@@ -150,49 +200,50 @@ export class DrizzleErpRepository implements IErpRepository {
     return { id: activeBom.id, items };
   }
 
-  async replaceActiveBom(productId: number, items: BomItemInput[]): Promise<{ id: number; items: BomItem[] }> {
+  async replaceActiveBom(
+    productId: number,
+    technicalSpec: { bomItems: BomItemInput[] },
+  ): Promise<{ id: number; items: BomItem[] }> {
     await this.database.update(boms).set({ isActive: 0, updatedAt: new Date() }).where(and(eq(boms.productId, productId), eq(boms.isActive, 1)));
 
     const [createdBom] = (await this.database
       .insert(boms)
-      .values({ productId, isActive: 1, updatedAt: new Date() })
+      .values({
+        productId,
+        isActive: 1,
+        updatedAt: new Date(),
+      })
       .returning()) as Array<typeof boms.$inferSelect>;
 
-    if (items.length === 0) {
-      return { id: createdBom.id, items: [] };
+    if (technicalSpec.bomItems.length === 0) {
+      return {
+        id: createdBom.id,
+        items: [],
+      };
     }
 
-    const values = items.map((item) => {
-      if (item.itemType === "FIXED_MATERIAL") {
-        return {
-          bomId: createdBom.id,
-          itemType: item.itemType,
-          materialId: item.materialId,
-          materialGroup: null,
-          qtyPerUnit: item.qtyPerUnit,
-          plannedQtyPerUnit: null,
-          unit: null,
-        };
-      }
-
-      return {
-        bomId: createdBom.id,
-        itemType: item.itemType,
-        materialId: null,
-        materialGroup: item.materialGroup,
-        qtyPerUnit: null,
-        plannedQtyPerUnit: item.plannedQtyPerUnit,
-        unit: item.unit,
-      };
-    });
+    const values = technicalSpec.bomItems.map((item) => ({
+      bomId: createdBom.id,
+      materialId: item.materialId,
+      qtyPerUnit: item.qtyPerUnit,
+    }));
 
     const createdItems = (await this.database.insert(bomItems).values(values).returning()) as BomItem[];
-    return { id: createdBom.id, items: createdItems };
+
+    return {
+      id: createdBom.id,
+      items: createdItems,
+    };
   }
 
   async getProductionOrders(): Promise<ProductionOrderWithProduct[]> {
-    const allOrders = (await this.database.select().from(productionOrders).orderBy(desc(productionOrders.createdAt))) as ProductionOrder[];
+    const allOrders = (await this.database.select().from(productionOrders).orderBy(asc(productionOrders.sortOrder), desc(productionOrders.createdAt), desc(productionOrders.id))) as ProductionOrder[];
     const allProducts = (await this.database.select().from(products)) as Product[];
+    const statusOrder = new Map([
+      ["BACKLOG", 0],
+      ["IN_PROGRESS", 1],
+      ["DONE", 2],
+    ]);
 
     return allOrders
       .map((order) => {
@@ -200,7 +251,14 @@ export class DrizzleErpRepository implements IErpRepository {
         if (!product) return undefined;
         return { ...order, product };
       })
-      .filter((item): item is ProductionOrderWithProduct => item !== undefined);
+      .filter((item): item is ProductionOrderWithProduct => item !== undefined)
+      .sort((left, right) => {
+        const leftOrder = statusOrder.get(left.status) ?? 0;
+        const rightOrder = statusOrder.get(right.status) ?? 0;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder;
+        return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+      });
   }
 
   async getProductionOrder(id: number): Promise<ProductionOrderWithProduct | undefined> {
@@ -214,42 +272,40 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async createProductionOrder(data: InsertProductionOrder): Promise<ProductionOrder> {
+    const sortOrder = await this.getNextProductionSortOrder("BACKLOG");
     const [created] = (await this.database
       .insert(productionOrders)
-      .values({ productId: data.productId, qtyPlanned: data.qtyPlanned, status: "OPEN" })
+      .values({ productId: data.productId, qtyPlanned: data.qtyPlanned, status: "BACKLOG", sortOrder })
       .returning()) as ProductionOrder[];
     return created;
   }
 
-  async markProductionOrderDone(id: number, completedAt: Date): Promise<ProductionOrder> {
-    const [updated] = (await this.database
+  async moveProductionOrder(id: number, input: MoveProductionOrderInput): Promise<ProductionOrder> {
+    await this.database
       .update(productionOrders)
-      .set({ status: "DONE", completedAt })
-      .where(eq(productionOrders.id, id))
-      .returning()) as ProductionOrder[];
+      .set({ status: input.status })
+      .where(eq(productionOrders.id, id));
+
+    for (let index = 0; index < input.orderedIds.length; index += 1) {
+      const orderId = input.orderedIds[index];
+      await this.database
+        .update(productionOrders)
+        .set({ status: input.status, sortOrder: index })
+        .where(eq(productionOrders.id, orderId));
+    }
+
+    const [updated] = (await this.database.select().from(productionOrders).where(eq(productionOrders.id, id))) as ProductionOrder[];
     return updated;
   }
 
-  async createProductionVariableConsumptions(opId: number, consumptions: VariableConsumptionInput[]): Promise<ProductionVariableConsumption[]> {
-    if (consumptions.length === 0) return [];
-
-    const rows = consumptions.map((consumption) => ({
-      productionOrderId: opId,
-      materialGroup: consumption.materialGroup,
-      quantityUsed: consumption.quantityUsed,
-      thicknessMm: consumption.thicknessMm,
-      panelsCount: consumption.panelsCount ?? null,
-      note: consumption.note ?? null,
-    }));
-
-    return (await this.database.insert(productionVariableConsumptions).values(rows).returning()) as ProductionVariableConsumption[];
-  }
-
-  async getProductionVariableConsumptions(opId: number): Promise<ProductionVariableConsumption[]> {
-    return (await this.database
-      .select()
-      .from(productionVariableConsumptions)
-      .where(eq(productionVariableConsumptions.productionOrderId, opId))) as ProductionVariableConsumption[];
+  async markProductionOrderDone(id: number, completedAt: Date): Promise<ProductionOrder> {
+    const sortOrder = await this.getNextProductionSortOrder("DONE");
+    const [updated] = (await this.database
+      .update(productionOrders)
+      .set({ status: "DONE", sortOrder, completedAt })
+      .where(eq(productionOrders.id, id))
+      .returning()) as ProductionOrder[];
+    return updated;
   }
 
   async createSale(data: { paymentMethod: string; totalAmount: string }): Promise<Sale> {
@@ -317,8 +373,19 @@ export class DrizzleErpRepository implements IErpRepository {
     }));
   }
 
-  async createInventoryMovement(movement: InsertInventoryMovement): Promise<InventoryMovement> {
-    const [created] = (await this.database.insert(inventoryMovements).values(movement).returning()) as InventoryMovement[];
+  async createInventoryMovement(movement: CreateInventoryMovementData): Promise<InventoryMovement> {
+    const insertMovement: InsertInventoryMovement = {
+      entityType: movement.entityType,
+      entityId: movement.entityId ?? null,
+      direction: movement.direction,
+      qty: movement.qty.toFixed(3),
+      reason: movement.reason,
+      referenceType: movement.referenceType,
+      referenceId: movement.referenceId ?? null,
+      metadata: movement.metadata ?? null,
+    };
+
+    const [created] = (await this.database.insert(inventoryMovements).values(insertMovement).returning()) as InventoryMovement[];
     return created;
   }
 }

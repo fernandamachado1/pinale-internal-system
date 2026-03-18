@@ -1,29 +1,22 @@
-import type { InsertMaterial, Material, UpdateMaterialRequest } from "@shared/schema";
+import type { CreateManyMaterialsInput, InsertMaterial, Material, UpdateMaterialRequest } from "@shared/schema";
 import type { IErpRepository } from "../contracts/erp-repository";
 import { ConflictDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
 
 function normalizeMaterialInput(input: InsertMaterial | UpdateMaterialRequest): InsertMaterial | UpdateMaterialRequest {
   const normalized = { ...input };
   if (normalized.name !== undefined) normalized.name = normalized.name.trim();
-  if (normalized.unit !== undefined) normalized.unit = normalized.unit.trim();
 
-  const hasPolicy = normalized.policy !== undefined;
-  const hasStockQty = normalized.stockQty !== undefined;
+  if (normalized.stockQty !== undefined && Number(normalized.stockQty) < 0) {
+    throw new ValidationDomainError("stockQty cannot be negative");
+  }
 
-  if (hasPolicy || hasStockQty) {
-    const policy = normalized.policy;
-    const stockQty = normalized.stockQty;
+  if (normalized.purchasePrice !== undefined && Number(normalized.purchasePrice) < 0) {
+    throw new ValidationDomainError("purchasePrice cannot be negative");
+  }
 
-    if (policy === "CONSUMPTION_TRACKED") {
-      normalized.stockQty = null;
-    }
-
-    if (policy === "STOCK_CONTROLLED" && stockQty === null) {
-      throw new ValidationDomainError("stockQty is required for STOCK_CONTROLLED material");
-    }
-
-    if (stockQty !== undefined && stockQty !== null && Number(stockQty) < 0) {
-      throw new ValidationDomainError("stockQty cannot be negative");
+  if (normalized.category === "RAW_MATERIAL") {
+    if (!normalized.pricePerSquareMeter || Number(normalized.pricePerSquareMeter) < 0) {
+      throw new ValidationDomainError("pricePerSquareMeter is required for raw materials");
     }
   }
 
@@ -59,6 +52,25 @@ export class CreateMaterialUseCase {
   }
 }
 
+export class CreateManyMaterialsUseCase {
+  constructor(private readonly repository: IErpRepository) {}
+
+  async execute(input: CreateManyMaterialsInput): Promise<Material[]> {
+    const normalizedItems = input.items.map((item) => normalizeMaterialInput(item) as InsertMaterial);
+    const seenNames = new Set<string>();
+
+    for (const item of normalizedItems) {
+      if (seenNames.has(item.name)) throw new ConflictDomainError("Material name must be unique");
+      seenNames.add(item.name);
+
+      const existing = await this.repository.getMaterialByName(item.name);
+      if (existing) throw new ConflictDomainError("Material name must be unique");
+    }
+
+    return this.repository.withTransaction((txRepository) => txRepository.createManyMaterials({ items: normalizedItems }));
+  }
+}
+
 export class UpdateMaterialUseCase {
   constructor(private readonly repository: IErpRepository) {}
 
@@ -72,17 +84,6 @@ export class UpdateMaterialUseCase {
       if (existing && existing.id !== id) {
         throw new ConflictDomainError("Material name must be unique");
       }
-    }
-
-    const nextPolicy = normalized.policy ?? material.policy;
-    const nextStockQty = normalized.stockQty ?? material.stockQty;
-
-    if (nextPolicy === "STOCK_CONTROLLED" && (nextStockQty === null || nextStockQty === undefined)) {
-      throw new ValidationDomainError("stockQty is required for STOCK_CONTROLLED material");
-    }
-
-    if (nextPolicy === "CONSUMPTION_TRACKED" && normalized.stockQty === undefined) {
-      normalized.stockQty = null;
     }
 
     return this.repository.updateMaterial(id, normalized);

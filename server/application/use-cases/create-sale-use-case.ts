@@ -1,16 +1,17 @@
 import type { InsertSale } from "@shared/schema";
 import { InventoryMovement } from "../../domain/entities/inventory-movement";
 import { Product } from "../../domain/entities/product";
+import { ProducedProductStock } from "../../domain/entities/produced-product-stock";
 import { SaleAggregate } from "../../domain/entities/sale";
 import { NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
-import type { IErpRepository } from "../contracts/erp-repository";
+import type { ISalesRepository } from "../contracts/sales-repository";
 
 export interface CreateSaleOutput {
   saleId: number;
 }
 
 export class CreateSaleUseCase {
-  constructor(private readonly repository: IErpRepository) {}
+  constructor(private readonly repository: ISalesRepository) {}
 
   async execute(input: InsertSale): Promise<CreateSaleOutput> {
     if (input.items.length < 1) throw new ValidationDomainError("Sale must have at least one item");
@@ -18,31 +19,39 @@ export class CreateSaleUseCase {
     return this.repository.withTransaction(async (txRepository) => {
       const saleAggregate = new SaleAggregate(input.paymentMethod);
       const productsMap = new Map<number, Product>();
+      const producedStocksMap = new Map<number, ProducedProductStock>();
 
       for (const item of input.items) {
         const productRecord = await txRepository.getProduct(item.productId);
         if (!productRecord) throw new NotFoundDomainError(`Product ${item.productId} not found`);
 
+        const producedStockRecord = await txRepository.getProducedProductStockByProductId(item.productId);
+        if (!producedStockRecord) throw new NotFoundDomainError(`Produced stock for product ${item.productId} not found`);
+
         const product = new Product({
           id: productRecord.id,
           name: productRecord.name,
           price: Number(productRecord.price),
-          stockQty: productRecord.stockQty,
           isActive: productRecord.isActive === 1,
+        });
+        const producedStock = new ProducedProductStock({
+          productId: item.productId,
+          stockQty: producedStockRecord.stockQty,
         });
 
         productsMap.set(product.id, product);
+        producedStocksMap.set(product.id, producedStock);
         saleAggregate.addItem(product.id, item.qty, Number(productRecord.price));
       }
 
       for (const item of saleAggregate.getItems()) {
-        const product = productsMap.get(item.productId);
-        if (!product) continue;
-        product.decreaseStock(item.qty);
+        const producedStock = producedStocksMap.get(item.productId);
+        if (!producedStock) continue;
+        producedStock.decrease(item.qty);
       }
 
-      for (const product of Array.from(productsMap.values())) {
-        await txRepository.updateProductStockQty(product.id, product.toPersistence().stockQty);
+      for (const producedStock of Array.from(producedStocksMap.values())) {
+        await txRepository.updateProducedProductStockQty(producedStock.productId, producedStock.toPersistence().stockQty);
       }
 
       const totalAmount = saleAggregate.calculateTotalAmount();
@@ -75,7 +84,7 @@ export class CreateSaleUseCase {
             totalPrice: item.totalPrice,
           },
         });
-        await txRepository.createInventoryMovement(movement.toPersistence());
+        await txRepository.createInventoryMovement(movement.toData());
       }
 
       return { saleId: createdSale.id };

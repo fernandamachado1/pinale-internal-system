@@ -1,19 +1,22 @@
 import { z } from "zod";
 import {
   concludeProductionOrderSchema,
+  createManyMaterialsSchema,
   createProductInputSchema,
   insertMaterialSchema,
+  moveProductionOrderSchema,
   insertProductionOrderSchema,
   insertSaleSchema,
+  updateMaterialSchema,
   updateProductInputSchema,
   materials,
   products,
   bomItems,
+  producedProductStocks,
   productionOrders,
   sales,
   saleItems,
   inventoryMovements,
-  productionVariableConsumptions,
 } from "./schema";
 
 export const errorSchemas = {
@@ -26,15 +29,20 @@ export const errorSchemas = {
 const materialSchema = z.custom<typeof materials.$inferSelect>();
 const productSchema = z.custom<typeof products.$inferSelect>();
 const bomItemSchema = z.custom<typeof bomItems.$inferSelect>();
+const producedProductStockSchema = z.custom<typeof producedProductStocks.$inferSelect>();
 const productionOrderSchema = z.custom<typeof productionOrders.$inferSelect>();
-const productionVariableConsumptionSchema = z.custom<typeof productionVariableConsumptions.$inferSelect>();
 const saleSchema = z.custom<typeof sales.$inferSelect>();
 const saleItemSchema = z.custom<typeof saleItems.$inferSelect>();
 const inventoryMovementSchema = z.custom<typeof inventoryMovements.$inferSelect>();
 
-const productWithBomSchema = productSchema.and(z.object({ bomItems: z.array(bomItemSchema) }));
+const productWithBomSchema = productSchema.and(
+  z.object({
+    bomItems: z.array(bomItemSchema),
+  }),
+);
 const productionOrderWithProductSchema = productionOrderSchema.and(z.object({ product: productSchema }));
 const saleListItemSchema = saleItemSchema.and(z.object({ sale: saleSchema, product: productSchema }));
+const producedProductStockWithProductSchema = producedProductStockSchema.and(z.object({ product: productSchema }));
 
 const reportProductionSchema = z.object({
   totalOps: z.number(),
@@ -44,7 +52,6 @@ const reportProductionSchema = z.object({
 
 const reportLeatherSchema = z.object({
   totalGeneral: z.number(),
-  byThickness: z.array(z.object({ thicknessMm: z.string(), qty: z.number() })),
   byProduct: z.array(z.object({ productId: z.number(), productName: z.string(), qty: z.number() })),
 });
 
@@ -53,6 +60,20 @@ const reportSalesSchema = z.object({
   soldByProduct: z.array(z.object({ productId: z.number(), productName: z.string(), qty: z.number(), revenue: z.number() })),
   revenueByPaymentMethod: z.array(z.object({ paymentMethod: z.string(), revenue: z.number() })),
 });
+
+const dashboardReportSchema = z.object({
+  producedValue: z.number(),
+  soldValue: z.number(),
+  distinctSaleCount: z.number(),
+  openOrdersCount: z.number(),
+  topProduced: z.array(z.object({ productId: z.number(), productName: z.string(), qty: z.number(), value: z.number() })),
+  topSold: z.array(z.object({ productId: z.number(), productName: z.string(), qty: z.number(), revenue: z.number() })),
+  chartSeries: z.array(z.object({ date: z.string(), producedValue: z.number(), soldValue: z.number() })),
+  openOrders: z.array(z.object({ id: z.number(), productName: z.string(), qtyPlanned: z.number(), createdAt: z.string() })),
+  productStock: z.array(z.object({ productId: z.number(), productName: z.string(), stockQty: z.number() })),
+});
+
+export type DashboardReport = z.infer<typeof dashboardReportSchema>;
 
 const periodQuerySchema = z.object({
   from: z.string().datetime().optional(),
@@ -69,13 +90,27 @@ export const api = {
       input: insertMaterialSchema,
       responses: { 201: materialSchema, 400: errorSchemas.validation },
     },
+    createMany: {
+      method: "POST" as const,
+      path: "/api/materials/bulk" as const,
+      input: createManyMaterialsSchema,
+      responses: { 201: z.array(materialSchema), 400: errorSchemas.validation },
+    },
     update: {
       method: "PUT" as const,
       path: "/api/materials/:id" as const,
-      input: insertMaterialSchema.partial(),
+      input: updateMaterialSchema,
       responses: { 200: materialSchema, 400: errorSchemas.validation, 404: errorSchemas.notFound },
     },
     delete: { method: "DELETE" as const, path: "/api/materials/:id" as const, responses: { 204: z.void(), 404: errorSchemas.notFound } },
+  },
+
+  producedProductStocks: {
+    list: {
+      method: "GET" as const,
+      path: "/api/produced-product-stocks" as const,
+      responses: { 200: z.array(producedProductStockWithProductSchema) },
+    },
   },
 
   products: {
@@ -106,7 +141,7 @@ export const api = {
       method: "GET" as const,
       path: "/api/production-orders/:id" as const,
       responses: {
-        200: productionOrderWithProductSchema.and(z.object({ consumptions: z.array(productionVariableConsumptionSchema) })),
+        200: productionOrderWithProductSchema,
         404: errorSchemas.notFound,
       },
     },
@@ -115,6 +150,12 @@ export const api = {
       path: "/api/production-orders" as const,
       input: insertProductionOrderSchema,
       responses: { 201: productionOrderWithProductSchema, 400: errorSchemas.badRequest },
+    },
+    move: {
+      method: "POST" as const,
+      path: "/api/production-orders/:id/move" as const,
+      input: moveProductionOrderSchema,
+      responses: { 200: productionOrderWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
     },
     conclude: {
       method: "POST" as const,
@@ -170,6 +211,12 @@ export const api = {
       path: "/api/reports/sales" as const,
       query: periodQuerySchema,
       responses: { 200: reportSalesSchema },
+    },
+    dashboard: {
+      method: "GET" as const,
+      path: "/api/reports/dashboard" as const,
+      query: periodQuerySchema,
+      responses: { 200: dashboardReportSchema },
     },
   },
 };

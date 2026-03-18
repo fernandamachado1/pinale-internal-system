@@ -5,9 +5,9 @@ import { DomainError } from "../domain/errors/domain-error";
 import type { IErpRepository } from "../application/contracts/erp-repository";
 import { AdjustMaterialStockUseCase } from "../application/use-cases/adjust-material-stock-use-case";
 import { CompleteProductionUseCase } from "../application/use-cases/complete-production-use-case";
-import { CreateSaleUseCase } from "../application/use-cases/create-sale-use-case";
 import {
   CreateMaterialUseCase,
+  CreateManyMaterialsUseCase,
   DeleteMaterialUseCase,
   GetMaterialUseCase,
   ListMaterialsUseCase,
@@ -24,15 +24,17 @@ import {
   CreateProductionOrderUseCase,
   GetProductionOrderUseCase,
   ListProductionOrdersUseCase,
+  MoveProductionOrderUseCase,
 } from "../application/use-cases/production-use-cases";
-import { GetSaleUseCase, ListSalesUseCase } from "../application/use-cases/sale-use-cases";
+import { ListProducedProductStocksUseCase } from "../application/use-cases/produced-product-stock-use-cases";
 import { ListInventoryMovementsUseCase } from "../application/use-cases/inventory-movement-use-cases";
-import { LeatherConsumptionReportUseCase, ProductionReportUseCase, SalesReportUseCase } from "../application/use-cases/report-use-cases";
+import { DashboardReportUseCase, LeatherConsumptionReportUseCase, ProductionReportUseCase, SalesReportUseCase } from "../application/use-cases/report-use-cases";
 
 export class ErpController {
   private readonly listMaterialsUseCase: ListMaterialsUseCase;
   private readonly getMaterialUseCase: GetMaterialUseCase;
   private readonly createMaterialUseCase: CreateMaterialUseCase;
+  private readonly createManyMaterialsUseCase: CreateManyMaterialsUseCase;
   private readonly updateMaterialUseCase: UpdateMaterialUseCase;
   private readonly deleteMaterialUseCase: DeleteMaterialUseCase;
   private readonly adjustMaterialStockUseCase: AdjustMaterialStockUseCase;
@@ -46,22 +48,22 @@ export class ErpController {
   private readonly listProductionOrdersUseCase: ListProductionOrdersUseCase;
   private readonly getProductionOrderUseCase: GetProductionOrderUseCase;
   private readonly createProductionOrderUseCase: CreateProductionOrderUseCase;
+  private readonly moveProductionOrderUseCase: MoveProductionOrderUseCase;
   private readonly completeProductionUseCase: CompleteProductionUseCase;
-
-  private readonly listSalesUseCase: ListSalesUseCase;
-  private readonly getSaleUseCase: GetSaleUseCase;
-  private readonly createSaleUseCase: CreateSaleUseCase;
+  private readonly listProducedProductStocksUseCase: ListProducedProductStocksUseCase;
 
   private readonly listInventoryMovementsUseCase: ListInventoryMovementsUseCase;
 
   private readonly productionReportUseCase: ProductionReportUseCase;
   private readonly leatherConsumptionReportUseCase: LeatherConsumptionReportUseCase;
   private readonly salesReportUseCase: SalesReportUseCase;
+  private readonly dashboardReportUseCase: DashboardReportUseCase;
 
   constructor(private readonly repository: IErpRepository) {
     this.listMaterialsUseCase = new ListMaterialsUseCase(repository);
     this.getMaterialUseCase = new GetMaterialUseCase(repository);
     this.createMaterialUseCase = new CreateMaterialUseCase(repository);
+    this.createManyMaterialsUseCase = new CreateManyMaterialsUseCase(repository);
     this.updateMaterialUseCase = new UpdateMaterialUseCase(repository);
     this.deleteMaterialUseCase = new DeleteMaterialUseCase(repository);
     this.adjustMaterialStockUseCase = new AdjustMaterialStockUseCase(repository);
@@ -75,17 +77,16 @@ export class ErpController {
     this.listProductionOrdersUseCase = new ListProductionOrdersUseCase(repository);
     this.getProductionOrderUseCase = new GetProductionOrderUseCase(repository);
     this.createProductionOrderUseCase = new CreateProductionOrderUseCase(repository);
+    this.moveProductionOrderUseCase = new MoveProductionOrderUseCase(repository);
     this.completeProductionUseCase = new CompleteProductionUseCase(repository);
-
-    this.listSalesUseCase = new ListSalesUseCase(repository);
-    this.getSaleUseCase = new GetSaleUseCase(repository);
-    this.createSaleUseCase = new CreateSaleUseCase(repository);
+    this.listProducedProductStocksUseCase = new ListProducedProductStocksUseCase(repository);
 
     this.listInventoryMovementsUseCase = new ListInventoryMovementsUseCase(repository);
 
     this.productionReportUseCase = new ProductionReportUseCase(repository);
     this.leatherConsumptionReportUseCase = new LeatherConsumptionReportUseCase(repository);
     this.salesReportUseCase = new SalesReportUseCase(repository);
+    this.dashboardReportUseCase = new DashboardReportUseCase(repository);
   }
 
   async listMaterials(_req: Request, res: Response): Promise<void> {
@@ -99,6 +100,11 @@ export class ErpController {
   async createMaterial(req: Request, res: Response): Promise<void> {
     const input = api.materials.create.input.parse(req.body);
     res.status(201).json(await this.createMaterialUseCase.execute(input));
+  }
+
+  async createManyMaterials(req: Request, res: Response): Promise<void> {
+    const input = api.materials.createMany.input.parse(req.body);
+    res.status(201).json(await this.createManyMaterialsUseCase.execute(input));
   }
 
   async updateMaterial(req: Request, res: Response): Promise<void> {
@@ -152,13 +158,17 @@ export class ErpController {
 
   async getProductionOrder(req: Request, res: Response): Promise<void> {
     const order = await this.getProductionOrderUseCase.execute(Number(req.params.id));
-    const consumptions = await this.repository.getProductionVariableConsumptions(order.id);
-    res.json({ ...order, consumptions });
+    res.json(order);
   }
 
   async createProductionOrder(req: Request, res: Response): Promise<void> {
     const input = api.productionOrders.create.input.parse(req.body);
     res.status(201).json(await this.createProductionOrderUseCase.execute(input));
+  }
+
+  async moveProductionOrder(req: Request, res: Response): Promise<void> {
+    const input = api.productionOrders.move.input.parse(req.body);
+    res.json(await this.moveProductionOrderUseCase.execute(Number(req.params.id), input));
   }
 
   async concludeProductionOrder(req: Request, res: Response): Promise<void> {
@@ -167,18 +177,8 @@ export class ErpController {
     res.json(await this.getProductionOrderUseCase.execute(Number(req.params.id)));
   }
 
-  async listSales(_req: Request, res: Response): Promise<void> {
-    res.json(await this.listSalesUseCase.execute());
-  }
-
-  async getSale(req: Request, res: Response): Promise<void> {
-    res.json(await this.getSaleUseCase.execute(Number(req.params.id)));
-  }
-
-  async createSale(req: Request, res: Response): Promise<void> {
-    const input = api.sales.create.input.parse(req.body);
-    const result = await this.createSaleUseCase.execute(input);
-    res.status(201).json(await this.getSaleUseCase.execute(result.saleId));
+  async listProducedProductStocks(_req: Request, res: Response): Promise<void> {
+    res.json(await this.listProducedProductStocksUseCase.execute());
   }
 
   async listInventoryMovements(_req: Request, res: Response): Promise<void> {
@@ -204,6 +204,10 @@ export class ErpController {
   async getSalesReport(req: Request, res: Response): Promise<void> {
     res.json(await this.salesReportUseCase.execute(this.getPeriod(req)));
   }
+
+  async getDashboardReport(req: Request, res: Response): Promise<void> {
+    res.json(await this.dashboardReportUseCase.execute(this.getPeriod(req)));
+  }
 }
 
 export function handleControllerError(err: unknown, res: Response): void {
@@ -218,7 +222,14 @@ export function handleControllerError(err: unknown, res: Response): void {
   }
 
   if (err instanceof Error) {
-    res.status(500).json({ message: err.message });
+    const message = err.message?.trim() ? err.message : "Internal server error";
+    // pg/Drizzle errors often carry useful context in extra fields.
+    const details =
+      typeof (err as any)?.detail === "string" && (err as any).detail.trim()
+        ? String((err as any).detail)
+        : undefined;
+
+    res.status(500).json(details ? { message, details } : { message });
     return;
   }
 

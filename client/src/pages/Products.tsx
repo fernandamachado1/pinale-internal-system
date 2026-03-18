@@ -1,79 +1,291 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ProductAttachment, ProductWithBom } from "@shared/schema";
 import { Layout } from "@/components/Layout";
-import { useCreateProduct, useDeleteProduct, useMaterials, useProducts, useUpdateProduct } from "@/hooks/use-erp";
+import { useCreateProduct, useDeleteProduct, useMaterials, useProducts, useUpdateProduct, useProducedProductStocks } from "@/hooks/use-erp";
+import { MaterialDialog } from "@/components/materials/MaterialDialog";
+import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Plus } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { ExternalLink, FileText, Package, Plus, Trash2, X } from "lucide-react";
+import { brl } from "@/lib/format";
 
-type BomFormItem =
-  | { itemType: "FIXED_MATERIAL"; materialId: string; qtyPerUnit: string }
-  | { itemType: "VARIABLE_MATERIAL"; materialGroup: "LEATHER" | "HARDWARE" | "ADHESIVE" | "THREAD" | "OTHER"; plannedQtyPerUnit: string; unit: string };
+type BomFormItem = { materialId?: number; qtyPerUnit: string };
 
-const groupLabels: Record<"LEATHER" | "HARDWARE" | "ADHESIVE" | "THREAD" | "OTHER", string> = {
-  LEATHER: "Couro",
-  HARDWARE: "Ferragens",
-  ADHESIVE: "Adesivos",
-  THREAD: "Linha",
-  OTHER: "Outros",
+type ParsedDriveAttachment = {
+  fileId: string | null;
+  imageUrl: string;
+  viewUrl: string;
+  label: string;
+  mimeType: string | null;
 };
 
+function getDriveFileId(url: string): string | null {
+  const trimmedUrl = url.trim();
+  if (!trimmedUrl) return null;
+
+  try {
+    const parsedUrl = new URL(trimmedUrl);
+    if (!parsedUrl.hostname.includes("drive.google.com")) return null;
+
+    const pathnameMatch = parsedUrl.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (pathnameMatch) return pathnameMatch[1];
+
+    const searchParamId = parsedUrl.searchParams.get("id");
+    if (searchParamId) return searchParamId;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getAttachmentLabel(url: string, fileId: string | null): string {
+  if (fileId) return `Drive ${fileId.slice(0, 8)}`;
+
+  try {
+    const parsedUrl = new URL(url);
+    const lastPathSegment = parsedUrl.pathname.split("/").filter(Boolean).at(-1);
+    return lastPathSegment || parsedUrl.hostname;
+  } catch {
+    return "Arquivo";
+  }
+}
+
+function guessMimeType(url: string): string | null {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    if (pathname.endsWith(".png")) return "image/png";
+    if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+    if (pathname.endsWith(".webp")) return "image/webp";
+    if (pathname.endsWith(".gif")) return "image/gif";
+    if (pathname.endsWith(".pdf")) return "application/pdf";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseDriveAttachment(url: string): ParsedDriveAttachment {
+  const fileId = getDriveFileId(url);
+  return {
+    fileId,
+    imageUrl: fileId ? `https://drive.google.com/uc?export=view&id=${fileId}` : url,
+    viewUrl: fileId ? `https://drive.google.com/file/d/${fileId}/view` : url,
+    label: getAttachmentLabel(url, fileId),
+    mimeType: guessMimeType(url),
+  };
+}
+
+function buildAttachment(url: string): ProductAttachment {
+  const { fileId, imageUrl, viewUrl, label, mimeType } = parseDriveAttachment(url);
+  return {
+    url: viewUrl,
+    name: label,
+    mimeType,
+    thumbnailUrl: imageUrl === viewUrl ? null : imageUrl,
+    driveFileId: fileId,
+  };
+}
+
+function coerceAttachment(input: ProductAttachment | string): ProductAttachment {
+  if (typeof input === "string") return buildAttachment(input);
+
+  return {
+    url: input.url,
+    name: input.name || getAttachmentLabel(input.url, input.driveFileId),
+    mimeType: input.mimeType ?? guessMimeType(input.url),
+    thumbnailUrl: input.thumbnailUrl ?? parseDriveAttachment(input.url).imageUrl,
+    driveFileId: input.driveFileId ?? getDriveFileId(input.url),
+  };
+}
+
+function DriveAttachmentCard({ attachment, onRemove }: { attachment: ProductAttachment; onRemove: () => void }) {
+  const [imgError, setImgError] = useState(false);
+  const previewUrl = attachment.thumbnailUrl ?? attachment.url;
+  const label = attachment.name;
+
+  return (
+    <div className="w-24 shrink-0 space-y-1">
+      <div className="relative group h-24 rounded-lg overflow-hidden border border-border bg-muted">
+        {!imgError ? (
+          <img src={previewUrl} alt={label} className="w-full h-full object-cover" onError={() => setImgError(true)} />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-1">
+            <FileText className="w-7 h-7 text-muted-foreground" />
+            <span className="text-[10px] text-muted-foreground text-center px-1">Arquivo</span>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+          <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-white p-1 rounded hover:bg-white/20" title="Abrir">
+            <ExternalLink className="w-4 h-4" />
+          </a>
+          <button type="button" onClick={onRemove} className="text-white p-1 rounded hover:bg-white/20" title="Remover">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      <p className="truncate text-[10px] text-muted-foreground" title={attachment.name}>{label}</p>
+    </div>
+  );
+}
+
+function createEmptyBomItem(): BomFormItem {
+  return { materialId: undefined, qtyPerUnit: "1" };
+}
+
+function normalizeAttachmentUrl(value: string): string {
+  const trimmedValue = value.trim();
+  const fileId = getDriveFileId(trimmedValue);
+  if (!fileId) return trimmedValue;
+  return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
 export default function Products() {
-  const { data: products } = useProducts();
+  const { toast } = useToast();
+  const { data: products, isLoading: isProductsLoading, error: productsError, refetch: refetchProducts } = useProducts();
   const { data: materials } = useMaterials();
+  const { data: producedStocks } = useProducedProductStocks();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const deleteMutation = useDeleteProduct();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<ProductWithBom | null>(null);
+  const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
+  const [materialRowIndex, setMaterialRowIndex] = useState<number | null>(null);
+  const [createMaterialForNewRow, setCreateMaterialForNewRow] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
-  const [bomItems, setBomItems] = useState<BomFormItem[]>([]);
+  const [bomItems, setBomItems] = useState<BomFormItem[]>([createEmptyBomItem()]);
+  const [attachments, setAttachments] = useState<ProductAttachment[]>([]);
+  const [attachmentInput, setAttachmentInput] = useState("");
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
   const filteredProducts = useMemo(
-    () => products?.filter((product) => product.name.toLowerCase().includes(searchTerm.toLowerCase())) ?? [],
+    () => products?.filter((product: ProductWithBom) => product.name.toLowerCase().includes(searchTerm.toLowerCase())) ?? [],
     [products, searchTerm],
   );
 
   const activeMaterials = useMemo(() => materials?.filter((material) => material.isActive === 1) ?? [], [materials]);
+  const producedStockByProductId = useMemo(
+    () => new Map((producedStocks ?? []).map((item) => [item.productId, item.stockQty])),
+    [producedStocks],
+  );
 
-  const addFixedItem = () => setBomItems((prev) => [...prev, { itemType: "FIXED_MATERIAL", materialId: "", qtyPerUnit: "1" }]);
-  const addVariableItem = () =>
-    setBomItems((prev) => [...prev, { itemType: "VARIABLE_MATERIAL", materialGroup: "LEATHER", plannedQtyPerUnit: "1", unit: "M2" }]);
+  useEffect(() => {
+    if (!productDialogOpen) return;
 
-  const handleSubmit = (event: React.FormEvent) => {
+    if (editingProduct) {
+      setName(editingProduct.name);
+      setPrice(editingProduct.price);
+      setBomItems(editingProduct.bomItems.length > 0 ? editingProduct.bomItems.map((item) => ({ materialId: item.materialId, qtyPerUnit: String(item.qtyPerUnit) })) : [createEmptyBomItem()]);
+      setAttachments((editingProduct.attachments ?? []).map((attachment) => coerceAttachment(attachment as ProductAttachment | string)));
+      setAttachmentInput("");
+      setAttachmentError(null);
+      return;
+    }
+
+    setName("");
+    setPrice("");
+    setBomItems([createEmptyBomItem()]);
+    setAttachments([]);
+    setAttachmentInput("");
+    setAttachmentError(null);
+  }, [productDialogOpen, editingProduct]);
+
+  const setBomItem = (index: number, patch: Partial<BomFormItem>) => {
+    setBomItems((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  };
+
+  const addBomItem = () => setBomItems((current) => [...current, createEmptyBomItem()]);
+  const removeBomItem = (index: number) => {
+    setBomItems((current) => (current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index)));
+  };
+  const addAttachment = () => {
+    const nextAttachment = normalizeAttachmentUrl(attachmentInput);
+    if (!nextAttachment) {
+      setAttachmentError(null);
+      return;
+    }
+
+    const fileId = getDriveFileId(nextAttachment);
+    if (!fileId) {
+      const message = "Use um link de arquivo do Google Drive, por exemplo /file/d/.../view ou open?id=...";
+      setAttachmentError(message);
+      toast({ title: "Link invalido", description: message, variant: "destructive" });
+      return;
+    }
+
+    setAttachmentError(null);
+    const nextItem = buildAttachment(nextAttachment);
+    setAttachments((current) => (current.some((attachment) => attachment.url === nextItem.url) ? current : [...current, nextItem]));
+    setAttachmentInput("");
+  };
+
+  const removeAttachment = (attachmentToRemove: string) => {
+    setAttachments((current) => current.filter((attachment) => attachment.url !== attachmentToRemove));
+  };
+
+  const openCreateProductDialog = () => {
+    setEditingProduct(null);
+    setProductDialogOpen(true);
+  };
+
+  const openEditProductDialog = (product: ProductWithBom) => {
+    setEditingProduct(product);
+    setProductDialogOpen(true);
+  };
+
+  const openCreateMaterialDialog = (index: number) => {
+    setMaterialRowIndex(index);
+    setCreateMaterialForNewRow(false);
+    setMaterialDialogOpen(true);
+  };
+
+  const handleCreateNewMaterialFromSpec = () => {
+    setMaterialRowIndex(null);
+    setCreateMaterialForNewRow(true);
+    setMaterialDialogOpen(true);
+  };
+
+  const handleProductSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-
     const payload = {
-      product: { name, price, isActive: 1 },
-      bomItems: bomItems.map((item) => {
-        if (item.itemType === "FIXED_MATERIAL") {
-          return {
-            itemType: "FIXED_MATERIAL" as const,
+      product: { name, price, attachments, isActive: 1 },
+      technicalSpec: {
+        bomItems: bomItems
+          .filter((item) => item.materialId)
+          .map((item) => ({
             materialId: Number(item.materialId),
             qtyPerUnit: item.qtyPerUnit,
-          };
-        }
-
-        return {
-          itemType: "VARIABLE_MATERIAL" as const,
-          materialGroup: item.materialGroup,
-          plannedQtyPerUnit: item.plannedQtyPerUnit,
-          unit: item.unit,
-        };
-      }),
+        })),
+      },
     };
+
+    if (editingProduct) {
+      updateMutation.mutate(
+        { id: editingProduct.id, data: payload },
+        {
+          onSuccess: () => {
+            setProductDialogOpen(false);
+            setEditingProduct(null);
+          },
+        },
+      );
+      return;
+    }
 
     createMutation.mutate(payload, {
       onSuccess: () => {
-        setIsOpen(false);
-        setName("");
-        setPrice("");
-        setBomItems([]);
+        setProductDialogOpen(false);
       },
     });
   };
@@ -85,168 +297,263 @@ export default function Products() {
           <Package className="w-8 h-8 text-primary" /> Produtos
         </h1>
 
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button>
+        <Button onClick={openCreateProductDialog}>
+          <Plus className="w-4 h-4 mr-2" /> Novo Produto
+        </Button>
+      </div>
+
+      {productsError ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Não foi possível carregar os produtos</AlertTitle>
+          <AlertDescription>
+            Verifique se o servidor e o banco estão rodando e tente novamente.
+            <div className="mt-3">
+              <Button variant="outline" onClick={() => refetchProducts()}>
+                Tentar novamente
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {isProductsLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          <div className="space-y-2">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <Skeleton key={index} className="h-10 w-full" />
+            ))}
+          </div>
+        </div>
+      ) : products?.length ? (
+        <>
+          <div className="mb-4">
+            <Input placeholder="Buscar produto" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          </div>
+
+          {filteredProducts.length ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Preço</TableHead>
+                  <TableHead>Estoque produzido</TableHead>
+                  <TableHead>Ficha técnica</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((item: ProductWithBom) => (
+                  <TableRow key={item.id}>
+                    <TableCell>#{item.id}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{brl(Number(item.price))}</TableCell>
+                    <TableCell>{producedStockByProductId.get(item.id) ?? 0}</TableCell>
+                    <TableCell>
+                      <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
+                    </TableCell>
+                    <TableCell className="text-right space-x-2">
+                      <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)}>
+                        Editar
+                      </Button>
+                      <Button size="sm" variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(item.id)}>
+                        Inativar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Nenhum produto encontrado</CardTitle>
+                <CardDescription>Tente ajustar o termo de busca.</CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+        </>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Comece cadastrando seus produtos</CardTitle>
+            <CardDescription>Produtos precisam de ficha técnica para gerar ordens de produção.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={openCreateProductDialog}>
               <Plus className="w-4 h-4 mr-2" /> Novo Produto
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Criar Produto</DialogTitle>
-              <DialogDescription>Defina o produto e sua ficha técnica.</DialogDescription>
-            </DialogHeader>
+          </CardContent>
+        </Card>
+      )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Nome</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Preço</Label>
-                  <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required />
-                </div>
-              </div>
+      <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editingProduct ? "Editar produto" : "Criar produto"}</DialogTitle>
+            <DialogDescription>Defina o cadastro base do produto e sua ficha técnica.</DialogDescription>
+          </DialogHeader>
 
+          <form onSubmit={handleProductSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Ficha técnica</Label>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={addFixedItem}>Adicionar material fixo</Button>
-                  <Button type="button" variant="outline" size="sm" onClick={addVariableItem}>Adicionar consumo variável</Button>
+                <Label>Nome</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Preço</Label>
+                <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required />
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:p-5">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label className="text-base">Materiais da ficha técnica</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Selecione materiais já cadastrados ou crie um novo sem sair do produto.
+                  </p>
                 </div>
+                <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleCreateNewMaterialFromSpec}>
+                  <Plus className="h-4 w-4 mr-1" /> Novo material
+                </Button>
               </div>
 
-              <div className="space-y-3 max-h-72 overflow-auto">
+              <div className="max-h-[50vh] space-y-3 overflow-auto pr-1">
                 {bomItems.map((item, index) => (
-                  <div key={index} className="border rounded p-3 space-y-2">
-                    <div className="font-semibold text-sm">{item.itemType === "FIXED_MATERIAL" ? "Material fixo" : "Consumo variável"}</div>
-                    {item.itemType === "FIXED_MATERIAL" ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <Select
+                  <div key={index} className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold">Material {index + 1}</h3>
+                        <p className="text-xs text-muted-foreground">Defina o item e o consumo por unidade produzida.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        aria-label="Remover material"
+                        onClick={() => removeBomItem(index)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
+                      <div className="space-y-2">
+                        <Label>Nome do material</Label>
+                        <MaterialSearchCombobox
+                          materials={activeMaterials}
                           value={item.materialId}
-                          onValueChange={(value) =>
-                            setBomItems((prev) => prev.map((entry, idx) => (idx === index && entry.itemType === "FIXED_MATERIAL" ? { ...entry, materialId: value } : entry)))
-                          }
-                        >
-                          <SelectTrigger><SelectValue placeholder="Selecione o material" /></SelectTrigger>
-                          <SelectContent>
-                            {activeMaterials.map((material) => (
-                            <SelectItem key={material.id} value={String(material.id)}>{material.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          onSelect={(material) => {
+                            setBomItem(index, { materialId: material.id });
+                          }}
+                          placeholder="Pesquisar material cadastrado"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Qtd por unidade</Label>
                         <Input
                           type="number"
                           step="0.001"
                           value={item.qtyPerUnit}
-                          onChange={(e) =>
-                            setBomItems((prev) => prev.map((entry, idx) => (idx === index && entry.itemType === "FIXED_MATERIAL" ? { ...entry, qtyPerUnit: e.target.value } : entry)))
-                          }
+                          onChange={(e) => setBomItem(index, { qtyPerUnit: e.target.value })}
+                          required
                         />
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-3">
-                        <Select
-                          value={item.materialGroup}
-                          onValueChange={(value: "LEATHER" | "HARDWARE" | "ADHESIVE" | "THREAD" | "OTHER") =>
-                            setBomItems((prev) =>
-                              prev.map((entry, idx) => (idx === index && entry.itemType === "VARIABLE_MATERIAL" ? { ...entry, materialGroup: value } : entry)),
-                            )
-                          }
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {(["LEATHER", "HARDWARE", "ADHESIVE", "THREAD", "OTHER"] as const).map((group) => (
-                              <SelectItem key={group} value={group}>{groupLabels[group]}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          type="number"
-                          step="0.001"
-                          value={item.plannedQtyPerUnit}
-                          onChange={(e) =>
-                            setBomItems((prev) =>
-                              prev.map((entry, idx) =>
-                                idx === index && entry.itemType === "VARIABLE_MATERIAL" ? { ...entry, plannedQtyPerUnit: e.target.value } : entry,
-                              ),
-                            )
-                          }
-                        />
-                        <Input
-                          value={item.unit}
-                          onChange={(e) =>
-                            setBomItems((prev) =>
-                              prev.map((entry, idx) => (idx === index && entry.itemType === "VARIABLE_MATERIAL" ? { ...entry, unit: e.target.value } : entry)),
-                            )
-                          }
-                        />
-                      </div>
-                    )}
+                    </div>
                   </div>
                 ))}
+
+                <button
+                  type="button"
+                  onClick={addBomItem}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  <Plus className="h-4 w-4" />
+                  Adicionar material
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:p-5">
+              <div className="space-y-1">
+                <Label className="text-base">Anexos</Label>
+                <p className="text-sm text-muted-foreground">
+                  Cole links públicos do Google Drive para imagens ou arquivos relacionados ao produto.
+                </p>
               </div>
 
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending}>Salvar</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="mb-4">
-        <Input placeholder="Buscar produto" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-      </div>
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>ID</TableHead>
-            <TableHead>Nome</TableHead>
-            <TableHead>Preço</TableHead>
-            <TableHead>Estoque</TableHead>
-            <TableHead>Ficha técnica</TableHead>
-            <TableHead className="text-right">Ações</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredProducts.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>#{item.id}</TableCell>
-              <TableCell>{item.name}</TableCell>
-              <TableCell>R$ {Number(item.price).toFixed(2)}</TableCell>
-              <TableCell>{item.stockQty}</TableCell>
-              <TableCell>
-                <div className="text-sm text-muted-foreground">
-                  {item.bomItems.length === 0
-                    ? "Sem itens"
-                    : `${item.bomItems.filter((entry) => entry.itemType === "FIXED_MATERIAL").length} fixo(s), ${item.bomItems.filter((entry) => entry.itemType === "VARIABLE_MATERIAL").length} variável(is)`}
-                </div>
-              </TableCell>
-              <TableCell className="text-right space-x-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={updateMutation.isPending}
-                  onClick={() => {
-                    const nextName = window.prompt("Nome", item.name);
-                    if (!nextName) return;
-                    updateMutation.mutate({ id: item.id, data: { product: { name: nextName } } });
+              <div className="flex flex-col gap-2 md:flex-row">
+                <Input
+                  value={attachmentInput}
+                  onChange={(e) => {
+                    setAttachmentInput(e.target.value);
+                    if (attachmentError) setAttachmentError(null);
                   }}
-                >
-                  Editar
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addAttachment();
+                    }
+                  }}
+                  placeholder="https://drive.google.com/file/d/..."
+                />
+                <Button type="button" variant="outline" onClick={addAttachment}>
+                  <Plus className="h-4 w-4 mr-2" /> Adicionar link
                 </Button>
-                <Button size="sm" variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(item.id)}>
-                  Inativar
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+              </div>
+
+              {attachmentError ? <p className="text-sm text-destructive">{attachmentError}</p> : null}
+
+              {attachments.length > 0 ? (
+                <div className="flex flex-wrap gap-3">
+                  {attachments.map((attachment) => (
+                    <DriveAttachmentCard key={attachment.url} attachment={attachment} onRemove={() => removeAttachment(attachment.url)} />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                  Nenhum anexo adicionado.
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>Salvar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <MaterialDialog
+        open={materialDialogOpen}
+        onOpenChange={(open) => {
+          setMaterialDialogOpen(open);
+          if (!open) {
+            setMaterialRowIndex(null);
+            setCreateMaterialForNewRow(false);
+          }
+        }}
+        onCreated={(createdMaterials) => {
+          if (createdMaterials.length === 0) return;
+
+          if (materialRowIndex !== null) {
+            setBomItem(materialRowIndex, { materialId: createdMaterials[0].id });
+            setMaterialRowIndex(null);
+            return;
+          }
+
+          if (createMaterialForNewRow) {
+            setBomItems((current) => [...current, { materialId: createdMaterials[0].id, qtyPerUnit: "1" }]);
+            setCreateMaterialForNewRow(false);
+          }
+        }}
+        title="Criar material para a ficha"
+        description="Crie o material sem sair do cadastro do produto. O primeiro material criado será salvo em materiais e selecionado na ficha."
+      />
     </Layout>
   );
 }

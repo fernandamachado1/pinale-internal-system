@@ -1,30 +1,375 @@
+import { useMemo, useState } from "react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import type { DateRange } from "react-day-picker";
+import {
+  CalendarIcon,
+  Factory,
+  Banknote,
+  Hammer,
+  TrendingUp,
+  PackageOpen,
+} from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { StatCard } from "@/components/StatCard";
-import { useInventoryMovements, useMaterials, useProductionOrders, useSales } from "@/hooks/use-erp";
-import { AlertCircle, ArrowUpRight, Factory, ShoppingCart } from "lucide-react";
+import { useDashboardReport } from "@/hooks/use-erp";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import { brl } from "@/lib/format";
+
+function getDefaultRange(): DateRange {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(to.getDate() - 29);
+  return { from, to };
+}
+
+function toEndOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function groupChartSeries(
+  series: { date: string; producedValue: number; soldValue: number }[],
+  from: Date,
+  to: Date,
+) {
+  const spanDays = (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24);
+
+  if (spanDays <= 31) {
+    return series.map((s) => ({
+      ...s,
+      label: format(new Date(s.date + "T12:00:00"), "dd/MM", { locale: ptBR }),
+    }));
+  }
+
+  if (spanDays <= 120) {
+    const buckets = new Map<string, { label: string; producedValue: number; soldValue: number }>();
+    for (const s of series) {
+      const d = new Date(s.date + "T12:00:00");
+      d.setDate(d.getDate() - d.getDay());
+      const key = format(d, "dd/MM", { locale: ptBR });
+      const cur = buckets.get(key) ?? { label: key, producedValue: 0, soldValue: 0 };
+      cur.producedValue += s.producedValue;
+      cur.soldValue += s.soldValue;
+      buckets.set(key, cur);
+    }
+    return Array.from(buckets.values());
+  }
+
+  const buckets = new Map<string, { label: string; producedValue: number; soldValue: number }>();
+  for (const s of series) {
+    const key = format(new Date(s.date + "T12:00:00"), "MMM/yy", { locale: ptBR });
+    const cur = buckets.get(key) ?? { label: key, producedValue: 0, soldValue: 0 };
+    cur.producedValue += s.producedValue;
+    cur.soldValue += s.soldValue;
+    buckets.set(key, cur);
+  }
+  return Array.from(buckets.values());
+}
 
 export default function Dashboard() {
-  const { data: materials } = useMaterials();
-  const { data: orders } = useProductionOrders();
-  const { data: sales } = useSales();
-  const { data: movements } = useInventoryMovements();
+  const [range, setRange] = useState<DateRange>(getDefaultRange);
 
-  const controlledBelowZero = materials?.filter((m) => m.policy === "STOCK_CONTROLLED" && Number(m.stockQty ?? 0) <= 0).length || 0;
-  const doneOrders = orders?.filter((o) => o.status === "DONE").length || 0;
-  const totalSales = sales?.reduce((acc, item) => acc + Number(item.totalPrice), 0) || 0;
+  const from = range.from;
+  const to = range.to ? toEndOfDay(range.to) : range.from ? toEndOfDay(range.from) : undefined;
+
+  const { data: report, isLoading, error, refetch } = useDashboardReport(from, to);
+
+  const chartData = useMemo(() => {
+    if (!report?.chartSeries || !from || !to) return [];
+    return groupChartSeries(report.chartSeries, from, to);
+  }, [report?.chartSeries, from, to]);
+
+  const producedValue = report?.producedValue ?? 0;
+  const soldValue = report?.soldValue ?? 0;
+  const avgTicket =
+    (report?.distinctSaleCount ?? 0) > 0 ? soldValue / report!.distinctSaleCount : 0;
+  const openOrdersCount = report?.openOrdersCount ?? 0;
+
+  const rangeLabel = from
+    ? to && to !== from
+      ? `${format(from, "dd/MM/yyyy")} – ${format(to, "dd/MM/yyyy")}`
+      : format(from, "dd/MM/yyyy")
+    : "Selecionar período";
 
   return (
     <Layout>
-      <div className="flex flex-col gap-2 mb-6">
-        <h1 className="text-3xl font-bold">Visão Geral</h1>
-        <p className="text-muted-foreground">Resumo operacional do Ateliê.</p>
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">Visão Geral</h2>
+          <p className="text-sm text-muted-foreground">
+            Acompanhamento consolidado de produção e vendas do ateliê.
+          </p>
+        </div>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "gap-2 min-w-[220px] justify-start",
+                !from && "text-muted-foreground",
+              )}
+            >
+              <CalendarIcon className="w-4 h-4" />
+              {rangeLabel}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="end">
+            <Calendar
+              mode="range"
+              selected={range}
+              onSelect={(r) => r && setRange(r)}
+              numberOfMonths={2}
+              locale={ptBR}
+              disabled={{ after: new Date() }}
+            />
+          </PopoverContent>
+        </Popover>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Faturamento" value={`R$ ${totalSales.toFixed(2)}`} icon={<ShoppingCart className="w-4 h-4" />} description="Total vendido" />
-        <StatCard title="OPs Concluídas" value={doneOrders} icon={<Factory className="w-4 h-4" />} description="Status DONE" />
-        <StatCard title="Estoque Crítico" value={controlledBelowZero} icon={<AlertCircle className="w-4 h-4" />} description="Materiais controlados com estoque zerado ou negativo" />
-        <StatCard title="Movimentações" value={movements?.length || 0} icon={<ArrowUpRight className="w-4 h-4" />} description="Ledger append-only" />
+      {error ? (
+        <Alert variant="destructive">
+          <AlertTitle>Não foi possível carregar o painel</AlertTitle>
+          <AlertDescription>
+            Verifique se o servidor e o banco estão rodando e tente novamente.
+            <div className="mt-3">
+              <Button variant="outline" onClick={() => refetch()}>
+                Tentar novamente
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {/* KPI Cards */}
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="rounded-2xl border-0 bg-card shadow-sm p-6">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-10 w-10 rounded-xl" />
+              </div>
+              <div className="mt-4 space-y-2">
+                <Skeleton className="h-7 w-36" />
+                <Skeleton className="h-3 w-40" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Valor Produzido"
+            value={brl(producedValue)}
+            icon={<Factory className="w-5 h-5" />}
+            description="OPs concluídas no período"
+            iconClassName="bg-primary/10 text-primary"
+          />
+          <StatCard
+            title="Valor Vendido"
+            value={brl(soldValue)}
+            icon={<Banknote className="w-5 h-5" />}
+            description="Faturamento total líquido"
+            iconClassName="bg-emerald-50 text-emerald-600"
+          />
+          <StatCard
+            title="OPs em Aberto"
+            value={openOrdersCount}
+            icon={<Hammer className="w-5 h-5" />}
+            description="Ordens de produção ativas"
+            iconClassName="bg-amber-50 text-amber-600"
+          />
+          <StatCard
+            title="Ticket Médio"
+            value={brl(avgTicket)}
+            icon={<TrendingUp className="w-5 h-5" />}
+            description="Por pedido faturado"
+            iconClassName="bg-slate-100 text-slate-600"
+          />
+        </div>
+      )}
+
+      {/* Chart + Top Vendidos */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2 border-0 shadow-sm">
+          <CardHeader>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg">Produção vs Vendas</CardTitle>
+                <CardDescription>Valor produzido e faturado no período.</CardDescription>
+              </div>
+              <div className="flex gap-4 text-xs font-medium text-muted-foreground shrink-0">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-chart-1 inline-block" />
+                  Produzido
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-chart-3 inline-block" />
+                  Vendido
+                </span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              className="h-[280px] w-full"
+              config={{
+                producedValue: { label: "Produzido (R$)", color: "hsl(var(--chart-1))" },
+                soldValue: { label: "Vendido (R$)", color: "hsl(var(--chart-3))" },
+              }}
+            >
+              <BarChart data={chartData}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} className="text-xs" />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={72}
+                  tickFormatter={(v: number) =>
+                    v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`
+                  }
+                />
+                <ChartTooltip
+                  content={<ChartTooltipContent formatter={(v) => brl(Number(v))} />}
+                />
+                <Bar dataKey="producedValue" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="soldValue" fill="hsl(var(--chart-3))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Top Produtos Vendidos</CardTitle>
+            <CardDescription>Por faturamento no período.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {!report?.topSold?.length ? (
+              <p className="text-sm text-muted-foreground">Nenhuma venda no período.</p>
+            ) : (
+              report.topSold.map((p) => (
+                <div
+                  key={p.productId}
+                  className="flex items-center justify-between gap-2 py-2 border-b border-border/40 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{p.productName}</p>
+                    <p className="text-[11px] text-muted-foreground">{p.qty} un</p>
+                  </div>
+                  <span className="text-sm font-bold text-foreground shrink-0">{brl(p.revenue)}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Estoque Pronto + Produção Ativa */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Estoque de Produtos Acabados</CardTitle>
+              <PackageOpen className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <CardDescription>Saldo pronto para venda.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {!report?.productStock?.length ? (
+              <p className="text-sm text-muted-foreground">Nenhum produto com estoque.</p>
+            ) : (
+              report.productStock.map((s) => (
+                <div
+                  key={s.productId}
+                  className="flex items-center justify-between gap-2 text-sm py-1.5 border-b border-border/40 last:border-0"
+                >
+                  <span className="font-medium text-foreground truncate">{s.productName}</span>
+                  <span
+                    className={cn(
+                      "px-2 py-0.5 text-xs font-bold rounded-md shrink-0",
+                      s.stockQty === 0
+                        ? "bg-red-50 text-red-600"
+                        : s.stockQty <= 3
+                          ? "bg-amber-50 text-amber-600"
+                          : "bg-slate-100 text-slate-600",
+                    )}
+                  >
+                    {s.stockQty} un
+                  </span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Produção Ativa</CardTitle>
+              <span className="px-2.5 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-full border border-primary/20 uppercase">
+                {openOrdersCount} {openOrdersCount === 1 ? "Ordem" : "Ordens"}
+              </span>
+            </div>
+            <CardDescription>Ordens de produção em andamento.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!report?.openOrders?.length ? (
+              <p className="text-sm text-muted-foreground">Nenhuma OP em andamento.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="pb-2 text-left text-[10px] font-bold text-muted-foreground uppercase">
+                      OP #
+                    </th>
+                    <th className="pb-2 text-left text-[10px] font-bold text-muted-foreground uppercase">
+                      Produto
+                    </th>
+                    <th className="pb-2 text-right text-[10px] font-bold text-muted-foreground uppercase">
+                      Qtd
+                    </th>
+                    <th className="pb-2 text-right text-[10px] font-bold text-muted-foreground uppercase">
+                      Data
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.openOrders.map((o) => (
+                    <tr key={o.id} className="border-b border-border/30 last:border-0">
+                      <td className="py-2.5 font-medium text-muted-foreground">OP-{o.id}</td>
+                      <td className="py-2.5 font-semibold text-foreground">{o.productName}</td>
+                      <td className="py-2.5 text-right text-muted-foreground">{o.qtyPlanned}</td>
+                      <td className="py-2.5 text-right text-muted-foreground">
+                        {format(new Date(o.createdAt), "dd/MM", { locale: ptBR })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );

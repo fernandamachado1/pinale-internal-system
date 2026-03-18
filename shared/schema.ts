@@ -7,15 +7,24 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const materialPolicyEnum = pgEnum("material_policy", ["STOCK_CONTROLLED", "CONSUMPTION_TRACKED"]);
-export const materialGroupEnum = pgEnum("material_group", ["LEATHER", "HARDWARE", "ADHESIVE", "THREAD", "OTHER"]);
-export const bomItemTypeEnum = pgEnum("bom_item_type", ["FIXED_MATERIAL", "VARIABLE_MATERIAL"]);
-export const productionOrderStatusEnum = pgEnum("production_order_status", ["OPEN", "DONE"]);
-export const movementEntityTypeEnum = pgEnum("movement_entity_type", ["PRODUCT", "MATERIAL", "MATERIAL_GROUP"]);
+export const productAttachmentSchema = z.object({
+  url: z.string().url(),
+  name: z.string().min(1),
+  mimeType: z.string().nullable().default(null),
+  thumbnailUrl: z.string().url().nullable().default(null),
+  driveFileId: z.string().nullable().default(null),
+});
+export type ProductAttachment = z.infer<typeof productAttachmentSchema>;
+
+export const materialCategoryEnum = pgEnum("material_category", ["PACKAGING", "NOTIONS", "RAW_MATERIAL"]);
+export const unitOfMeasureEnum = pgEnum("unit_of_measure", ["UNIT", "SQUARE_METER", "METER"]);
+export const productionOrderStatusEnum = pgEnum("production_order_status", ["BACKLOG", "IN_PROGRESS", "DONE"]);
+export const movementEntityTypeEnum = pgEnum("movement_entity_type", ["PRODUCT", "MATERIAL"]);
 export const movementDirectionEnum = pgEnum("movement_direction", ["IN", "OUT"]);
 export const movementReasonEnum = pgEnum("movement_reason", ["PRODUCTION_CONSUMPTION", "PRODUCTION_OUTPUT", "SALE", "PURCHASE", "ADJUSTMENT"]);
 export const movementReferenceTypeEnum = pgEnum("movement_reference_type", ["OP", "SALE", "MANUAL"]);
@@ -23,10 +32,11 @@ export const movementReferenceTypeEnum = pgEnum("movement_reference_type", ["OP"
 export const materials = pgTable("materials", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  unit: text("unit").notNull(),
-  policy: materialPolicyEnum("policy").notNull(),
-  stockQty: numeric("stock_qty", { precision: 12, scale: 3 }),
-  group: materialGroupEnum("group").notNull().default("OTHER"),
+  unitOfMeasure: unitOfMeasureEnum("unit_of_measure").notNull().default("UNIT"),
+  stockQty: numeric("stock_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  category: materialCategoryEnum("category").notNull().default("NOTIONS"),
+  purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }).notNull().default("0"),
+  pricePerSquareMeter: numeric("price_per_square_meter", { precision: 12, scale: 2 }),
   isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -36,7 +46,7 @@ export const products = pgTable("products", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
-  stockQty: integer("stock_qty").notNull().default(0),
+  attachments: jsonb("attachments").$type<ProductAttachment[]>().notNull().default([]),
   isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -53,33 +63,33 @@ export const boms = pgTable("boms", {
 export const bomItems = pgTable("bom_items", {
   id: serial("id").primaryKey(),
   bomId: integer("bom_id").notNull(),
-  itemType: bomItemTypeEnum("item_type").notNull(),
-  materialId: integer("material_id"),
-  materialGroup: materialGroupEnum("material_group"),
-  qtyPerUnit: numeric("qty_per_unit", { precision: 12, scale: 3 }),
-  plannedQtyPerUnit: numeric("planned_qty_per_unit", { precision: 12, scale: 3 }),
-  unit: text("unit"),
+  materialId: integer("material_id").notNull(),
+  qtyPerUnit: numeric("qty_per_unit", { precision: 12, scale: 3 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const producedProductStocks = pgTable(
+  "produced_product_stocks",
+  {
+    id: serial("id").primaryKey(),
+    productId: integer("product_id").notNull(),
+    stockQty: integer("stock_qty").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    productIdUniqueIdx: uniqueIndex("produced_product_stocks_product_id_idx").on(table.productId),
+  }),
+);
 
 export const productionOrders = pgTable("production_orders", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull(),
   qtyPlanned: integer("qty_planned").notNull(),
-  status: productionOrderStatusEnum("status").notNull().default("OPEN"),
+  status: productionOrderStatusEnum("status").notNull().default("BACKLOG"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
-});
-
-export const productionVariableConsumptions = pgTable("production_variable_consumptions", {
-  id: serial("id").primaryKey(),
-  productionOrderId: integer("production_order_id").notNull(),
-  materialGroup: materialGroupEnum("material_group").notNull(),
-  quantityUsed: numeric("quantity_used", { precision: 12, scale: 3 }).notNull(),
-  thicknessMm: numeric("thickness_mm", { precision: 8, scale: 3 }).notNull(),
-  panelsCount: integer("panels_count"),
-  note: text("note"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const sales = pgTable("sales", {
@@ -103,7 +113,6 @@ export const inventoryMovements = pgTable("inventory_movements", {
   id: serial("id").primaryKey(),
   entityType: movementEntityTypeEnum("entity_type").notNull(),
   entityId: integer("entity_id"),
-  group: materialGroupEnum("group"),
   direction: movementDirectionEnum("direction").notNull(),
   qty: numeric("qty", { precision: 12, scale: 3 }).notNull(),
   reason: movementReasonEnum("reason").notNull(),
@@ -115,39 +124,78 @@ export const inventoryMovements = pgTable("inventory_movements", {
 
 const baseInsertMaterialSchema = createInsertSchema(materials).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMaterialSchema = baseInsertMaterialSchema.extend({
-  policy: z.enum(["STOCK_CONTROLLED", "CONSUMPTION_TRACKED"]),
-  group: z.enum(["LEATHER", "HARDWARE", "ADHESIVE", "THREAD", "OTHER"]).default("OTHER"),
+  category: z.enum(["PACKAGING", "NOTIONS", "RAW_MATERIAL"]).default("NOTIONS"),
+  stockQty: z.string(),
+  purchasePrice: z.string(),
+  pricePerSquareMeter: z.string().optional().nullable(),
+  unitOfMeasure: z.enum(["UNIT", "SQUARE_METER", "METER"]).default("UNIT"),
+}).superRefine((value, ctx) => {
+  if (Number(value.stockQty) < 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "stockQty cannot be negative", path: ["stockQty"] });
+  }
+
+  if (Number(value.purchasePrice) < 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "purchasePrice cannot be negative", path: ["purchasePrice"] });
+  }
+
+  if (value.category === "RAW_MATERIAL") {
+    if (!value.pricePerSquareMeter || Number(value.pricePerSquareMeter) < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "pricePerSquareMeter is required for raw materials",
+        path: ["pricePerSquareMeter"],
+      });
+    }
+  }
 });
+export const updateMaterialSchema = baseInsertMaterialSchema
+  .partial()
+  .extend({
+    stockQty: z.string().optional(),
+    purchasePrice: z.string().optional(),
+    pricePerSquareMeter: z.string().optional().nullable(),
+    unitOfMeasure: z.enum(["UNIT", "SQUARE_METER", "METER"]).optional(),
+    category: z.enum(["PACKAGING", "NOTIONS", "RAW_MATERIAL"]).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.stockQty !== undefined && Number(value.stockQty) < 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "stockQty cannot be negative", path: ["stockQty"] });
+    }
+    if (value.purchasePrice !== undefined && Number(value.purchasePrice) < 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "purchasePrice cannot be negative", path: ["purchasePrice"] });
+    }
+    if (value.category === "RAW_MATERIAL" && (!value.pricePerSquareMeter || Number(value.pricePerSquareMeter) < 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "pricePerSquareMeter is required for raw materials",
+        path: ["pricePerSquareMeter"],
+      });
+    }
+  });
 
 export const insertProductSchema = createInsertSchema(products)
-  .omit({ id: true, createdAt: true, updatedAt: true, stockQty: true })
+  .omit({ id: true, createdAt: true, updatedAt: true })
   .extend({
     price: z.string(),
     isActive: z.number().int().default(1),
+    attachments: z.array(productAttachmentSchema).default([]),
   });
 
-export const bomItemInputSchema = z.discriminatedUnion("itemType", [
-  z.object({
-    itemType: z.literal("FIXED_MATERIAL"),
-    materialId: z.number().int().positive(),
-    qtyPerUnit: z.string(),
-  }),
-  z.object({
-    itemType: z.literal("VARIABLE_MATERIAL"),
-    materialGroup: z.enum(["LEATHER", "HARDWARE", "ADHESIVE", "THREAD", "OTHER"]),
-    plannedQtyPerUnit: z.string(),
-    unit: z.string().min(1),
-  }),
-]);
+export const bomItemInputSchema = z.object({
+  materialId: z.number().int().positive(),
+  qtyPerUnit: z.string(),
+});
+
+const technicalSpecSchema = z.object({ bomItems: z.array(bomItemInputSchema).default([]) });
 
 export const createProductInputSchema = z.object({
   product: insertProductSchema,
-  bomItems: z.array(bomItemInputSchema).default([]),
+  technicalSpec: technicalSpecSchema,
 });
 
 export const updateProductInputSchema = z.object({
   product: insertProductSchema.partial(),
-  bomItems: z.array(bomItemInputSchema).optional(),
+  technicalSpec: technicalSpecSchema.partial().optional(),
 });
 
 export const insertProductionOrderSchema = z.object({
@@ -155,16 +203,14 @@ export const insertProductionOrderSchema = z.object({
   qtyPlanned: z.number().int().positive(),
 });
 
-export const variableConsumptionInputSchema = z.object({
-  materialGroup: z.enum(["LEATHER", "HARDWARE", "ADHESIVE", "THREAD", "OTHER"]),
-  quantityUsed: z.string(),
-  thicknessMm: z.string(),
-  panelsCount: z.number().int().positive().optional(),
-  note: z.string().optional(),
+export const moveProductionOrderSchema = z.object({
+  status: z.enum(["BACKLOG", "IN_PROGRESS"]),
+  orderedIds: z.array(z.number().int().positive()).min(1),
 });
 
-export const concludeProductionOrderSchema = z.object({
-  consumptions: z.array(variableConsumptionInputSchema).default([]),
+export const concludeProductionOrderSchema = z.object({});
+export const createManyMaterialsSchema = z.object({
+  items: z.array(insertMaterialSchema).min(1),
 });
 
 export const insertSaleSchema = z.object({
@@ -185,14 +231,15 @@ export type Material = typeof materials.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Bom = typeof boms.$inferSelect;
 export type BomItem = typeof bomItems.$inferSelect;
+export type ProducedProductStock = typeof producedProductStocks.$inferSelect;
 export type ProductionOrder = typeof productionOrders.$inferSelect;
-export type ProductionVariableConsumption = typeof productionVariableConsumptions.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
 export type SaleItem = typeof saleItems.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
 
 export type InsertMaterial = z.input<typeof insertMaterialSchema>;
-export type UpdateMaterialRequest = Partial<InsertMaterial>;
+export type UpdateMaterialRequest = z.input<typeof updateMaterialSchema>;
+export type CreateManyMaterialsInput = z.input<typeof createManyMaterialsSchema>;
 
 export type InsertProduct = z.input<typeof insertProductSchema>;
 export type CreateProductInput = z.input<typeof createProductInputSchema>;
@@ -201,16 +248,20 @@ export type UpdateProductInput = z.input<typeof updateProductInputSchema>;
 export type BomItemInput = z.input<typeof bomItemInputSchema>;
 
 export type InsertProductionOrder = z.input<typeof insertProductionOrderSchema>;
+export type MoveProductionOrderInput = z.input<typeof moveProductionOrderSchema>;
 export type ConcludeProductionOrderInput = z.input<typeof concludeProductionOrderSchema>;
-export type VariableConsumptionInput = z.input<typeof variableConsumptionInputSchema>;
 
 export type InsertSale = z.input<typeof insertSaleSchema>;
 
 export type InsertInventoryMovement = z.input<typeof insertInventoryMovementSchema>;
 
-export type ProductWithBom = Product & { bomItems: BomItem[] };
+export type ProductWithBom = Product & {
+  bomItems: BomItem[];
+};
+
 export type ProductionOrderWithProduct = ProductionOrder & { product: Product };
 export type SaleListItem = SaleItem & { sale: Sale; product: Product };
+export type ProducedProductStockWithProduct = ProducedProductStock & { product: Product };
 
 export type MovementWithDetails = InventoryMovement & {
   product?: Product | null;

@@ -1,12 +1,14 @@
 import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error";
 
-export type ProductionOrderStatus = "OPEN" | "DONE";
+export type ProductionOrderStatus = "BACKLOG" | "IN_PROGRESS" | "DONE";
+export type ActiveProductionOrderStatus = Exclude<ProductionOrderStatus, "DONE">;
 
 export interface ProductionOrderProps {
   id: number;
   productId: number;
   qtyPlanned: number;
   status: ProductionOrderStatus;
+  sortOrder: number;
   createdAt: Date;
   completedAt?: Date | null;
 }
@@ -26,7 +28,8 @@ export class ProductionOrder {
       id: 0,
       productId,
       qtyPlanned,
-      status: "OPEN",
+      status: "BACKLOG",
+      sortOrder: 0,
       createdAt: new Date(),
       completedAt: null,
     });
@@ -40,14 +43,14 @@ export class ProductionOrder {
     return this.props.qtyPlanned;
   }
 
-  ensureOpen(): void {
-    if (this.status !== "OPEN") {
-      throw new InvalidOperationDomainError("Production order must be OPEN before concluding");
+  ensureCompletable(): void {
+    if (this.status === "DONE") {
+      throw new InvalidOperationDomainError("Production order is already done");
     }
   }
 
   markDone(): Date {
-    this.ensureOpen();
+    this.ensureCompletable();
     this.status = "DONE";
     this.completedAt = new Date();
     return this.completedAt;

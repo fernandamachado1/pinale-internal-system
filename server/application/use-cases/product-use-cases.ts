@@ -6,19 +6,17 @@ function assertValidBomItems(items: BomItemInput[]): void {
   const seenFixedMaterial = new Set<number>();
 
   for (const item of items) {
-    if (item.itemType === "FIXED_MATERIAL") {
-      if (Number(item.qtyPerUnit) <= 0) throw new ValidationDomainError("FIXED_MATERIAL qtyPerUnit must be greater than zero");
-      if (seenFixedMaterial.has(item.materialId)) {
-        throw new ValidationDomainError("Duplicated fixed material in BOM is not allowed");
-      }
-      seenFixedMaterial.add(item.materialId);
+    if (Number(item.qtyPerUnit) <= 0) throw new ValidationDomainError("qtyPerUnit must be greater than zero");
+    if (seenFixedMaterial.has(item.materialId)) {
+      throw new ValidationDomainError("Duplicated fixed material in BOM is not allowed");
     }
+    seenFixedMaterial.add(item.materialId);
+  }
+}
 
-    if (item.itemType === "VARIABLE_MATERIAL") {
-      if (Number(item.plannedQtyPerUnit) <= 0) {
-        throw new ValidationDomainError("VARIABLE_MATERIAL plannedQtyPerUnit must be greater than zero");
-      }
-    }
+function assertValidTechnicalSpec(input: { bomItems?: BomItemInput[] }): void {
+  if (input.bomItems) {
+    assertValidBomItems(input.bomItems);
   }
 }
 
@@ -54,14 +52,11 @@ export class CreateProductUseCase {
     const existing = await this.repository.getProductByName(name);
     if (existing) throw new ConflictDomainError("Product name must be unique");
 
-    const bomItems = input.bomItems ?? [];
-    assertValidBomItems(bomItems);
+    assertValidTechnicalSpec(input.technicalSpec);
 
-    for (const item of bomItems) {
-      if (item.itemType === "FIXED_MATERIAL") {
-        const material = await this.repository.getMaterial(item.materialId);
-        if (!material) throw new ValidationDomainError(`Material ${item.materialId} not found for FIXED_MATERIAL item`);
-      }
+    for (const item of input.technicalSpec.bomItems ?? []) {
+      const material = await this.repository.getMaterial(item.materialId);
+      if (!material) throw new ValidationDomainError(`Material ${item.materialId} not found for BOM item`);
     }
 
     return this.repository.withTransaction(async (txRepository) => {
@@ -71,7 +66,10 @@ export class CreateProductUseCase {
         isActive: input.product.isActive,
       });
 
-      await txRepository.replaceActiveBom(created.id, bomItems);
+      await txRepository.replaceActiveBom(created.id, {
+        bomItems: input.technicalSpec.bomItems ?? [],
+      });
+      await txRepository.createProducedProductStock(created.id);
 
       const product = await txRepository.getProduct(created.id);
       if (!product) throw new NotFoundDomainError("Product not found after creation");
@@ -101,13 +99,11 @@ export class UpdateProductUseCase {
       throw new ValidationDomainError("Product price must be greater than or equal to zero");
     }
 
-    if (input.bomItems) {
-      assertValidBomItems(input.bomItems);
-      for (const item of input.bomItems) {
-        if (item.itemType === "FIXED_MATERIAL") {
-          const material = await this.repository.getMaterial(item.materialId);
-          if (!material) throw new ValidationDomainError(`Material ${item.materialId} not found for FIXED_MATERIAL item`);
-        }
+    if (input.technicalSpec) {
+      assertValidTechnicalSpec(input.technicalSpec);
+      for (const item of input.technicalSpec.bomItems ?? []) {
+        const material = await this.repository.getMaterial(item.materialId);
+        if (!material) throw new ValidationDomainError(`Material ${item.materialId} not found for BOM item`);
       }
     }
 
@@ -116,8 +112,13 @@ export class UpdateProductUseCase {
         await txRepository.updateProductBase(id, input.product);
       }
 
-      if (input.bomItems) {
-        await txRepository.replaceActiveBom(id, input.bomItems);
+      if (input.technicalSpec) {
+        const currentBom = await txRepository.getActiveBomByProductId(id);
+        if (!currentBom) throw new ValidationDomainError("Product must have one active BOM");
+
+        await txRepository.replaceActiveBom(id, {
+          bomItems: input.technicalSpec.bomItems ?? currentBom.items.map((item) => ({ materialId: item.materialId!, qtyPerUnit: String(item.qtyPerUnit) })),
+        });
       }
 
       const updated = await txRepository.getProduct(id);

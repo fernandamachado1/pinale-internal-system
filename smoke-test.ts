@@ -12,8 +12,8 @@ import {
   inventoryMovements,
   materials,
   productionOrders,
-  productionVariableConsumptions,
   products,
+  producedProductStocks,
   saleItems,
   sales,
 } from "./shared/schema";
@@ -24,12 +24,12 @@ function assert(condition: unknown, message: string): void {
 
 async function run(): Promise<void> {
   await db.delete(inventoryMovements);
-  await db.delete(productionVariableConsumptions);
   await db.delete(saleItems);
   await db.delete(sales);
   await db.delete(productionOrders);
   await db.delete(bomItems);
   await db.delete(boms);
+  await db.delete(producedProductStocks);
   await db.delete(products);
   await db.delete(materials);
 
@@ -47,19 +47,21 @@ async function run(): Promise<void> {
 
   const zipper = await createMaterial.execute({
     name: "Ziper 20cm",
-    unit: "UN",
-    policy: "STOCK_CONTROLLED",
+    unitOfMeasure: "UNIT",
     stockQty: "10.000",
-    group: "HARDWARE",
+    category: "NOTIONS",
+    purchasePrice: "5.00",
+    pricePerSquareMeter: null,
     isActive: 1,
   });
 
-  await createMaterial.execute({
-    name: "Couro",
-    unit: "M2",
-    policy: "CONSUMPTION_TRACKED",
-    stockQty: null,
-    group: "LEATHER",
+  const leather = await createMaterial.execute({
+    name: "Couro Premium",
+    unitOfMeasure: "SQUARE_METER",
+    stockQty: "5.000",
+    category: "RAW_MATERIAL",
+    purchasePrice: "120.00",
+    pricePerSquareMeter: "120.00",
     isActive: 1,
   });
 
@@ -69,22 +71,15 @@ async function run(): Promise<void> {
       price: "120.00",
       isActive: 1,
     },
-    bomItems: [
-      {
-        itemType: "FIXED_MATERIAL",
-        materialId: zipper.id,
-        qtyPerUnit: "1.000",
-      },
-      {
-        itemType: "VARIABLE_MATERIAL",
-        materialGroup: "LEATHER",
-        plannedQtyPerUnit: "0.500",
-        unit: "M2",
-      },
-    ],
+    technicalSpec: {
+      bomItems: [
+        { materialId: zipper.id, qtyPerUnit: "1.000" },
+        { materialId: leather.id, qtyPerUnit: "0.500" },
+      ],
+    },
   });
 
-  assert(product.bomItems.length === 2, "product BOM should have 2 items");
+  assert(product.bomItems.length === 2, "product BOM should have 2 materials");
 
   const order = await createOrder.execute({
     productId: product.id,
@@ -92,17 +87,7 @@ async function run(): Promise<void> {
   });
   assert(order.status === "OPEN", "production order should start OPEN");
 
-  await concludeOrder.execute(order.id, {
-    consumptions: [
-      {
-        materialGroup: "LEATHER",
-        quantityUsed: "1.250",
-        thicknessMm: "1.600",
-        panelsCount: 4,
-        note: "lote A",
-      },
-    ],
-  });
+  await concludeOrder.execute(order.id, {});
 
   const orderAfter = await repository.getProductionOrder(order.id);
   assert(orderAfter?.status === "DONE", "production order should become DONE");
@@ -110,25 +95,28 @@ async function run(): Promise<void> {
   const zipperAfter = await repository.getMaterial(zipper.id);
   assert(Number(zipperAfter?.stockQty) === 8, "fixed material stock should be decremented");
 
-  const productAfterProduction = await repository.getProduct(product.id);
-  assert(productAfterProduction?.stockQty === 2, "product stock should increase after production");
+  const leatherAfter = await repository.getMaterial(leather.id);
+  assert(Number(leatherAfter?.stockQty) === 4, "raw material stock should be decremented");
+
+  const producedStockAfterProduction = await repository.getProducedProductStockByProductId(product.id);
+  assert(producedStockAfterProduction?.stockQty === 2, "produced stock should increase after production");
 
   await createSale.execute({
     paymentMethod: "PIX",
     items: [{ productId: product.id, qty: 1 }],
   });
 
-  const productAfterSale = await repository.getProduct(product.id);
-  assert(productAfterSale?.stockQty === 1, "product stock should decrease after sale");
+  const producedStockAfterSale = await repository.getProducedProductStockByProductId(product.id);
+  assert(producedStockAfterSale?.stockQty === 1, "produced stock should decrease after sale");
 
   const movements = await repository.getInventoryMovements();
-  assert(movements.length === 4, "ledger should have 4 movements (fixed out, variable out, product in, product out)");
+  assert(movements.length === 4, "ledger should have 4 movements (two material outs, product in, product out)");
 
   const productionReport = await createProductionReport.execute({});
   assert(productionReport.totalOps === 1, "production report should count 1 OP");
 
   const leatherReport = await createLeatherReport.execute({});
-  assert(leatherReport.totalGeneral === 1.25, "leather report should aggregate variable consumption");
+  assert(leatherReport.totalGeneral === 2, "material consumption report should aggregate all BOM consumption on OP conclusion");
 
   const salesReport = await createSalesReport.execute({});
   assert(salesReport.totalRevenue === 120, "sales report should aggregate revenue");
@@ -137,7 +125,8 @@ async function run(): Promise<void> {
   console.log({
     productionOrderStatus: orderAfter?.status,
     zipperStock: zipperAfter?.stockQty,
-    productStockAfterSale: productAfterSale?.stockQty,
+    leatherStock: leatherAfter?.stockQty,
+    productStockAfterSale: producedStockAfterSale?.stockQty,
     movements: movements.length,
     productionReport,
     leatherReport,

@@ -1,12 +1,15 @@
 import type { IErpGateway } from "@/application/contracts/erp-gateway";
 import type {
+  CreateManyMaterialsInput,
   ConcludeProductionOrderInput,
   InsertMaterial,
+  MoveProductionOrderInput,
   InsertProductionOrder,
   InsertSale,
   Material,
   MovementWithDetails,
   ProductWithBom,
+  ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
   SaleListItem,
 } from "@shared/schema";
@@ -22,6 +25,13 @@ export class CreateMaterialUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(data: InsertMaterial): Promise<Material> {
     return this.gateway.createMaterial(data);
+  }
+}
+
+export class CreateManyMaterialsUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: CreateManyMaterialsInput): Promise<Material[]> {
+    return this.gateway.createManyMaterials(data);
   }
 }
 
@@ -43,6 +53,13 @@ export class GetProductsUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(): Promise<ProductWithBom[]> {
     return this.gateway.getProducts();
+  }
+}
+
+export class GetProducedProductStocksUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<ProducedProductStockWithProduct[]> {
+    return this.gateway.getProducedProductStocks();
   }
 }
 
@@ -88,6 +105,13 @@ export class ConcludeProductionOrderUseCase {
   }
 }
 
+export class MoveProductionOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: MoveProductionOrderInput): Promise<ProductionOrderWithProduct> {
+    return this.gateway.moveProductionOrder(id, data);
+  }
+}
+
 export class GetSalesUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(): Promise<SaleListItem[]> {
@@ -106,5 +130,12 @@ export class GetInventoryMovementsUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(): Promise<MovementWithDetails[]> {
     return this.gateway.getInventoryMovements();
+  }
+}
+
+export class GetDashboardReportUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(from?: Date, to?: Date) {
+    return this.gateway.getDashboardReport(from, to);
   }
 }

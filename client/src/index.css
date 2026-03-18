@@ -1,43 +1,60 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Outfit', sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-  /* Modern, clean enterprise palette - Blue/Slate based */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
+  --background: 231 27% 96%;
+  --foreground: 222.2 84% 4.9%;
 
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 222.2 84% 4.9%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
+  --popover-foreground: 222.2 84% 4.9%;
 
-  --primary: 33 92% 54%;
-  --primary-foreground: 210 40% 98%;
+  /* Primary accent (used across the app). */
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
 
   --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222 47% 11.2%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
 
   --muted: 210 40% 96.1%;
   --muted-foreground: 215.4 16.3% 46.9%;
 
   --accent: 210 40% 96.1%;
-  --accent-foreground: 222 47% 11.2%;
+  --accent-foreground: 222.2 47.4% 11.2%;
 
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
-  --ring: 33 92% 54%;
+  --ring: 24 95% 53%;
 
-  --radius: 0.75rem;
+  /* Sidebar tokens */
+  --sidebar: 24 100% 98%;
+  --sidebar-foreground: 222.2 84% 4.9%;
+  --sidebar-border: 24 25% 90%;
+  --sidebar-ring: var(--primary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: 24 95% 93%;
+  --sidebar-accent-foreground: 222.2 84% 4.9%;
+  --sidebar-primary-border: transparent;
+  --sidebar-accent-border: transparent;
+
+  --chart-1: 24 95% 53%;
+  --chart-2: 160 84% 39%;
+  --chart-3: 215 20% 65%;
+  --chart-4: 262 83% 58%;
+  --chart-5: 346 77% 49%;
+
+  --radius: 0.5rem;
 }
 
 .dark {
@@ -50,7 +67,7 @@
   --popover: 222.2 84% 4.9%;
   --popover-foreground: 210 40% 98%;
 
-  --primary: 33 92% 54%;
+  --primary: 24 94% 60%;
   --primary-foreground: 222.2 47.4% 11.2%;
 
   --secondary: 217.2 32.6% 17.5%;
@@ -67,34 +84,32 @@
 
   --border: 217.2 32.6% 17.5%;
   --input: 217.2 32.6% 17.5%;
-  --ring: 33 92% 54%;
+  --ring: 24 94% 60%;
+
+  --sidebar: 222.2 84% 4.9%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-border: 217.2 32.6% 17.5%;
+  --sidebar-ring: var(--primary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-primary-border: transparent;
+  --sidebar-accent-border: transparent;
+
+  --chart-1: 24 94% 60%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 215 20.2% 65.1%;
+  --chart-4: 262 83% 58%;
+  --chart-5: 346 77% 49%;
 }
 
 @layer base {
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground antialiased;
-    font-family: var(--font-sans);
-  }
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-display);
-    @apply font-bold tracking-tight;
-  }
-}
 
-/* Custom Utilities for glassmorphism and modern cards */
-@layer utilities {
-  .glass-card {
-    @apply bg-white/80 dark:bg-black/80 backdrop-blur-md border border-white/20 shadow-lg;
-  }
-  
-  .sidebar-link {
-    @apply flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground;
-  }
-  
-  .sidebar-link-active {
-    @apply bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary;
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
   }
 }

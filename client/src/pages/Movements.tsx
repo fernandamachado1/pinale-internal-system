@@ -2,11 +2,15 @@ import { Layout } from "@/components/Layout";
 import { useInventoryMovements } from "@/hooks/use-erp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeftRight } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDateTimeBR } from "@/lib/format";
 
-const entityLabels: Record<"PRODUCT" | "MATERIAL" | "MATERIAL_GROUP", string> = {
+const entityLabels: Record<"PRODUCT" | "MATERIAL", string> = {
   PRODUCT: "Produto",
   MATERIAL: "Material",
-  MATERIAL_GROUP: "Grupo de material",
 };
 const directionLabels: Record<"IN" | "OUT", string> = {
   IN: "Entrada",
@@ -14,7 +18,7 @@ const directionLabels: Record<"IN" | "OUT", string> = {
 };
 const reasonLabels: Record<"PRODUCTION_CONSUMPTION" | "PRODUCTION_OUTPUT" | "SALE" | "PURCHASE" | "ADJUSTMENT", string> = {
   PRODUCTION_CONSUMPTION: "Consumo de produção",
-  PRODUCTION_OUTPUT: "Saída da produção",
+  PRODUCTION_OUTPUT: "Entrada da produção",
   SALE: "Venda",
   PURCHASE: "Compra",
   ADJUSTMENT: "Ajuste",
@@ -24,16 +28,9 @@ const referenceTypeLabels: Record<"OP" | "SALE" | "MANUAL", string> = {
   SALE: "Venda",
   MANUAL: "Manual",
 };
-const groupLabels: Record<"LEATHER" | "HARDWARE" | "ADHESIVE" | "THREAD" | "OTHER", string> = {
-  LEATHER: "Couro",
-  HARDWARE: "Ferragens",
-  ADHESIVE: "Adesivos",
-  THREAD: "Linha",
-  OTHER: "Outros",
-};
 
 export default function Movements() {
-  const { data: movements } = useInventoryMovements();
+  const { data: movements, isLoading, error, refetch } = useInventoryMovements();
 
   return (
     <Layout>
@@ -45,38 +42,69 @@ export default function Movements() {
         <p className="text-muted-foreground">Histórico imutável (append-only).</p>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>ID</TableHead>
-            <TableHead>Entidade</TableHead>
-            <TableHead>Direção</TableHead>
-            <TableHead>Qty</TableHead>
-            <TableHead>Razão</TableHead>
-            <TableHead>Referência</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {movements?.map((movement) => (
-            <TableRow key={movement.id}>
-              <TableCell>#{movement.id}</TableCell>
-              <TableCell>
-                {entityLabels[movement.entityType]}
-                {movement.product ? ` - ${movement.product.name}` : ""}
-                {movement.material ? ` - ${movement.material.name}` : ""}
-                {movement.group ? ` - ${groupLabels[movement.group]}` : ""}
-              </TableCell>
-              <TableCell>{directionLabels[movement.direction]}</TableCell>
-              <TableCell>{movement.qty}</TableCell>
-              <TableCell>{reasonLabels[movement.reason]}</TableCell>
-              <TableCell>
-                {referenceTypeLabels[movement.referenceType]}
-                {movement.referenceId ? ` #${movement.referenceId}` : ""}
-              </TableCell>
-            </TableRow>
+      {error ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Não foi possível carregar as movimentações</AlertTitle>
+          <AlertDescription>
+            Verifique se o servidor e o banco estão rodando e tente novamente.
+            <div className="mt-3">
+              <Button variant="outline" onClick={() => refetch()}>
+                Tentar novamente
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 10 }).map((_, index) => (
+            <Skeleton key={index} className="h-10 w-full" />
           ))}
-        </TableBody>
-      </Table>
+        </div>
+      ) : movements?.length ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ID</TableHead>
+              <TableHead>Entidade</TableHead>
+              <TableHead>Direção</TableHead>
+              <TableHead>Qty</TableHead>
+              <TableHead>Razão</TableHead>
+              <TableHead>Referência</TableHead>
+              <TableHead>Data</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {movements.map((movement) => (
+              <TableRow key={movement.id}>
+                <TableCell>#{movement.id}</TableCell>
+                <TableCell>
+                  {entityLabels[movement.entityType]}
+                  {movement.product ? ` - ${movement.product.name}` : ""}
+                  {movement.material ? ` - ${movement.material.name}` : ""}
+                </TableCell>
+                <TableCell>{directionLabels[movement.direction]}</TableCell>
+                <TableCell>{movement.qty}</TableCell>
+                <TableCell>{reasonLabels[movement.reason]}</TableCell>
+                <TableCell>
+                  {referenceTypeLabels[movement.referenceType]}
+                  {movement.referenceId ? ` #${movement.referenceId}` : ""}
+                </TableCell>
+                <TableCell>{formatDateTimeBR(movement.createdAt)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Nenhuma movimentação registrada</CardTitle>
+            <CardDescription>As movimentações aparecem automaticamente com produção, venda ou ajustes.</CardDescription>
+          </CardHeader>
+          <CardContent />
+        </Card>
+      )}
     </Layout>
   );
 }
