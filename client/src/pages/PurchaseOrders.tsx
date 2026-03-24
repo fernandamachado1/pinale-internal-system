@@ -6,7 +6,7 @@ import { useCancelPurchaseOrder, useCreatePurchaseOrder, useMaterials, usePurcha
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
@@ -382,6 +382,11 @@ export default function PurchaseOrders() {
             <CardTitle>Comece criando sua primeira ordem de compra</CardTitle>
             <CardDescription>Crie itens por material ou texto livre e registre recebimentos parciais.</CardDescription>
           </CardHeader>
+          <CardContent>
+            <Button onClick={openCreateDialog}>
+              <Plus className="w-4 h-4 mr-2" /> Nova Ordem
+            </Button>
+          </CardContent>
         </Card>
       )}
 

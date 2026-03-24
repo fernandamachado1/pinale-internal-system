@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Boxes } from "lucide-react";
 import { brl, formatDateTimeBR } from "@/lib/format";
+import { useLocation } from "wouter";
 
 export default function ProducedStock() {
   const { data: stocks, isLoading, error, refetch } = useProducedProductStocks();
+  const [, setLocation] = useLocation();
 
   return (
     <Layout>
@@ -68,7 +70,9 @@ export default function ProducedStock() {
             <CardTitle>Nenhum saldo disponível</CardTitle>
             <CardDescription>Conclua uma ordem de produção para gerar estoque pronto para venda.</CardDescription>
           </CardHeader>
-          <CardContent />
+          <CardContent>
+            <Button onClick={() => setLocation("/production")}>Ir para Ordens de Produção</Button>
+          </CardContent>
         </Card>
       )}
     </Layout>

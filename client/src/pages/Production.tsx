@@ -188,7 +188,8 @@ function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithP
           <Badge className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${channelClass}`}>{channelLabel}</Badge>
           {dueDate ? (
             <Badge className="border-transparent bg-slate-100 px-2 py-0.5 text-[10px] text-slate-900 sm:px-2.5 sm:py-1 sm:text-xs">
-              Prazo {format(dueDate, "dd/MM/yyyy", { locale: ptBR })}
+              Prazo {format(dueDate, "dd/MM", { locale: ptBR })}
+              <span className="hidden sm:inline">/{format(dueDate, "yyyy", { locale: ptBR })}</span>
             </Badge>
           ) : null}
           {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
@@ -202,8 +203,11 @@ function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithP
           <Package className="h-4 w-4" />
           <span>{order.qtyPlanned} unidade(s)</span>
         </div>
-        <div className="hidden text-muted-foreground sm:block">
-          Criada em {format(new Date(order.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+        <div className="text-[11px] text-muted-foreground">
+          <span className="sm:hidden">Criada {format(new Date(order.createdAt), "dd/MM", { locale: ptBR })}</span>
+          <span className="hidden sm:inline">
+            Criada em {format(new Date(order.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+          </span>
         </div>
       </div>
     </>
@@ -233,7 +237,7 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
     <article
       ref={setNodeRef}
       style={style}
-      className={`touch-pan-x rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`touch-pan-x min-h-[108px] rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
       {...(!dragDisabled ? attributes : {})}
       {...(!dragDisabled ? listeners : {})}
     >
@@ -264,7 +268,7 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex min-h-[280px] min-w-[280px] flex-none snap-start flex-col rounded-2xl border p-3 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:p-4 ${theme.shell} ${isOver ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]" : ""}`}
+      className={`flex min-h-[280px] min-w-[240px] flex-none snap-start flex-col rounded-2xl border p-3 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:p-4 ${theme.shell} ${isOver ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]" : ""}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
@@ -583,7 +587,7 @@ export default function Production() {
       {isOrdersLoading ? (
         <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
           {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="min-w-[280px] flex-none rounded-2xl sm:min-w-[320px]">
+            <Card key={index} className="min-w-[240px] flex-none rounded-2xl sm:min-w-[320px]">
               <CardHeader>
                 <CardTitle><Skeleton className="h-4 w-24" /></CardTitle>
                 <UiCardDescription><Skeleton className="h-3 w-48" /></UiCardDescription>

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTimeBR } from "@/lib/format";
+import { useLocation } from "wouter";
 
 const entityLabels: Record<"PRODUCT" | "MATERIAL", string> = {
   PRODUCT: "Produto",
@@ -31,6 +32,7 @@ const referenceTypeLabels: Record<"OP" | "SALE" | "MANUAL", string> = {
 
 export default function Movements() {
   const { data: movements, isLoading, error, refetch } = useInventoryMovements();
+  const [, setLocation] = useLocation();
 
   return (
     <Layout>
@@ -102,7 +104,9 @@ export default function Movements() {
             <CardTitle>Nenhuma movimentação registrada</CardTitle>
             <CardDescription>As movimentações aparecem automaticamente com produção, venda ou ajustes.</CardDescription>
           </CardHeader>
-          <CardContent />
+          <CardContent>
+            <Button onClick={() => setLocation("/production")}>Criar ordem de produção</Button>
+          </CardContent>
         </Card>
       )}
     </Layout>
