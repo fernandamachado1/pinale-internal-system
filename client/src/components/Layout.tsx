@@ -8,6 +8,7 @@ import {
   Factory,
   ShoppingCart,
   ArrowLeftRight,
+  ClipboardList,
   Menu,
   LogOut,
 } from "lucide-react";
@@ -41,6 +42,7 @@ export function Layout({ children }: LayoutProps) {
       items: [
         { icon: Factory, label: "Ordens de Produção", href: "/production" },
         { icon: Boxes, label: "Estoque Pronto", href: "/produced-stock" },
+        { icon: ClipboardList, label: "Ordens de Compra", href: "/purchase-orders" },
         { icon: ShoppingCart, label: "Vendas", href: "/sales" },
       ],
     },

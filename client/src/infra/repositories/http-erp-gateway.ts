@@ -12,22 +12,27 @@ import type {
   ProductWithBom,
   ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
+  PurchaseOrderWithItems,
+  CreatePurchaseOrderInput,
+  UpdatePurchaseOrderInput,
+  ReceivePurchaseOrderInput,
   SaleListItem,
 } from "@shared/schema";
 import type { IErpGateway } from "@/application/contracts/erp-gateway";
+import { AppError } from "@/lib/app-error";
 
 async function parseJsonResponse<T>(res: Response, fallbackMessage: string): Promise<T> {
   if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message || fallbackMessage);
+    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string; field?: string } | null;
+    throw new AppError(payload?.message || fallbackMessage, payload?.code, payload?.field);
   }
   return (await res.json()) as T;
 }
 
 async function throwIfNotOk(res: Response, fallbackMessage: string): Promise<void> {
   if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message || fallbackMessage);
+    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string; field?: string } | null;
+    throw new AppError(payload?.message || fallbackMessage, payload?.code, payload?.field);
   }
 }
 
@@ -151,6 +156,43 @@ export class HttpErpGateway implements IErpGateway {
   async getInventoryMovements(): Promise<MovementWithDetails[]> {
     const res = await fetch(api.inventory.movements.path);
     return parseJsonResponse<MovementWithDetails[]>(res, "Falha ao carregar movimentações de estoque");
+  }
+
+  async getPurchaseOrders(): Promise<PurchaseOrderWithItems[]> {
+    const res = await fetch(api.purchaseOrders.list.path);
+    return parseJsonResponse<PurchaseOrderWithItems[]>(res, "Falha ao carregar ordens de compra");
+  }
+
+  async createPurchaseOrder(data: CreatePurchaseOrderInput): Promise<PurchaseOrderWithItems> {
+    const res = await fetch(api.purchaseOrders.create.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<PurchaseOrderWithItems>(res, "Falha ao criar ordem de compra");
+  }
+
+  async updatePurchaseOrder(id: number, data: UpdatePurchaseOrderInput): Promise<PurchaseOrderWithItems> {
+    const res = await fetch(buildUrl(api.purchaseOrders.update.path, { id }), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<PurchaseOrderWithItems>(res, "Falha ao atualizar ordem de compra");
+  }
+
+  async receivePurchaseOrder(id: number, data: ReceivePurchaseOrderInput): Promise<PurchaseOrderWithItems> {
+    const res = await fetch(buildUrl(api.purchaseOrders.receive.path, { id }), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<PurchaseOrderWithItems>(res, "Falha ao receber ordem de compra");
+  }
+
+  async cancelPurchaseOrder(id: number): Promise<void> {
+    const res = await fetch(buildUrl(api.purchaseOrders.cancel.path, { id }), { method: "DELETE" });
+    await throwIfNotOk(res, "Falha ao cancelar ordem de compra");
   }
 
   async getDashboardReport(from?: Date, to?: Date): Promise<DashboardReport> {

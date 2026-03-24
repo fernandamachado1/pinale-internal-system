@@ -11,6 +11,10 @@ import type {
   ProductWithBom,
   ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
+  PurchaseOrderWithItems,
+  CreatePurchaseOrderInput,
+  UpdatePurchaseOrderInput,
+  ReceivePurchaseOrderInput,
   SaleListItem,
 } from "@shared/schema";
 
@@ -123,6 +127,41 @@ export class CreateSaleUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }> {
     return this.gateway.createSale(data);
+  }
+}
+
+export class GetPurchaseOrdersUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<PurchaseOrderWithItems[]> {
+    return this.gateway.getPurchaseOrders();
+  }
+}
+
+export class CreatePurchaseOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: CreatePurchaseOrderInput): Promise<PurchaseOrderWithItems> {
+    return this.gateway.createPurchaseOrder(data);
+  }
+}
+
+export class UpdatePurchaseOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: UpdatePurchaseOrderInput): Promise<PurchaseOrderWithItems> {
+    return this.gateway.updatePurchaseOrder(id, data);
+  }
+}
+
+export class ReceivePurchaseOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: ReceivePurchaseOrderInput): Promise<PurchaseOrderWithItems> {
+    return this.gateway.receivePurchaseOrder(id, data);
+  }
+}
+
+export class CancelPurchaseOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number): Promise<void> {
+    return this.gateway.cancelPurchaseOrder(id);
   }
 }
 

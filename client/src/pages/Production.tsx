@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { format } from "date-fns";
+import { differenceInCalendarDays, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { closestCorners, DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { closestCorners, DndContext, DragOverlay, PointerSensor, TouchSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ProductionOrderWithProduct } from "@shared/schema";
@@ -9,15 +9,26 @@ import { Layout } from "@/components/Layout";
 import { useConcludeProductionOrder, useCreateProductionOrder, useMaterials, useMoveProductionOrder, useProducts, useProductionOrders } from "@/hooks/use-erp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogTrigger,
+} from "@/components/ui/responsive-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription as UiCardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Factory, GripVertical, Package, Plus } from "lucide-react";
+import { CalendarIcon, Factory, GripVertical, Package, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatQty } from "@/lib/format";
 
@@ -44,32 +55,26 @@ const columnMeta: Record<ProductionKanbanStatus, { title: string; description: s
 
 const columnTheme: Record<ProductionKanbanStatus, { shell: string; accent: string; badge: string; empty: string; card: string }> = {
   BACKLOG: {
-    shell: "border-stone-200 bg-stone-50/80",
-    accent: "bg-stone-500",
-    badge: "border-stone-300 bg-stone-100 text-stone-800",
-    empty: "border-stone-200 bg-white/80 text-stone-500",
-    card: "border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50/80",
+    shell: "border-border/70 bg-slate-50/80",
+    accent: "bg-slate-300",
+    badge: "border-transparent bg-slate-900 text-white",
+    empty: "border-border/60 bg-white/80 text-slate-700",
+    card: "border-border/60 bg-white hover:border-border hover:bg-slate-50/70",
   },
   IN_PROGRESS: {
-    shell: "border-slate-200 bg-slate-50/80",
-    accent: "bg-slate-500",
-    badge: "border-slate-300 bg-slate-100 text-slate-800",
-    empty: "border-slate-200 bg-white/80 text-slate-500",
-    card: "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80",
+    shell: "border-border/70 bg-slate-50/80",
+    accent: "bg-slate-300",
+    badge: "border-transparent bg-slate-900 text-white",
+    empty: "border-border/60 bg-white/80 text-slate-700",
+    card: "border-border/60 bg-white hover:border-border hover:bg-slate-50/70",
   },
   DONE: {
-    shell: "border-zinc-200 bg-zinc-50/80",
-    accent: "bg-zinc-500",
-    badge: "border-zinc-300 bg-zinc-100 text-zinc-800",
-    empty: "border-zinc-200 bg-white/80 text-zinc-500",
-    card: "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50/80",
+    shell: "border-border/70 bg-slate-50/80",
+    accent: "bg-slate-300",
+    badge: "border-transparent bg-slate-900 text-white",
+    empty: "border-border/60 bg-white/80 text-slate-700",
+    card: "border-border/60 bg-white hover:border-border hover:bg-slate-50/70",
   },
-};
-
-const statusLabels: Record<ProductionKanbanStatus, string> = {
-  BACKLOG: "Backlog",
-  IN_PROGRESS: "Em produção",
-  DONE: "Concluído",
 };
 
 function createBoardState(orders: ProductionOrderWithProduct[] | undefined): ProductionBoardState {
@@ -162,7 +167,15 @@ function moveOrderOnBoard(
 }
 
 function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithProduct; dragHandle?: ReactNode }) {
-  const theme = columnTheme[order.status];
+  const dueDate = order.dueAt ? new Date(order.dueAt as any) : null;
+  const daysToDue = dueDate ? differenceInCalendarDays(startOfDay(dueDate), startOfDay(new Date())) : null;
+  const isOverdue = order.status !== "DONE" && daysToDue !== null && daysToDue < 0;
+  const isDueSoon = order.status !== "DONE" && daysToDue !== null && daysToDue >= 0 && daysToDue <= 3;
+  const channelLabel = order.salesChannel === "PHYSICAL" ? "Físico" : "Online";
+  const channelClass =
+    order.salesChannel === "PHYSICAL"
+      ? "border-transparent bg-slate-900 text-white"
+      : "border-transparent bg-primary text-primary-foreground";
 
   return (
     <>
@@ -171,8 +184,15 @@ function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithP
           <div className="text-sm font-semibold">OP #{order.id}</div>
           <div className="text-sm text-muted-foreground">{order.product.name}</div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge className={theme.badge}>{statusLabels[order.status]}</Badge>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Badge className={channelClass}>{channelLabel}</Badge>
+          {dueDate ? (
+            <Badge className="border-transparent bg-slate-100 text-slate-900">
+              Prazo {format(dueDate, "dd/MM/yyyy", { locale: ptBR })}
+            </Badge>
+          ) : null}
+          {isDueSoon ? <Badge className="border-transparent bg-yellow-400 text-yellow-950">A vencer</Badge> : null}
+          {isOverdue ? <Badge className="border-transparent bg-red-600 text-white">Vencida</Badge> : null}
           {dragHandle}
         </div>
       </div>
@@ -213,7 +233,7 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
     <article
       ref={setNodeRef}
       style={style}
-      className={`rounded-xl border p-4 shadow-sm transition-[transform,box-shadow,border-color,background-color] ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`touch-pan-x rounded-xl border p-4 shadow-sm transition-[transform,box-shadow,border-color,background-color] ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
       {...(!dragDisabled ? attributes : {})}
       {...(!dragDisabled ? listeners : {})}
     >
@@ -244,7 +264,7 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex min-h-[360px] flex-col rounded-2xl border p-4 transition-colors ${theme.shell} ${isOver ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]" : ""}`}
+      className={`flex min-h-[360px] min-w-[320px] flex-none snap-start flex-col rounded-2xl border p-4 transition-colors ${theme.shell} ${isOver ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]" : ""}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
@@ -290,12 +310,18 @@ export default function Production() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [productId, setProductId] = useState("");
   const [qtyPlanned, setQtyPlanned] = useState("1");
+  const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
+  const [dueAt, setDueAt] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     setBoardState(createBoardState(orders));
   }, [orders]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    // Mobile: permite scroll horizontal; "segurar" para arrastar
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 10 } }),
+  );
 
   const selectedProduct = useMemo(() => activeProducts.find((product) => String(product.id) === productId), [activeProducts, productId]);
   const activeOrder = activeOrderId !== null ? findOrder(boardState, activeOrderId) : null;
@@ -306,13 +332,18 @@ export default function Production() {
 
   const handleCreate = (event: React.FormEvent) => {
     event.preventDefault();
+    const dueAtIso = dueAt
+      ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 12, 0, 0, 0).toISOString()
+      : null;
     createMutation.mutate(
-      { productId: Number(productId), qtyPlanned: Number(qtyPlanned) },
+      { productId: Number(productId), qtyPlanned: Number(qtyPlanned), salesChannel, dueAt: dueAtIso },
       {
         onSuccess: () => {
           setIsCreateOpen(false);
           setProductId("");
           setQtyPlanned("1");
+          setSalesChannel("ONLINE");
+          setDueAt(undefined);
         },
       },
     );
@@ -440,19 +471,33 @@ export default function Production() {
           Ordens de Produção
         </h1>
 
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
+        <ResponsiveDialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <ResponsiveDialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" /> Nova OP
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Criar Ordem de Produção</DialogTitle>
-              <DialogDescription>A nova OP entra no backlog. Os materiais serão baixados quando ela entrar em produção.</DialogDescription>
-            </DialogHeader>
+          </ResponsiveDialogTrigger>
+          <ResponsiveDialogContent>
+            <ResponsiveDialogHeader>
+              <ResponsiveDialogTitle>Criar Ordem de Produção</ResponsiveDialogTitle>
+              <ResponsiveDialogDescription>A nova OP entra no backlog. Os materiais serão baixados quando ela entrar em produção.</ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
 
             <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Canal de venda</Label>
+                <RadioGroup value={salesChannel} onValueChange={(value) => setSalesChannel(value as "ONLINE" | "PHYSICAL")} className="grid gap-3">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="ONLINE" id="sales-channel-online" />
+                    <Label htmlFor="sales-channel-online">Online</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="PHYSICAL" id="sales-channel-physical" />
+                    <Label htmlFor="sales-channel-physical">Físico</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
               <div className="space-y-2">
                 <Label>Produto</Label>
                 <Select value={productId} onValueChange={setProductId}>
@@ -469,22 +514,50 @@ export default function Production() {
                 <Input type="number" min="1" value={qtyPlanned} onChange={(e) => setQtyPlanned(e.target.value)} />
               </div>
 
+              <div className="space-y-2">
+                <Label>Prazo (opcional)</Label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={`justify-start text-left font-normal ${!dueAt ? "text-muted-foreground" : ""}`}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar data"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={dueAt} onSelect={setDueAt} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                  {dueAt ? (
+                    <Button type="button" variant="ghost" onClick={() => setDueAt(undefined)}>
+                      Limpar
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
               {selectedProduct ? (
                 <div className="space-y-1 rounded border p-3 text-sm">
                   <div><strong>Entrada inicial:</strong> Backlog</div>
                   <div><strong>Baixa de materiais:</strong> ao mover para Em produção</div>
                   <div><strong>Materiais na ficha:</strong> {selectedProduct.bomItems.length}</div>
                   <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
+                  <div><strong>Canal:</strong> {salesChannel === "PHYSICAL" ? "Físico" : "Online"}</div>
+                  <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
                 </div>
               ) : null}
 
-              <DialogFooter>
+              <ResponsiveDialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
                 <Button type="submit" disabled={createMutation.isPending || !productId}>Criar</Button>
-              </DialogFooter>
+              </ResponsiveDialogFooter>
             </form>
-          </DialogContent>
-        </Dialog>
+          </ResponsiveDialogContent>
+        </ResponsiveDialog>
       </div>
 
       {ordersError ? (
@@ -502,9 +575,9 @@ export default function Production() {
       ) : null}
 
       {isOrdersLoading ? (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
           {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="rounded-2xl">
+            <Card key={index} className="min-w-[320px] flex-none rounded-2xl">
               <CardHeader>
                 <CardTitle><Skeleton className="h-4 w-24" /></CardTitle>
                 <UiCardDescription><Skeleton className="h-3 w-48" /></UiCardDescription>
@@ -519,7 +592,7 @@ export default function Production() {
         </div>
       ) : orders?.length ? (
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2">
             {columnOrder.map((status) => (
               <ColumnDropZone key={status} status={status} orders={boardState[status]}>
                 {boardState[status].map((order) => (

@@ -29,6 +29,14 @@ import {
 import { ListProducedProductStocksUseCase } from "../application/use-cases/produced-product-stock-use-cases";
 import { ListInventoryMovementsUseCase } from "../application/use-cases/inventory-movement-use-cases";
 import { DashboardReportUseCase, LeatherConsumptionReportUseCase, ProductionReportUseCase, SalesReportUseCase } from "../application/use-cases/report-use-cases";
+import {
+  CancelPurchaseOrderUseCase,
+  CreatePurchaseOrderUseCase,
+  GetPurchaseOrderUseCase as GetPurchaseOrderEntityUseCase,
+  ListPurchaseOrdersUseCase,
+  ReceivePurchaseOrderUseCase,
+  UpdatePurchaseOrderUseCase,
+} from "../application/use-cases/purchase-order-use-cases";
 
 export class ErpController {
   private readonly listMaterialsUseCase: ListMaterialsUseCase;
@@ -53,6 +61,13 @@ export class ErpController {
   private readonly listProducedProductStocksUseCase: ListProducedProductStocksUseCase;
 
   private readonly listInventoryMovementsUseCase: ListInventoryMovementsUseCase;
+
+  private readonly listPurchaseOrdersUseCase: ListPurchaseOrdersUseCase;
+  private readonly getPurchaseOrderUseCase: GetPurchaseOrderEntityUseCase;
+  private readonly createPurchaseOrderUseCase: CreatePurchaseOrderUseCase;
+  private readonly updatePurchaseOrderUseCase: UpdatePurchaseOrderUseCase;
+  private readonly receivePurchaseOrderUseCase: ReceivePurchaseOrderUseCase;
+  private readonly cancelPurchaseOrderUseCase: CancelPurchaseOrderUseCase;
 
   private readonly productionReportUseCase: ProductionReportUseCase;
   private readonly leatherConsumptionReportUseCase: LeatherConsumptionReportUseCase;
@@ -82,6 +97,13 @@ export class ErpController {
     this.listProducedProductStocksUseCase = new ListProducedProductStocksUseCase(repository);
 
     this.listInventoryMovementsUseCase = new ListInventoryMovementsUseCase(repository);
+
+    this.listPurchaseOrdersUseCase = new ListPurchaseOrdersUseCase(repository);
+    this.getPurchaseOrderUseCase = new GetPurchaseOrderEntityUseCase(repository);
+    this.createPurchaseOrderUseCase = new CreatePurchaseOrderUseCase(repository);
+    this.updatePurchaseOrderUseCase = new UpdatePurchaseOrderUseCase(repository);
+    this.receivePurchaseOrderUseCase = new ReceivePurchaseOrderUseCase(repository);
+    this.cancelPurchaseOrderUseCase = new CancelPurchaseOrderUseCase(repository);
 
     this.productionReportUseCase = new ProductionReportUseCase(repository);
     this.leatherConsumptionReportUseCase = new LeatherConsumptionReportUseCase(repository);
@@ -185,6 +207,34 @@ export class ErpController {
     res.json(await this.listInventoryMovementsUseCase.execute());
   }
 
+  async listPurchaseOrders(_req: Request, res: Response): Promise<void> {
+    res.json(await this.listPurchaseOrdersUseCase.execute());
+  }
+
+  async getPurchaseOrder(req: Request, res: Response): Promise<void> {
+    res.json(await this.getPurchaseOrderUseCase.execute(Number(req.params.id)));
+  }
+
+  async createPurchaseOrder(req: Request, res: Response): Promise<void> {
+    const input = api.purchaseOrders.create.input.parse(req.body);
+    res.status(201).json(await this.createPurchaseOrderUseCase.execute(input));
+  }
+
+  async updatePurchaseOrder(req: Request, res: Response): Promise<void> {
+    const input = api.purchaseOrders.update.input.parse(req.body);
+    res.json(await this.updatePurchaseOrderUseCase.execute(Number(req.params.id), input));
+  }
+
+  async receivePurchaseOrder(req: Request, res: Response): Promise<void> {
+    const input = api.purchaseOrders.receive.input.parse(req.body);
+    res.json(await this.receivePurchaseOrderUseCase.execute(Number(req.params.id), input));
+  }
+
+  async cancelPurchaseOrder(req: Request, res: Response): Promise<void> {
+    await this.cancelPurchaseOrderUseCase.execute(Number(req.params.id));
+    res.status(204).send();
+  }
+
   private getPeriod(req: Request): { from?: Date; to?: Date } {
     const query = z.object({ from: z.string().datetime().optional(), to: z.string().datetime().optional() }).parse(req.query);
     return {
@@ -212,7 +262,11 @@ export class ErpController {
 
 export function handleControllerError(err: unknown, res: Response): void {
   if (err instanceof z.ZodError) {
-    res.status(400).json({ message: err.errors[0]?.message ?? "Validation error", field: err.errors[0]?.path.join(".") });
+    res.status(400).json({
+      message: err.errors[0]?.message ?? "Validation error",
+      field: err.errors[0]?.path.join("."),
+      code: "VALIDATION_ERROR",
+    });
     return;
   }
 

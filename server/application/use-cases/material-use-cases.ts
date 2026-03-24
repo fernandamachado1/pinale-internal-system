@@ -47,7 +47,12 @@ export class CreateMaterialUseCase {
   async execute(input: InsertMaterial): Promise<Material> {
     const normalized = normalizeMaterialInput(input) as InsertMaterial;
     const existing = await this.repository.getMaterialByName(normalized.name);
-    if (existing) throw new ConflictDomainError("Material name must be unique");
+    if (existing) {
+      if (existing.isActive === 0) {
+        return this.repository.updateMaterial(existing.id, { ...normalized, isActive: 1 });
+      }
+      throw new ConflictDomainError("Material name must be unique");
+    }
     return this.repository.createMaterial(normalized);
   }
 }
@@ -59,15 +64,29 @@ export class CreateManyMaterialsUseCase {
     const normalizedItems = input.items.map((item) => normalizeMaterialInput(item) as InsertMaterial);
     const seenNames = new Set<string>();
 
-    for (const item of normalizedItems) {
-      if (seenNames.has(item.name)) throw new ConflictDomainError("Material name must be unique");
-      seenNames.add(item.name);
+    return this.repository.withTransaction(async (txRepository) => {
+      const results: Material[] = [];
 
-      const existing = await this.repository.getMaterialByName(item.name);
-      if (existing) throw new ConflictDomainError("Material name must be unique");
-    }
+      for (const item of normalizedItems) {
+        if (seenNames.has(item.name)) throw new ConflictDomainError("Material name must be unique");
+        seenNames.add(item.name);
 
-    return this.repository.withTransaction((txRepository) => txRepository.createManyMaterials({ items: normalizedItems }));
+        const existing = await txRepository.getMaterialByName(item.name);
+        if (!existing) {
+          results.push(await txRepository.createMaterial(item));
+          continue;
+        }
+
+        if (existing.isActive === 0) {
+          results.push(await txRepository.updateMaterial(existing.id, { ...item, isActive: 1 }));
+          continue;
+        }
+
+        throw new ConflictDomainError("Material name must be unique");
+      }
+
+      return results;
+    });
   }
 }
 

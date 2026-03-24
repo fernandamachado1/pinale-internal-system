@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, FileText, Package, Plus, Trash2, X } from "lucide-react";
+import { ExternalLink, FileText, MoreVertical, Package, Plus, Trash2, X } from "lucide-react";
 import { brl } from "@/lib/format";
+import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 
 type BomFormItem = { materialId?: number; qtyPerUnit: string };
 
@@ -335,31 +337,58 @@ export default function Products() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead className="hidden sm:table-cell">ID</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Preço</TableHead>
-                  <TableHead>Estoque produzido</TableHead>
-                  <TableHead>Ficha técnica</TableHead>
+                  <TableHead className="hidden md:table-cell">Estoque produzido</TableHead>
+                  <TableHead className="hidden lg:table-cell">Ficha técnica</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredProducts.map((item: ProductWithBom) => (
                   <TableRow key={item.id}>
-                    <TableCell>#{item.id}</TableCell>
+                    <TableCell className="hidden sm:table-cell">#{item.id}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{brl(Number(item.price))}</TableCell>
-                    <TableCell>{producedStockByProductId.get(item.id) ?? 0}</TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">{producedStockByProductId.get(item.id) ?? 0}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
                       <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
                     </TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)}>
-                        Editar
-                      </Button>
-                      <Button size="sm" variant="destructive" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(item.id)}>
-                        Inativar
-                      </Button>
+                    <TableCell className="text-right">
+                      <div className="hidden sm:flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)}>
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => deleteMutation.mutate(item.id)}
+                        >
+                          Inativar
+                        </Button>
+                      </div>
+
+                      <div className="flex justify-end sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => openEditProductDialog(item)}>Editar</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={deleteMutation.isPending}
+                              onSelect={() => deleteMutation.mutate(item.id)}
+                            >
+                              Inativar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -388,12 +417,12 @@ export default function Products() {
         </Card>
       )}
 
-      <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>{editingProduct ? "Editar produto" : "Criar produto"}</DialogTitle>
-            <DialogDescription>Defina o cadastro base do produto e sua ficha técnica.</DialogDescription>
-          </DialogHeader>
+      <ResponsiveDialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
+        <ResponsiveDialogContent className="max-w-3xl">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>{editingProduct ? "Editar produto" : "Criar produto"}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>Defina o cadastro base do produto e sua ficha técnica.</ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
 
           <form onSubmit={handleProductSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -403,7 +432,13 @@ export default function Products() {
               </div>
               <div className="space-y-2">
                 <Label>Preço</Label>
-                <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required />
+                <Input
+                  inputMode="decimal"
+                  value={toPtBrDecimal(price)}
+                  onChange={(e) => setPrice(fromPtBrDecimal(e.target.value))}
+                  placeholder="0,00"
+                  required
+                />
               </div>
             </div>
 
@@ -455,10 +490,10 @@ export default function Products() {
                       <div className="space-y-2">
                         <Label>Qtd por unidade</Label>
                         <Input
-                          type="number"
-                          step="0.001"
-                          value={item.qtyPerUnit}
-                          onChange={(e) => setBomItem(index, { qtyPerUnit: e.target.value })}
+                          inputMode="decimal"
+                          value={toPtBrDecimal(item.qtyPerUnit)}
+                          onChange={(e) => setBomItem(index, { qtyPerUnit: fromPtBrDecimal(e.target.value) })}
+                          placeholder="0,000"
                           required
                         />
                       </div>
@@ -520,13 +555,13 @@ export default function Products() {
               )}
             </div>
 
-            <DialogFooter>
+            <ResponsiveDialogFooter>
               <Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>Salvar</Button>
-            </DialogFooter>
+            </ResponsiveDialogFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       <MaterialDialog
         open={materialDialogOpen}

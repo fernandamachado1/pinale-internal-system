@@ -26,7 +26,8 @@ export class CompleteProductionUseCase {
       }
 
       const producedStockRecord = await txRepository.getProducedProductStockByProductId(productRecord.id);
-      if (!producedStockRecord) throw new NotFoundDomainError("Produced product stock not found");
+      const producedStockQty =
+        producedStockRecord?.stockQty ?? (await txRepository.createProducedProductStock(productRecord.id)).stockQty;
 
       const order = new ProductionOrder({
         id: orderRecord.id,
@@ -41,7 +42,7 @@ export class CompleteProductionUseCase {
 
       const producedStock = new ProducedProductStock({
         productId: productRecord.id,
-        stockQty: producedStockRecord.stockQty,
+        stockQty: producedStockQty,
       });
 
       producedStock.increase(orderRecord.qtyPlanned);

@@ -1,9 +1,14 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { AppError } from "@/lib/app-error";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string; field?: string } | null;
+    const message =
+      payload?.message?.trim()
+        ? payload.message
+        : `Falha na requisição (${res.status}). Tente novamente.`;
+    throw new AppError(message, payload?.code, payload?.field);
   }
 }
 

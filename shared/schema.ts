@@ -24,10 +24,17 @@ export type ProductAttachment = z.infer<typeof productAttachmentSchema>;
 export const materialCategoryEnum = pgEnum("material_category", ["PACKAGING", "NOTIONS", "RAW_MATERIAL"]);
 export const unitOfMeasureEnum = pgEnum("unit_of_measure", ["UNIT", "SQUARE_METER", "METER"]);
 export const productionOrderStatusEnum = pgEnum("production_order_status", ["BACKLOG", "IN_PROGRESS", "DONE"]);
+export const productionOrderSalesChannelEnum = pgEnum("production_order_sales_channel", ["ONLINE", "PHYSICAL"]);
 export const movementEntityTypeEnum = pgEnum("movement_entity_type", ["PRODUCT", "MATERIAL"]);
 export const movementDirectionEnum = pgEnum("movement_direction", ["IN", "OUT"]);
 export const movementReasonEnum = pgEnum("movement_reason", ["PRODUCTION_CONSUMPTION", "PRODUCTION_OUTPUT", "SALE", "PURCHASE", "ADJUSTMENT"]);
 export const movementReferenceTypeEnum = pgEnum("movement_reference_type", ["OP", "SALE", "MANUAL"]);
+export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", [
+  "OPEN",
+  "PARTIALLY_RECEIVED",
+  "RECEIVED",
+  "CANCELED",
+]);
 
 export const materials = pgTable("materials", {
   id: serial("id").primaryKey(),
@@ -87,6 +94,8 @@ export const productionOrders = pgTable("production_orders", {
   productId: integer("product_id").notNull(),
   qtyPlanned: integer("qty_planned").notNull(),
   status: productionOrderStatusEnum("status").notNull().default("BACKLOG"),
+  salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
+  dueAt: timestamp("due_at"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
@@ -119,6 +128,25 @@ export const inventoryMovements = pgTable("inventory_movements", {
   referenceType: movementReferenceTypeEnum("reference_type").notNull(),
   referenceId: integer("reference_id"),
   metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: serial("id").primaryKey(),
+  status: purchaseOrderStatusEnum("status").notNull().default("OPEN"),
+  isActive: integer("is_active").notNull().default(1),
+  receivedAt: timestamp("received_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const purchaseOrderItems = pgTable("purchase_order_items", {
+  id: serial("id").primaryKey(),
+  purchaseOrderId: integer("purchase_order_id").notNull(),
+  materialId: integer("material_id"),
+  materialName: text("material_name").notNull(),
+  qtyOrdered: numeric("qty_ordered", { precision: 12, scale: 3 }).notNull(),
+  qtyReceived: numeric("qty_received", { precision: 12, scale: 3 }).notNull().default("0"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -201,6 +229,8 @@ export const updateProductInputSchema = z.object({
 export const insertProductionOrderSchema = z.object({
   productId: z.number().int().positive(),
   qtyPlanned: z.number().int().positive(),
+  salesChannel: z.enum(["ONLINE", "PHYSICAL"]),
+  dueAt: z.string().datetime().optional().nullable(),
 });
 
 export const moveProductionOrderSchema = z.object({
@@ -236,6 +266,8 @@ export type ProductionOrder = typeof productionOrders.$inferSelect;
 export type Sale = typeof sales.$inferSelect;
 export type SaleItem = typeof saleItems.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 
 export type InsertMaterial = z.input<typeof insertMaterialSchema>;
 export type UpdateMaterialRequest = z.input<typeof updateMaterialSchema>;
@@ -262,10 +294,54 @@ export type ProductWithBom = Product & {
 export type ProductionOrderWithProduct = ProductionOrder & { product: Product };
 export type SaleListItem = SaleItem & { sale: Sale; product: Product };
 export type ProducedProductStockWithProduct = ProducedProductStock & { product: Product };
+export type PurchaseOrderWithItems = PurchaseOrder & { items: PurchaseOrderItem[] };
 
 export type MovementWithDetails = InventoryMovement & {
   product?: Product | null;
   material?: Material | null;
 };
+
+export const createPurchaseOrderSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        materialId: z.number().int().positive().optional().nullable(),
+        materialName: z.string().min(1),
+        qtyOrdered: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const updatePurchaseOrderSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.number().int().positive().optional(),
+        materialId: z.number().int().positive().optional().nullable(),
+        materialName: z.string().min(1),
+        qtyOrdered: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const receivePurchaseOrderSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.number().int().positive(),
+        qtyReceiveNow: z.string().min(1),
+        materialId: z.number().int().positive().optional().nullable(),
+        materialName: z.string().optional(),
+        qtyOrdered: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export type CreatePurchaseOrderInput = z.input<typeof createPurchaseOrderSchema>;
+export type UpdatePurchaseOrderInput = z.input<typeof updatePurchaseOrderSchema>;
+export type ReceivePurchaseOrderInput = z.input<typeof receivePurchaseOrderSchema>;
 
 export type PaginatedResponse<T> = { items: T[]; total?: number };

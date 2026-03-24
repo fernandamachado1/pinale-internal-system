@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   boms,
   bomItems,
@@ -7,6 +7,8 @@ import {
   products,
   producedProductStocks,
   productionOrders,
+  purchaseOrders,
+  purchaseOrderItems,
   saleItems,
   sales,
   type BomItem,
@@ -26,6 +28,9 @@ import {
   type ProducedProductStockWithProduct,
   type ProductionOrder,
   type ProductionOrderWithProduct,
+  type PurchaseOrder,
+  type PurchaseOrderItem,
+  type PurchaseOrderWithItems,
   type Sale,
   type SaleItem,
   type SaleListItem,
@@ -56,7 +61,11 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getMaterials(): Promise<Material[]> {
-    return (await this.database.select().from(materials).orderBy(materials.name)) as Material[];
+    return (await this.database
+      .select()
+      .from(materials)
+      .where(eq(materials.isActive, 1))
+      .orderBy(materials.name)) as Material[];
   }
 
   async getMaterial(id: number): Promise<Material | undefined> {
@@ -275,7 +284,14 @@ export class DrizzleErpRepository implements IErpRepository {
     const sortOrder = await this.getNextProductionSortOrder("BACKLOG");
     const [created] = (await this.database
       .insert(productionOrders)
-      .values({ productId: data.productId, qtyPlanned: data.qtyPlanned, status: "BACKLOG", sortOrder })
+      .values({
+        productId: data.productId,
+        qtyPlanned: data.qtyPlanned,
+        status: "BACKLOG",
+        salesChannel: data.salesChannel,
+        dueAt: data.dueAt ? new Date(data.dueAt) : null,
+        sortOrder,
+      })
       .returning()) as ProductionOrder[];
     return created;
   }
@@ -387,5 +403,91 @@ export class DrizzleErpRepository implements IErpRepository {
 
     const [created] = (await this.database.insert(inventoryMovements).values(insertMovement).returning()) as InventoryMovement[];
     return created;
+  }
+
+  async getPurchaseOrders(): Promise<PurchaseOrderWithItems[]> {
+    const orders = (await this.database
+      .select()
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.isActive, 1))
+      .orderBy(desc(purchaseOrders.id))) as PurchaseOrder[];
+
+    if (orders.length === 0) return [];
+
+    const orderIds = orders.map((order) => order.id);
+    const items = (await this.database
+      .select()
+      .from(purchaseOrderItems)
+      .where(inArray(purchaseOrderItems.purchaseOrderId, orderIds))
+      .orderBy(asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
+
+    const itemsByOrderId = new Map<number, PurchaseOrderItem[]>();
+    for (const item of items) {
+      const current = itemsByOrderId.get(item.purchaseOrderId) ?? [];
+      current.push(item);
+      itemsByOrderId.set(item.purchaseOrderId, current);
+    }
+
+    return orders.map((order) => ({ ...order, items: itemsByOrderId.get(order.id) ?? [] }));
+  }
+
+  async getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined> {
+    const [order] = (await this.database.select().from(purchaseOrders).where(eq(purchaseOrders.id, id))) as PurchaseOrder[];
+    if (!order) return undefined;
+
+    const items = (await this.database
+      .select()
+      .from(purchaseOrderItems)
+      .where(eq(purchaseOrderItems.purchaseOrderId, id))
+      .orderBy(asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
+
+    return { ...order, items };
+  }
+
+  async createPurchaseOrderBase(): Promise<PurchaseOrder> {
+    const [created] = (await this.database.insert(purchaseOrders).values({}).returning()) as PurchaseOrder[];
+    return created;
+  }
+
+  async updatePurchaseOrderBase(
+    id: number,
+    input: Partial<Pick<PurchaseOrder, "status" | "isActive" | "receivedAt">>,
+  ): Promise<PurchaseOrder> {
+    const [updated] = (await this.database
+      .update(purchaseOrders)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(purchaseOrders.id, id))
+      .returning()) as PurchaseOrder[];
+    return updated;
+  }
+
+  async createPurchaseOrderItems(
+    purchaseOrderId: number,
+    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+  ): Promise<PurchaseOrderItem[]> {
+    const payload = items.map((item) => ({
+      purchaseOrderId,
+      materialId: item.materialId ?? null,
+      materialName: item.materialName,
+      qtyOrdered: item.qtyOrdered,
+      qtyReceived: item.qtyReceived,
+    }));
+    return (await this.database.insert(purchaseOrderItems).values(payload).returning()) as PurchaseOrderItem[];
+  }
+
+  async updatePurchaseOrderItem(
+    id: number,
+    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+  ): Promise<PurchaseOrderItem> {
+    const [updated] = (await this.database
+      .update(purchaseOrderItems)
+      .set({ ...input })
+      .where(eq(purchaseOrderItems.id, id))
+      .returning()) as PurchaseOrderItem[];
+    return updated;
+  }
+
+  async deletePurchaseOrderItem(id: number): Promise<void> {
+    await this.database.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
   }
 }

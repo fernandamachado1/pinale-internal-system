@@ -3,12 +3,16 @@ import { api } from "@shared/routes";
 import type {
   CreateManyMaterialsInput,
   ConcludeProductionOrderInput,
+  CreatePurchaseOrderInput,
   InsertMaterial,
   InsertProductionOrder,
+  ReceivePurchaseOrderInput,
   InsertSale,
+  UpdatePurchaseOrderInput,
 } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { HttpErpGateway } from "@/infra/repositories/http-erp-gateway";
+import { isAppError } from "@/lib/app-error";
 import {
   ConcludeProductionOrderUseCase,
   CreateMaterialUseCase,
@@ -22,10 +26,15 @@ import {
   GetDashboardReportUseCase,
   GetInventoryMovementsUseCase,
   GetMaterialsUseCase,
+  GetPurchaseOrdersUseCase,
   GetProductionOrdersUseCase,
   GetProducedProductStocksUseCase,
   GetProductsUseCase,
   GetSalesUseCase,
+  CancelPurchaseOrderUseCase,
+  CreatePurchaseOrderUseCase,
+  ReceivePurchaseOrderUseCase,
+  UpdatePurchaseOrderUseCase,
   UpdateMaterialUseCase,
   UpdateProductUseCase,
 } from "@/application/use-cases/erp-use-cases";
@@ -55,10 +64,36 @@ const createSaleUseCase = new CreateSaleUseCase(gateway);
 const getInventoryMovementsUseCase = new GetInventoryMovementsUseCase(gateway);
 const getDashboardReportUseCase = new GetDashboardReportUseCase(gateway);
 
+const getPurchaseOrdersUseCase = new GetPurchaseOrdersUseCase(gateway);
+const createPurchaseOrderUseCase = new CreatePurchaseOrderUseCase(gateway);
+const updatePurchaseOrderUseCase = new UpdatePurchaseOrderUseCase(gateway);
+const receivePurchaseOrderUseCase = new ReceivePurchaseOrderUseCase(gateway);
+const cancelPurchaseOrderUseCase = new CancelPurchaseOrderUseCase(gateway);
+
 function useCrudToast() {
   const { toast } = useToast();
   const success = (description: string) => toast({ title: "Sucesso", description });
-  const error = (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" });
+  const error = (err: Error) => {
+    if (isAppError(err) && err.code) {
+      const messageByCode: Record<string, string> = {
+        NOT_FOUND: "Registro não encontrado.",
+        CONFLICT: "Já existe um registro com esses dados.",
+        VALIDATION_ERROR: "Dados inválidos. Verifique os campos e tente novamente.",
+        INVALID_OPERATION: "Operação não permitida para este item.",
+        BAD_REQUEST: "Requisição inválida. Verifique os dados e tente novamente.",
+      };
+
+      const description = messageByCode[err.code] ?? "Não foi possível concluir a operação.";
+      toast({
+        title: "Erro",
+        description: err.field ? `${description} Campo: ${err.field}.` : description,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({ title: "Erro", description: err.message, variant: "destructive" });
+  };
   return { success, error };
 }
 
@@ -136,6 +171,69 @@ export function useProducedProductStocks() {
   return useQuery({
     queryKey: [api.producedProductStocks.list.path],
     queryFn: () => getProducedProductStocksUseCase.execute(),
+  });
+}
+
+export function usePurchaseOrders() {
+  return useQuery({
+    queryKey: [api.purchaseOrders.list.path],
+    queryFn: () => getPurchaseOrdersUseCase.execute(),
+  });
+}
+
+export function useCreatePurchaseOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (data: CreatePurchaseOrderInput) => createPurchaseOrderUseCase.execute(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+      message.success("Ordem de compra criada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useUpdatePurchaseOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdatePurchaseOrderInput }) => updatePurchaseOrderUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+      message.success("Ordem de compra atualizada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useReceivePurchaseOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: ReceivePurchaseOrderInput }) => receivePurchaseOrderUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+      message.success("Recebimento registrado com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useCancelPurchaseOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (id: number) => cancelPurchaseOrderUseCase.execute(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+      message.success("Ordem de compra cancelada com sucesso.");
+    },
+    onError: message.error,
   });
 }
 

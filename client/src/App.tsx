@@ -12,6 +12,7 @@ import ProducedStock from "@/pages/ProducedStock";
 import Production from "@/pages/Production";
 import Sales from "@/pages/Sales";
 import Movements from "@/pages/Movements";
+import PurchaseOrders from "@/pages/PurchaseOrders";
 
 function Router() {
   return (
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/products" component={Products} />
       <Route path="/produced-stock" component={ProducedStock} />
       <Route path="/production" component={Production} />
+      <Route path="/purchase-orders" component={PurchaseOrders} />
       <Route path="/sales" component={Sales} />
       <Route path="/movements" component={Movements} />
       <Route component={NotFound} />

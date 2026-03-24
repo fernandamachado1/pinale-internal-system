@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogTrigger } from "@/components/ui/responsive-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -101,17 +101,17 @@ export default function Sales() {
           <ShoppingCart className="w-8 h-8 text-primary" /> Vendas
         </h1>
 
-        <Dialog open={isOpen} onOpenChange={(open) => (open ? setIsOpen(true) : handleClose())}>
-          <DialogTrigger asChild>
+        <ResponsiveDialog open={isOpen} onOpenChange={(open) => (open ? setIsOpen(true) : handleClose())}>
+          <ResponsiveDialogTrigger asChild>
             <Button>
               <Plus className="w-4 h-4 mr-2" /> Nova Venda
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Registrar Venda</DialogTitle>
-              <DialogDescription>Adicione um ou mais produtos à venda.</DialogDescription>
-            </DialogHeader>
+          </ResponsiveDialogTrigger>
+          <ResponsiveDialogContent className="max-w-lg">
+            <ResponsiveDialogHeader>
+              <ResponsiveDialogTitle>Registrar Venda</ResponsiveDialogTitle>
+              <ResponsiveDialogDescription>Adicione um ou mais produtos à venda.</ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
 
             {(productsError || stocksError) ? (
               <Alert variant="destructive">
@@ -195,15 +195,15 @@ export default function Sales() {
                 Total: {brl(total)}
               </div>
 
-              <DialogFooter>
+              <ResponsiveDialogFooter>
                 <Button type="button" variant="outline" onClick={handleClose}>Cancelar</Button>
                 <Button type="submit" disabled={createMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
                   Salvar
                 </Button>
-              </DialogFooter>
+              </ResponsiveDialogFooter>
             </form>
-          </DialogContent>
-        </Dialog>
+          </ResponsiveDialogContent>
+        </ResponsiveDialog>
       </div>
 
       {salesError ? (

@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import type { InsertMaterial, Material } from "@shared/schema";
 import { useCreateManyMaterials, useUpdateMaterial } from "@/hooks/use-erp";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 
 type MaterialCategory = InsertMaterial["category"];
 type UnitOfMeasure = InsertMaterial["unitOfMeasure"];
@@ -75,6 +76,8 @@ interface MaterialDialogProps {
   onCreated?: (materials: Material[]) => void;
   title?: string;
   description?: string;
+  initialName?: string;
+  allowMultiple?: boolean;
 }
 
 export function MaterialDialog({
@@ -84,6 +87,8 @@ export function MaterialDialog({
   onCreated,
   title,
   description,
+  initialName,
+  allowMultiple = true,
 }: MaterialDialogProps) {
   const createManyMutation = useCreateManyMaterials();
   const updateMutation = useUpdateMaterial();
@@ -92,8 +97,15 @@ export function MaterialDialog({
 
   useEffect(() => {
     if (!open) return;
-    setItems(editMaterial ? [fromMaterial(editMaterial)] : [createEmptyMaterialForm()]);
-  }, [open, editMaterial]);
+    if (editMaterial) {
+      setItems([fromMaterial(editMaterial)]);
+      return;
+    }
+
+    const empty = createEmptyMaterialForm();
+    if (initialName?.trim()) empty.name = initialName.trim();
+    setItems([empty]);
+  }, [open, editMaterial, initialName]);
 
   const updateItem = (index: number, patch: Partial<MaterialFormValues>) => {
     setItems((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
@@ -133,14 +145,14 @@ export function MaterialDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{title ?? (isEditing ? "Editar material" : "Novo material")}</DialogTitle>
-          <DialogDescription>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="max-w-3xl">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>{title ?? (isEditing ? "Editar material" : "Novo material")}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             {description ?? (isEditing ? "Atualize os dados do material selecionado." : "Cadastre um ou mais materiais no mesmo fluxo.")}
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="max-h-[60vh] space-y-4 overflow-auto pr-1">
@@ -148,7 +160,7 @@ export function MaterialDialog({
               <div key={index} className="space-y-4 rounded-lg border p-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold">Material {index + 1}</h3>
-                  {!isEditing ? (
+                  {!isEditing && allowMultiple ? (
                     <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(index)}>
                       Remover
                     </Button>
@@ -188,11 +200,22 @@ export function MaterialDialog({
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Estoque inicial</Label>
-                    <Input type="number" step="0.001" value={item.stockQty} onChange={(e) => updateItem(index, { stockQty: e.target.value })} />
+                    <Input
+                      inputMode="decimal"
+                      value={toPtBrDecimal(item.stockQty)}
+                      onChange={(e) => updateItem(index, { stockQty: fromPtBrDecimal(e.target.value) })}
+                      placeholder="0,000"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Valor de compra</Label>
-                    <Input type="number" step="0.01" value={item.purchasePrice} onChange={(e) => updateItem(index, { purchasePrice: e.target.value })} required />
+                    <Input
+                      inputMode="decimal"
+                      value={toPtBrDecimal(item.purchasePrice)}
+                      onChange={(e) => updateItem(index, { purchasePrice: fromPtBrDecimal(e.target.value) })}
+                      placeholder="0,00"
+                      required
+                    />
                   </div>
                 </div>
 
@@ -200,10 +223,10 @@ export function MaterialDialog({
                   <div className="space-y-2">
                     <Label>Valor por m²</Label>
                     <Input
-                      type="number"
-                      step="0.01"
-                      value={item.pricePerSquareMeter}
-                      onChange={(e) => updateItem(index, { pricePerSquareMeter: e.target.value })}
+                      inputMode="decimal"
+                      value={toPtBrDecimal(item.pricePerSquareMeter)}
+                      onChange={(e) => updateItem(index, { pricePerSquareMeter: fromPtBrDecimal(e.target.value) })}
+                      placeholder="0,00"
                       required
                     />
                   </div>
@@ -212,9 +235,9 @@ export function MaterialDialog({
             ))}
           </div>
 
-          <DialogFooter className="justify-between sm:justify-between">
+          <ResponsiveDialogFooter className="justify-between sm:justify-between">
             <div>
-              {!isEditing ? (
+              {!isEditing && allowMultiple ? (
                 <Button type="button" variant="outline" onClick={addItem}>
                   Adicionar novo material
                 </Button>
@@ -223,12 +246,12 @@ export function MaterialDialog({
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
               <Button type="submit" disabled={createManyMutation.isPending || updateMutation.isPending}>
-                {isEditing ? "Salvar" : "Criar materiais"}
+                {isEditing ? "Salvar" : allowMultiple ? "Criar materiais" : "Criar material"}
               </Button>
             </div>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

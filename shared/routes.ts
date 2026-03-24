@@ -2,11 +2,14 @@ import { z } from "zod";
 import {
   concludeProductionOrderSchema,
   createManyMaterialsSchema,
+  createPurchaseOrderSchema,
   createProductInputSchema,
   insertMaterialSchema,
+  receivePurchaseOrderSchema,
   moveProductionOrderSchema,
   insertProductionOrderSchema,
   insertSaleSchema,
+  updatePurchaseOrderSchema,
   updateMaterialSchema,
   updateProductInputSchema,
   materials,
@@ -14,6 +17,8 @@ import {
   bomItems,
   producedProductStocks,
   productionOrders,
+  purchaseOrders,
+  purchaseOrderItems,
   sales,
   saleItems,
   inventoryMovements,
@@ -31,6 +36,8 @@ const productSchema = z.custom<typeof products.$inferSelect>();
 const bomItemSchema = z.custom<typeof bomItems.$inferSelect>();
 const producedProductStockSchema = z.custom<typeof producedProductStocks.$inferSelect>();
 const productionOrderSchema = z.custom<typeof productionOrders.$inferSelect>();
+const purchaseOrderSchema = z.custom<typeof purchaseOrders.$inferSelect>();
+const purchaseOrderItemSchema = z.custom<typeof purchaseOrderItems.$inferSelect>();
 const saleSchema = z.custom<typeof sales.$inferSelect>();
 const saleItemSchema = z.custom<typeof saleItems.$inferSelect>();
 const inventoryMovementSchema = z.custom<typeof inventoryMovements.$inferSelect>();
@@ -43,6 +50,7 @@ const productWithBomSchema = productSchema.and(
 const productionOrderWithProductSchema = productionOrderSchema.and(z.object({ product: productSchema }));
 const saleListItemSchema = saleItemSchema.and(z.object({ sale: saleSchema, product: productSchema }));
 const producedProductStockWithProductSchema = producedProductStockSchema.and(z.object({ product: productSchema }));
+const purchaseOrderWithItemsSchema = purchaseOrderSchema.and(z.object({ items: z.array(purchaseOrderItemSchema) }));
 
 const reportProductionSchema = z.object({
   totalOps: z.number(),
@@ -162,6 +170,38 @@ export const api = {
       path: "/api/production-orders/:id/conclude" as const,
       input: concludeProductionOrderSchema,
       responses: { 200: productionOrderWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
+  },
+
+  purchaseOrders: {
+    list: { method: "GET" as const, path: "/api/purchase-orders" as const, responses: { 200: z.array(purchaseOrderWithItemsSchema) } },
+    get: {
+      method: "GET" as const,
+      path: "/api/purchase-orders/:id" as const,
+      responses: { 200: purchaseOrderWithItemsSchema, 404: errorSchemas.notFound },
+    },
+    create: {
+      method: "POST" as const,
+      path: "/api/purchase-orders" as const,
+      input: createPurchaseOrderSchema,
+      responses: { 201: purchaseOrderWithItemsSchema, 400: errorSchemas.validation },
+    },
+    update: {
+      method: "PUT" as const,
+      path: "/api/purchase-orders/:id" as const,
+      input: updatePurchaseOrderSchema,
+      responses: { 200: purchaseOrderWithItemsSchema, 400: errorSchemas.validation, 404: errorSchemas.notFound },
+    },
+    receive: {
+      method: "POST" as const,
+      path: "/api/purchase-orders/:id/receive" as const,
+      input: receivePurchaseOrderSchema,
+      responses: { 200: purchaseOrderWithItemsSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
+    cancel: {
+      method: "DELETE" as const,
+      path: "/api/purchase-orders/:id" as const,
+      responses: { 204: z.void(), 404: errorSchemas.notFound },
     },
   },
 

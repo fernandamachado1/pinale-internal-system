@@ -10,6 +10,10 @@ import type {
   ProductWithBom,
   ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
+  PurchaseOrderWithItems,
+  CreatePurchaseOrderInput,
+  UpdatePurchaseOrderInput,
+  ReceivePurchaseOrderInput,
   SaleListItem,
 } from "@shared/schema";
 import type { DashboardReport } from "@shared/routes";
@@ -37,6 +41,12 @@ export interface IErpGateway {
   createSale(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }>;
 
   getInventoryMovements(): Promise<MovementWithDetails[]>;
+
+  getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
+  createPurchaseOrder(data: CreatePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
+  updatePurchaseOrder(id: number, data: UpdatePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
+  receivePurchaseOrder(id: number, data: ReceivePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
+  cancelPurchaseOrder(id: number): Promise<void>;
 
   getDashboardReport(from?: Date, to?: Date): Promise<DashboardReport>;
 }

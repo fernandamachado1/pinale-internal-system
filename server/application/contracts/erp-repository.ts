@@ -14,6 +14,9 @@ import type {
   ProducedProductStockWithProduct,
   ProductionOrder,
   ProductionOrderWithProduct,
+  PurchaseOrderWithItems,
+  PurchaseOrder,
+  PurchaseOrderItem,
   UpdateMaterialRequest,
   UpdateProductInput,
 } from "@shared/schema";
@@ -53,5 +56,23 @@ export interface IErpRepository extends ISalesRepository {
   markProductionOrderDone(id: number, completedAt: Date): Promise<ProductionOrder>;
 
   getInventoryMovements(): Promise<MovementWithDetails[]>;
+
+  getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
+  getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined>;
+  createPurchaseOrderBase(): Promise<PurchaseOrder>;
+  updatePurchaseOrderBase(
+    id: number,
+    input: Partial<Pick<PurchaseOrder, "status" | "isActive" | "receivedAt">>,
+  ): Promise<PurchaseOrder>;
+  createPurchaseOrderItems(
+    purchaseOrderId: number,
+    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+  ): Promise<PurchaseOrderItem[]>;
+  updatePurchaseOrderItem(
+    id: number,
+    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+  ): Promise<PurchaseOrderItem>;
+  deletePurchaseOrderItem(id: number): Promise<void>;
+
   withTransaction<T>(callback: (repository: IErpRepository) => Promise<T>): Promise<T>;
 }

@@ -55,6 +55,19 @@ async function run(): Promise<void> {
     isActive: 1,
   });
 
+  await repository.deactivateMaterial(zipper.id);
+  const zipperReactivated = await createMaterial.execute({
+    name: "Ziper 20cm",
+    unitOfMeasure: "UNIT",
+    stockQty: "10.000",
+    category: "NOTIONS",
+    purchasePrice: "5.00",
+    pricePerSquareMeter: null,
+    isActive: 1,
+  });
+  assert(zipperReactivated.id === zipper.id, "reactivated material should preserve id");
+  assert(zipperReactivated.isActive === 1, "reactivated material should become active");
+
   const leather = await createMaterial.execute({
     name: "Couro Premium",
     unitOfMeasure: "SQUARE_METER",
@@ -80,6 +93,9 @@ async function run(): Promise<void> {
   });
 
   assert(product.bomItems.length === 2, "product BOM should have 2 materials");
+
+  // Regression: older data might miss produced stock rows. Conclusion must recreate it.
+  await db.delete(producedProductStocks);
 
   const order = await createOrder.execute({
     productId: product.id,
