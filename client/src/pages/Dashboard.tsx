@@ -13,6 +13,7 @@ import {
 import { Layout } from "@/components/Layout";
 import { StatCard } from "@/components/StatCard";
 import { useDashboardReport } from "@/hooks/use-erp";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Card,
   CardContent,
@@ -33,6 +34,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
+import { useLocation } from "wouter";
 
 function getDefaultRange(): DateRange {
   const to = new Date();
@@ -86,6 +88,8 @@ function groupChartSeries(
 
 export default function Dashboard() {
   const [range, setRange] = useState<DateRange>(getDefaultRange);
+  const isMobile = useIsMobile();
+  const [, setLocation] = useLocation();
 
   const from = range.from;
   const to = range.to ? toEndOfDay(range.to) : range.from ? toEndOfDay(range.from) : undefined;
@@ -102,6 +106,13 @@ export default function Dashboard() {
   const avgTicket =
     (report?.distinctSaleCount ?? 0) > 0 ? soldValue / report!.distinctSaleCount : 0;
   const openOrdersCount = report?.openOrdersCount ?? 0;
+  const isEmptyState =
+    Boolean(report) &&
+    producedValue === 0 &&
+    soldValue === 0 &&
+    openOrdersCount === 0 &&
+    (report?.topSold?.length ?? 0) === 0 &&
+    (report?.productStock?.length ?? 0) === 0;
 
   const rangeLabel = from
     ? to && to !== from
@@ -125,7 +136,7 @@ export default function Dashboard() {
             <Button
               variant="outline"
               className={cn(
-                "gap-2 min-w-[220px] justify-start",
+                "gap-2 w-full justify-start sm:min-w-[220px] sm:w-auto",
                 !from && "text-muted-foreground",
               )}
             >
@@ -133,12 +144,12 @@ export default function Dashboard() {
               {rangeLabel}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="end">
+          <PopoverContent className="w-auto p-0" align={isMobile ? "start" : "end"}>
             <Calendar
               mode="range"
               selected={range}
               onSelect={(r) => r && setRange(r)}
-              numberOfMonths={2}
+              numberOfMonths={isMobile ? 1 : 2}
               locale={ptBR}
               disabled={{ after: new Date() }}
             />
@@ -158,6 +169,20 @@ export default function Dashboard() {
             </div>
           </AlertDescription>
         </Alert>
+      ) : null}
+
+      {!isLoading && !error && isEmptyState ? (
+        <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <CardTitle>Sem dados para mostrar ainda</CardTitle>
+            <CardDescription>
+              Cadastre materiais e produtos para começar a produzir e registrar vendas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => setLocation("/materials")}>Cadastrar primeiro material</Button>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* KPI Cards */}
@@ -192,7 +217,7 @@ export default function Dashboard() {
             description="Faturamento total líquido"
             iconClassName="bg-emerald-50 text-emerald-600"
           />
-          <StatCard
+          {/* <StatCard
             title="OPs em Aberto"
             value={openOrdersCount}
             icon={<Hammer className="w-5 h-5" />}
@@ -205,7 +230,7 @@ export default function Dashboard() {
             icon={<TrendingUp className="w-5 h-5" />}
             description="Por pedido faturado"
             iconClassName="bg-slate-100 text-slate-600"
-          />
+          /> */}
         </div>
       )}
 
@@ -232,7 +257,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <ChartContainer
-              className="h-[280px] w-full"
+              className="h-[240px] w-full aspect-auto sm:h-[280px]"
               config={{
                 producedValue: { label: "Produzido (R$)", color: "hsl(var(--chart-1))" },
                 soldValue: { label: "Vendido (R$)", color: "hsl(var(--chart-3))" },
@@ -244,7 +269,7 @@ export default function Dashboard() {
                 <YAxis
                   tickLine={false}
                   axisLine={false}
-                  width={72}
+                  width={isMobile ? 56 : 72}
                   tickFormatter={(v: number) =>
                     v >= 1000 ? `R$${(v / 1000).toFixed(0)}k` : `R$${v}`
                   }
@@ -335,38 +360,67 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {!report?.openOrders?.length ? (
-              <p className="text-sm text-muted-foreground">Nenhuma OP em andamento.</p>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Nenhuma OP em andamento.</p>
+                <Button variant="outline" onClick={() => setLocation("/production")}>
+                  Criar ordem de produção
+                </Button>
+              </div>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border/50">
-                    <th className="pb-2 text-left text-[10px] font-bold text-muted-foreground uppercase">
-                      OP #
-                    </th>
-                    <th className="pb-2 text-left text-[10px] font-bold text-muted-foreground uppercase">
-                      Produto
-                    </th>
-                    <th className="pb-2 text-right text-[10px] font-bold text-muted-foreground uppercase">
-                      Qtd
-                    </th>
-                    <th className="pb-2 text-right text-[10px] font-bold text-muted-foreground uppercase">
-                      Data
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.openOrders.map((o) => (
-                    <tr key={o.id} className="border-b border-border/30 last:border-0">
-                      <td className="py-2.5 font-medium text-muted-foreground">OP-{o.id}</td>
-                      <td className="py-2.5 font-semibold text-foreground">{o.productName}</td>
-                      <td className="py-2.5 text-right text-muted-foreground">{o.qtyPlanned}</td>
-                      <td className="py-2.5 text-right text-muted-foreground">
-                        {format(new Date(o.createdAt), "dd/MM", { locale: ptBR })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <>
+                {isMobile ? (
+                  <div className="space-y-2">
+                    {report.openOrders.map((o) => (
+                      <div key={o.id} className="rounded-xl border border-border/50 bg-background p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-muted-foreground">OP-{o.id}</div>
+                            <div className="truncate text-sm font-semibold text-foreground">{o.productName}</div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="text-xs text-muted-foreground">Qtd</div>
+                            <div className="text-sm font-semibold text-foreground">{o.qtyPlanned}</div>
+                          </div>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Criada em {format(new Date(o.createdAt), "dd/MM", { locale: ptBR })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/50">
+                        <th className="pb-2 text-left text-[10px] font-bold text-muted-foreground uppercase">
+                          OP #
+                        </th>
+                        <th className="pb-2 text-left text-[10px] font-bold text-muted-foreground uppercase">
+                          Produto
+                        </th>
+                        <th className="pb-2 text-right text-[10px] font-bold text-muted-foreground uppercase">
+                          Qtd
+                        </th>
+                        <th className="pb-2 text-right text-[10px] font-bold text-muted-foreground uppercase">
+                          Data
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.openOrders.map((o) => (
+                        <tr key={o.id} className="border-b border-border/30 last:border-0">
+                          <td className="py-2.5 font-medium text-muted-foreground">OP-{o.id}</td>
+                          <td className="py-2.5 font-semibold text-foreground">{o.productName}</td>
+                          <td className="py-2.5 text-right text-muted-foreground">{o.qtyPlanned}</td>
+                          <td className="py-2.5 text-right text-muted-foreground">
+                            {format(new Date(o.createdAt), "dd/MM", { locale: ptBR })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

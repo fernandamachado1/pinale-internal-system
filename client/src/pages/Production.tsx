@@ -179,30 +179,30 @@ function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithP
 
   return (
     <>
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="mb-2 flex items-start justify-between gap-3 sm:mb-3">
         <div className="space-y-1">
-          <div className="text-sm font-semibold">OP #{order.id}</div>
-          <div className="text-sm text-muted-foreground">{order.product.name}</div>
+          <div className="text-xs font-semibold sm:text-sm">OP #{order.id}</div>
+          <div className="text-xs text-muted-foreground sm:text-sm">{order.product.name}</div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Badge className={channelClass}>{channelLabel}</Badge>
+          <Badge className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${channelClass}`}>{channelLabel}</Badge>
           {dueDate ? (
-            <Badge className="border-transparent bg-slate-100 text-slate-900">
+            <Badge className="border-transparent bg-slate-100 px-2 py-0.5 text-[10px] text-slate-900 sm:px-2.5 sm:py-1 sm:text-xs">
               Prazo {format(dueDate, "dd/MM/yyyy", { locale: ptBR })}
             </Badge>
           ) : null}
-          {isDueSoon ? <Badge className="border-transparent bg-yellow-400 text-yellow-950">A vencer</Badge> : null}
-          {isOverdue ? <Badge className="border-transparent bg-red-600 text-white">Vencida</Badge> : null}
+          {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
+          {isOverdue ? <Badge className="border-transparent bg-red-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">Vencida</Badge> : null}
           {dragHandle}
         </div>
       </div>
 
-      <div className="space-y-2 text-sm">
+      <div className="space-y-2 text-xs sm:text-sm">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Package className="h-4 w-4" />
           <span>{order.qtyPlanned} unidade(s)</span>
         </div>
-        <div className="text-muted-foreground">
+        <div className="hidden text-muted-foreground sm:block">
           Criada em {format(new Date(order.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
         </div>
       </div>
@@ -233,7 +233,7 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
     <article
       ref={setNodeRef}
       style={style}
-      className={`touch-pan-x rounded-xl border p-4 shadow-sm transition-[transform,box-shadow,border-color,background-color] ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`touch-pan-x rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
       {...(!dragDisabled ? attributes : {})}
       {...(!dragDisabled ? listeners : {})}
     >
@@ -264,20 +264,26 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex min-h-[360px] min-w-[320px] flex-none snap-start flex-col rounded-2xl border p-4 transition-colors ${theme.shell} ${isOver ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]" : ""}`}
+      className={`flex min-h-[280px] min-w-[280px] flex-none snap-start flex-col rounded-2xl border p-3 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:p-4 ${theme.shell} ${isOver ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]" : ""}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className={`mb-2 h-1.5 w-14 rounded-full ${theme.accent}`} />
-          <h2 className="text-base font-semibold">{columnMeta[status].title}</h2>
-          <p className="text-sm text-muted-foreground">{columnMeta[status].description}</p>
+          <h2 className="text-sm font-semibold sm:text-base">{columnMeta[status].title}</h2>
+          <p className="text-xs text-muted-foreground sm:text-sm">{columnMeta[status].description}</p>
         </div>
         <Badge className={theme.badge}>{orders.length}</Badge>
       </div>
 
       <SortableContext id={status} items={orders.map((order) => String(order.id))} strategy={rectSortingStrategy}>
         <div className="flex flex-1 flex-col gap-3">
-          {orders.length > 0 ? children : <div className={`flex flex-1 items-center justify-center rounded-xl border border-dashed p-6 text-sm ${theme.empty}`}>Nenhuma OP nesta etapa.</div>}
+          {orders.length > 0 ? (
+            children
+          ) : (
+            <div className={`flex flex-1 items-center justify-center rounded-xl border border-dashed p-4 text-xs sm:p-6 sm:text-sm ${theme.empty}`}>
+              Nenhuma OP nesta etapa.
+            </div>
+          )}
         </div>
       </SortableContext>
     </section>
@@ -577,7 +583,7 @@ export default function Production() {
       {isOrdersLoading ? (
         <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
           {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="min-w-[320px] flex-none rounded-2xl">
+            <Card key={index} className="min-w-[280px] flex-none rounded-2xl sm:min-w-[320px]">
               <CardHeader>
                 <CardTitle><Skeleton className="h-4 w-24" /></CardTitle>
                 <UiCardDescription><Skeleton className="h-3 w-48" /></UiCardDescription>
@@ -590,39 +596,43 @@ export default function Production() {
             </Card>
           ))}
         </div>
-      ) : orders?.length ? (
-        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2">
-            {columnOrder.map((status) => (
-              <ColumnDropZone key={status} status={status} orders={boardState[status]}>
-                {boardState[status].map((order) => (
-                  <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />
-                ))}
-              </ColumnDropZone>
-            ))}
-          </div>
+      ) : orders ? (
+        <>
+          {orders.length === 0 ? (
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle>Nenhuma OP criada</CardTitle>
+                <UiCardDescription>Crie uma ordem para acompanhar backlog, produção e conclusão.</UiCardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => setIsCreateOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Nova OP
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
 
-          <DragOverlay>
-            {activeOrder ? (
-              <article className={`rounded-xl border p-4 shadow-xl ring-2 ring-primary/30 ${columnTheme[activeOrder.status].card}`}>
-                <ProductionCardBody order={activeOrder} />
-              </article>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Nenhuma OP criada</CardTitle>
-            <UiCardDescription>Crie uma ordem para acompanhar backlog, produção e conclusão.</UiCardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => setIsCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" /> Nova OP
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2">
+              {columnOrder.map((status) => (
+                <ColumnDropZone key={status} status={status} orders={boardState[status] ?? []}>
+                  {(boardState[status] ?? []).map((order) => (
+                    <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />
+                  ))}
+                </ColumnDropZone>
+              ))}
+            </div>
+
+            <DragOverlay>
+              {activeOrder ? (
+                <article className={`rounded-xl border p-3 shadow-xl ring-2 ring-primary/30 sm:p-4 ${columnTheme[activeOrder.status].card}`}>
+                  <ProductionCardBody order={activeOrder} />
+                </article>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </>
+      ) : null}
 
       <AlertDialog
         open={pendingStart !== null}
