@@ -184,14 +184,8 @@ function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithP
           <div className="text-xs font-semibold sm:text-sm">OP #{order.id}</div>
           <div className="text-xs text-muted-foreground sm:text-sm">{order.product.name}</div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
           <Badge className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${channelClass}`}>{channelLabel}</Badge>
-          {dueDate ? (
-            <Badge className="border-transparent bg-slate-100 px-2 py-0.5 text-[10px] text-slate-900 sm:px-2.5 sm:py-1 sm:text-xs">
-              Prazo {format(dueDate, "dd/MM", { locale: ptBR })}
-              <span className="hidden sm:inline">/{format(dueDate, "yyyy", { locale: ptBR })}</span>
-            </Badge>
-          ) : null}
           {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
           {isOverdue ? <Badge className="border-transparent bg-red-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">Vencida</Badge> : null}
           {dragHandle}
