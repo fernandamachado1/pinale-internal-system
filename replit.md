@@ -42,7 +42,7 @@ attached_assets/ → Requirements documents
 - The `@shared/routes` module defines API paths and Zod schemas used by both client and server, ensuring type safety across the stack
 - Path aliases: `@/` → `client/src/`, `@shared/` → `shared/`
 
-### Backend (api/)
+### Backend (deno_api/)
 
 - **Runtime**: Deno
 - **Framework**: Hono
@@ -57,7 +57,7 @@ attached_assets/ → Requirements documents
 - **ORM**: Drizzle ORM with `drizzle-zod` for automatic Zod schema generation from table definitions
 - **Schema location**: `shared/schema.ts` — single source of truth for all table definitions, relations, and insert/update schemas
 - **Schema push**: `yarn db:push` uses `drizzle-kit push` to sync schema to database
-- **Connection**: `pg.Pool` via Deno `npm:` compatibility, configured in `api/db.ts`
+- **Connection**: `pg.Pool` via Deno `npm:` compatibility, configured in `deno_api/db.ts`
 
 **Database tables:**
 - `materials` — Raw materials/supplies with name, unit, and quantity
@@ -80,6 +80,28 @@ attached_assets/ → Requirements documents
   - `yarn dev` — runs Vite on `5173` and proxies `/api/*` to `API_PORT`
 - **Production build**: `yarn build` — Vite builds the client to `dist/public`
 - **Production start**: `yarn start` — runs the Deno server which serves static files + `/api/*`
+
+## Deploy (recommended)
+
+### Frontend: Vercel
+
+- **Framework preset**: Vite (or “Other”)
+- **Root directory**: repository root (`/`)
+- **Build command**: `yarn build`
+- **Output directory**: `dist/public`
+- **Environment variables**:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+  - `VITE_API_BASE_URL` (example: `https://<your-api>.deno.net`)
+
+### API: Deno Deploy
+
+- **Entrypoint**: `deno_api/main.ts`
+- **Environment variables**:
+  - `DATABASE_URL` (Secret)
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `CORS_ORIGIN` (recommended: your Vercel domain, and optionally `http://localhost:5173`)
 
 ### API Structure
 

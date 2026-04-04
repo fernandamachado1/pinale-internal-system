@@ -26,9 +26,54 @@ const { join, normalize } = path;
 const { registerApiRoutes } = routes as typeof import("./routes.ts");
 
 const app = new Hono();
+
+// CORS for when the frontend is hosted separately (ex: Vercel).
+// If `CORS_ORIGIN` is set, only those origins are allowed (comma-separated).
+// Otherwise, allow all origins (no cookies/credentials are used; auth is via Bearer token).
+const corsOriginRaw = (Deno.env.get("CORS_ORIGIN") ?? "").trim();
+if (corsOriginRaw) {
+  const { cors } = await import("npm:hono/cors");
+  const allowed = new Set(
+    corsOriginRaw
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean),
+  );
+  app.use(
+    "/api/*",
+    cors({
+      origin: (origin) => {
+        if (!origin) return "*";
+        return allowed.has(origin) ? origin : "";
+      },
+      allowHeaders: ["Authorization", "Content-Type"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    }),
+  );
+} else {
+  const { cors } = await import("npm:hono/cors");
+  app.use(
+    "/api/*",
+    cors({
+      origin: "*",
+      allowHeaders: ["Authorization", "Content-Type"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    }),
+  );
+}
+
 registerApiRoutes(app as any);
 
 const publicRoot = join(Deno.cwd(), "dist", "public");
+const indexHtmlPath = join(publicRoot, "index.html");
+
+let hasStaticBuild = false;
+try {
+  await Deno.stat(indexHtmlPath);
+  hasStaticBuild = true;
+} catch {
+  hasStaticBuild = false;
+}
 
 function resolvePublicPath(pathname: string): string | null {
   const decoded = decodeURIComponent(pathname);
@@ -41,6 +86,13 @@ function resolvePublicPath(pathname: string): string | null {
 app.get("*", async (c) => {
   const pathname = new URL(c.req.url).pathname;
   if (pathname.startsWith("/api")) return c.notFound();
+
+  if (!hasStaticBuild) {
+    return c.text(
+      "Static build not found (dist/public/index.html). Configure a build step (yarn build) or deploy the client separately.",
+      404,
+    );
+  }
 
   const request = c.req.raw;
   const maybeFilePath = pathname === "/" ? join(publicRoot, "index.html") : resolvePublicPath(pathname);
@@ -55,5 +107,11 @@ app.get("*", async (c) => {
   return await serveFile(request, join(publicRoot, "index.html"));
 });
 
-const port = Number(Deno.env.get("PORT") ?? "8000");
-Deno.serve({ port }, app.fetch);
+const isDeploy = Boolean(Deno.env.get("DENO_DEPLOYMENT_ID"));
+if (isDeploy) {
+  // Deno Deploy: no explicit port binding needed.
+  Deno.serve(app.fetch);
+} else {
+  const port = Number(Deno.env.get("PORT") ?? "8000");
+  Deno.serve({ port }, app.fetch);
+}

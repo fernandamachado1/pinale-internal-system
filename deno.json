@@ -9,7 +9,7 @@
     "zod": "npm:zod@3.24.2"
   },
   "tasks": {
-    "dev": "deno run --allow-env --allow-net --allow-read --watch ./api/main.ts",
-    "start": "deno run --allow-env --allow-net --allow-read ./api/main.ts"
+    "dev": "deno run --allow-env --allow-net --allow-read --watch ./deno_api/main.ts",
+    "start": "deno run --allow-env --allow-net --allow-read ./deno_api/main.ts"
   }
 }

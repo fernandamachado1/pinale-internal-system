@@ -79,6 +79,15 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       200,
     ),
   );
+  app.get("/api/health/static", async (c) => {
+    const indexHtmlPath = `${Deno.cwd()}/dist/public/index.html`;
+    try {
+      await Deno.stat(indexHtmlPath);
+      return c.json({ ok: true, hasStaticBuild: true, indexHtmlPath }, 200);
+    } catch {
+      return c.json({ ok: true, hasStaticBuild: false, indexHtmlPath }, 200);
+    }
+  });
   app.get("/api/health/db", async (c) => {
     try {
       const { db } = await initDb();
@@ -123,6 +132,9 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
         return await next();
       }
       if (c.req.path === "/api/health/env") {
+        return await next();
+      }
+      if (c.req.path === "/api/health/static") {
         return await next();
       }
       if (c.req.path === "/api/health/db") {
