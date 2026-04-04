@@ -1,9 +1,9 @@
-import type { InsertProductionOrder, MoveProductionOrderInput, ProductionOrderWithProduct } from "@shared/schema";
-import type { IErpRepository } from "../contracts/erp-repository";
-import { InvalidOperationDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
-import { InventoryMovement } from "../../domain/entities/inventory-movement";
-import { Material } from "../../domain/entities/material";
-import { TechnicalSpecItem } from "../../domain/entities/technical-spec-item";
+import type { InsertProductionOrder, MoveProductionOrderInput, ProductionOrderWithProduct } from "@shared/schema.ts";
+import type { IErpRepository } from "../contracts/erp-repository.ts";
+import { InvalidOperationDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
+import { InventoryMovement } from "../../domain/entities/inventory-movement.ts";
+import { Material } from "../../domain/entities/material.ts";
+import { TechnicalSpecItem } from "../../domain/entities/technical-spec-item.ts";
 
 export class ListProductionOrdersUseCase {
   constructor(private readonly repository: IErpRepository) {}

@@ -1,6 +1,6 @@
-import type { BomItemInput, CreateProductInput, ProductWithBom, UpdateProductInput } from "@shared/schema";
-import type { IErpRepository } from "../contracts/erp-repository";
-import { ConflictDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
+import type { BomItemInput, CreateProductInput, ProductWithBom, UpdateProductInput } from "@shared/schema.ts";
+import type { IErpRepository } from "../contracts/erp-repository.ts";
+import { ConflictDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
 
 function assertValidBomItems(items: BomItemInput[]): void {
   const seenFixedMaterial = new Set<number>();

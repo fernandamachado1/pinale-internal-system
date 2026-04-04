@@ -15,13 +15,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { supabase } from "@/lib/supabase";
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
+
+  const logout = async () => {
+    await supabase.auth.signOut().catch(() => undefined);
+    navigate("/login");
+  };
 
   const dashboardItem = {
     icon: LayoutDashboard,
@@ -87,18 +93,17 @@ export function Layout({ children }: LayoutProps) {
       <nav className="flex-1 px-4 py-5 space-y-6 overflow-y-auto">
         {/* Dashboard */}
         <div>
-          <Link href={dashboardItem.href}>
-            <a
-              aria-current={location === dashboardItem.href ? "page" : undefined}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 ${
-                location === dashboardItem.href
-                  ? "bg-sidebar-accent text-sidebar-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              }`}
-            >
-              <dashboardItem.icon className="w-[18px] h-[18px] shrink-0" />
-              <span className="text-sm font-medium">{dashboardItem.label}</span>
-            </a>
+          <Link
+            href={dashboardItem.href}
+            aria-current={location === dashboardItem.href ? "page" : undefined}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 ${
+              location === dashboardItem.href
+                ? "bg-sidebar-accent text-sidebar-foreground"
+                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            }`}
+          >
+            <dashboardItem.icon className="w-[18px] h-[18px] shrink-0" />
+            <span className="text-sm font-medium">{dashboardItem.label}</span>
           </Link>
         </div>
 
@@ -112,18 +117,18 @@ export function Layout({ children }: LayoutProps) {
               {group.items.map((item) => {
                 const isActive = location === item.href;
                 return (
-                  <Link key={item.href} href={item.href}>
-                    <a
-                      aria-current={isActive ? "page" : undefined}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
-                        isActive
-                          ? "bg-sidebar-accent text-sidebar-foreground"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      }`}
-                    >
-                      <item.icon className="w-[18px] h-[18px] shrink-0" />
-                      <span className="text-sm font-medium">{item.label}</span>
-                    </a>
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    }`}
+                  >
+                    <item.icon className="w-[18px] h-[18px] shrink-0" />
+                    <span className="text-sm font-medium">{item.label}</span>
                   </Link>
                 );
               })}
@@ -132,7 +137,12 @@ export function Layout({ children }: LayoutProps) {
         ))}
       </nav>
 
-      {/* User Profile (hidden for now) */}
+      <div className="p-4 border-t border-sidebar-border">
+        <Button variant="ghost" className="w-full justify-start gap-2" onClick={logout}>
+          <LogOut className="w-4 h-4" />
+          Sair
+        </Button>
+      </div>
     </div>
   );
 

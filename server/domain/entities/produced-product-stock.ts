@@ -1,4 +1,4 @@
-import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error";
+import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error.ts";
 
 export interface ProducedProductStockProps {
   productId: number;

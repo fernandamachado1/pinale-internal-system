@@ -46,12 +46,13 @@ function createEmptyMaterialForm(): MaterialFormValues {
 }
 
 function toCreatePayload(item: MaterialFormValues): InsertMaterial {
+  const purchasePrice = item.category === "RAW_MATERIAL" ? (item.pricePerSquareMeter || "0") : item.purchasePrice;
   return {
     name: item.name,
     category: item.category,
     unitOfMeasure: item.unitOfMeasure,
     stockQty: item.stockQty,
-    purchasePrice: item.purchasePrice,
+    purchasePrice,
     pricePerSquareMeter: item.category === "RAW_MATERIAL" ? item.pricePerSquareMeter : null,
     isActive: item.isActive,
   };
@@ -175,7 +176,15 @@ export function MaterialDialog({
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Categoria</Label>
-                    <Select value={item.category} onValueChange={(value) => updateItem(index, { category: value as MaterialCategory })}>
+                    <Select
+                      value={item.category}
+                      onValueChange={(value) =>
+                        updateItem(index, {
+                          category: value as MaterialCategory,
+                          pricePerSquareMeter: value === "RAW_MATERIAL" ? item.pricePerSquareMeter || item.purchasePrice : item.pricePerSquareMeter,
+                        })
+                      }
+                    >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {categories.map((category) => (
@@ -203,20 +212,22 @@ export function MaterialDialog({
                     <Input
                       inputMode="decimal"
                       value={toPtBrDecimal(item.stockQty)}
-                      onChange={(e) => updateItem(index, { stockQty: fromPtBrDecimal(e.target.value) })}
+                      onChange={(e) => updateItem(index, { stockQty: fromPtBrDecimal(e.target.value, 3) })}
                       placeholder="0,000"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Valor de compra</Label>
-                    <Input
-                      inputMode="decimal"
-                      value={toPtBrDecimal(item.purchasePrice)}
-                      onChange={(e) => updateItem(index, { purchasePrice: fromPtBrDecimal(e.target.value) })}
-                      placeholder="0,00"
-                      required
-                    />
-                  </div>
+                  {item.category !== "RAW_MATERIAL" ? (
+                    <div className="space-y-2">
+                      <Label>Valor de compra</Label>
+                      <Input
+                        inputMode="decimal"
+                        value={toPtBrDecimal(item.purchasePrice)}
+                        onChange={(e) => updateItem(index, { purchasePrice: fromPtBrDecimal(e.target.value, 2) })}
+                        placeholder="0,00"
+                        required
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 {item.category === "RAW_MATERIAL" ? (
@@ -225,7 +236,7 @@ export function MaterialDialog({
                     <Input
                       inputMode="decimal"
                       value={toPtBrDecimal(item.pricePerSquareMeter)}
-                      onChange={(e) => updateItem(index, { pricePerSquareMeter: fromPtBrDecimal(e.target.value) })}
+                      onChange={(e) => updateItem(index, { pricePerSquareMeter: fromPtBrDecimal(e.target.value, 2) })}
                       placeholder="0,00"
                       required
                     />

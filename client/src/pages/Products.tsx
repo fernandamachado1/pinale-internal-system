@@ -435,7 +435,7 @@ export default function Products() {
                 <Input
                   inputMode="decimal"
                   value={toPtBrDecimal(price)}
-                  onChange={(e) => setPrice(fromPtBrDecimal(e.target.value))}
+                  onChange={(e) => setPrice(fromPtBrDecimal(e.target.value, 2))}
                   placeholder="0,00"
                   required
                 />
@@ -492,7 +492,7 @@ export default function Products() {
                         <Input
                           inputMode="decimal"
                           value={toPtBrDecimal(item.qtyPerUnit)}
-                          onChange={(e) => setBomItem(index, { qtyPerUnit: fromPtBrDecimal(e.target.value) })}
+                          onChange={(e) => setBomItem(index, { qtyPerUnit: fromPtBrDecimal(e.target.value, 3) })}
                           placeholder="0,000"
                           required
                         />

@@ -423,7 +423,7 @@ export default function PurchaseOrders() {
                       <Input
                         inputMode="decimal"
                         value={toPtBrDecimal(item.qtyOrdered)}
-                        onChange={(e) => updateFormItem(index, { qtyOrdered: fromPtBrDecimal(e.target.value) })}
+                        onChange={(e) => updateFormItem(index, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
                         placeholder="0,000"
                       />
                     </div>
@@ -511,7 +511,7 @@ export default function PurchaseOrders() {
                         <Input
                           inputMode="decimal"
                           value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
-                          onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value) })}
+                          onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
                           placeholder="0,000"
                         />
                       </div>
@@ -523,7 +523,7 @@ export default function PurchaseOrders() {
                         <Input
                           inputMode="decimal"
                           value={toPtBrDecimal(line?.qtyOrdered ?? String(item.qtyOrdered))}
-                          onChange={(e) => updateReceiveLine(item.id, { qtyOrdered: fromPtBrDecimal(e.target.value) })}
+                          onChange={(e) => updateReceiveLine(item.id, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
                           placeholder="0,000"
                         />
                       </div>

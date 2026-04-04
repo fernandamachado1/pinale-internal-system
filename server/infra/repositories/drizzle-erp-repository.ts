@@ -36,13 +36,12 @@ import {
   type SaleListItem,
   type UpdateMaterialRequest,
   type UpdateProductInput,
-} from "@shared/schema";
-import type { IErpRepository } from "../../application/contracts/erp-repository";
-import type { CreateInventoryMovementData } from "../../application/contracts/sales-repository";
-import { db } from "../../db";
+} from "@shared/schema.ts";
+import type { IErpRepository } from "../../application/contracts/erp-repository.ts";
+import type { CreateInventoryMovementData } from "../../application/contracts/sales-repository.ts";
 
 export class DrizzleErpRepository implements IErpRepository {
-  constructor(private readonly database: any = db) {}
+  constructor(private readonly database: any) {}
 
   private async getNextProductionSortOrder(status: "BACKLOG" | "IN_PROGRESS" | "DONE"): Promise<number> {
     const [result] = (await this.database

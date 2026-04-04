@@ -1,0 +1,15 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "@shared/": "./shared/",
+    "drizzle-orm": "npm:drizzle-orm@0.39.3",
+    "drizzle-orm/": "npm:drizzle-orm@0.39.3/",
+    "drizzle-zod": "npm:drizzle-zod@0.7.0",
+    "jose": "npm:jose@6.1.0",
+    "zod": "npm:zod@3.24.2"
+  },
+  "tasks": {
+    "dev": "deno run --allow-env --allow-net --allow-read --watch ./api/main.ts",
+    "start": "deno run --allow-env --allow-net --allow-read ./api/main.ts"
+  }
+}

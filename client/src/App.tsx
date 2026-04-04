@@ -13,10 +13,13 @@ import Production from "@/pages/Production";
 import Sales from "@/pages/Sales";
 import Movements from "@/pages/Movements";
 import PurchaseOrders from "@/pages/PurchaseOrders";
+import Login from "@/pages/Login";
+import { AuthGate } from "@/components/AuthGate";
 
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={Login} />
       <Route path="/" component={Dashboard} />
       <Route path="/materials" component={Materials} />
       <Route path="/products" component={Products} />
@@ -35,7 +38,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <AuthGate>
+          <Router />
+        </AuthGate>
       </TooltipProvider>
     </QueryClientProvider>
   );

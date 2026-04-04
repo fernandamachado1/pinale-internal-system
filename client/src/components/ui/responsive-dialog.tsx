@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ChevronLeft } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import {
@@ -77,9 +78,12 @@ export function ResponsiveDialogContent(props: ResponsiveDialogContentProps) {
     const { children, className, noPadding, ...rest } = props as any;
     const padded = !noPadding && !(className ?? "").split(/\s+/).includes("p-0");
     return (
-      <DrawerContent {...rest} className={cn("max-h-[85vh] overflow-hidden", className)}>
-        <div className={cn("flex min-h-0 flex-col", padded ? "px-4" : undefined)}>
-          <div className={cn("flex-1 min-h-0 overflow-y-auto overflow-x-hidden", padded ? "pb-4 pt-2" : undefined)}>
+      <DrawerContent
+        {...rest}
+        className={cn("mt-0 h-[100dvh] max-h-[100dvh] overflow-hidden rounded-none border-0 [&>div:first-child]:hidden", className)}
+      >
+        <div className={cn("flex h-full min-h-0 flex-col", padded ? "px-4" : undefined)}>
+          <div className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden", padded ? "pb-4" : undefined)}>
             <ResponsiveDialogPaddingContext.Provider value={{ padded }}>{children}</ResponsiveDialogPaddingContext.Provider>
           </div>
         </div>
@@ -99,7 +103,23 @@ export function ResponsiveDialogContent(props: ResponsiveDialogContentProps) {
 
 export function ResponsiveDialogHeader(props: React.ComponentPropsWithoutRef<typeof DialogHeader>) {
   const { isMobile } = useResponsiveDialogContext();
-  if (isMobile) return <DrawerHeader {...(props as any)} className={cn("p-0", props.className)} />;
+  if (isMobile) {
+    const { children, className, ...rest } = props;
+    return (
+      <DrawerHeader {...(rest as any)} className={cn("mb-2 flex flex-row items-start gap-2 border-b pb-3 pt-3", className)}>
+        <DrawerClose asChild>
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="Voltar"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        </DrawerClose>
+        <div className="min-w-0 flex-1 space-y-1 text-left">{children}</div>
+      </DrawerHeader>
+    );
+  }
   return <DialogHeader {...props} />;
 }
 

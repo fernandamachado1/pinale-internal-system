@@ -1,4 +1,4 @@
-import { ValidationDomainError } from "../errors/domain-error";
+import { ValidationDomainError } from "../errors/domain-error.ts";
 
 export interface SaleLine {
   productId: number;

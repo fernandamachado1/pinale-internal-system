@@ -19,8 +19,8 @@ import type {
   PurchaseOrderItem,
   UpdateMaterialRequest,
   UpdateProductInput,
-} from "@shared/schema";
-import type { ISalesRepository } from "./sales-repository";
+} from "@shared/schema.ts";
+import type { ISalesRepository } from "./sales-repository.ts";
 
 export interface IErpRepository extends ISalesRepository {
   getMaterials(): Promise<Material[]>;

@@ -1,9 +1,9 @@
-import type { ConcludeProductionOrderInput } from "@shared/schema";
-import { InventoryMovement } from "../../domain/entities/inventory-movement";
-import { ProducedProductStock } from "../../domain/entities/produced-product-stock";
-import { ProductionOrder } from "../../domain/entities/production-order";
-import { NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
-import type { IErpRepository } from "../contracts/erp-repository";
+import type { ConcludeProductionOrderInput } from "@shared/schema.ts";
+import { InventoryMovement } from "../../domain/entities/inventory-movement.ts";
+import { ProducedProductStock } from "../../domain/entities/produced-product-stock.ts";
+import { ProductionOrder } from "../../domain/entities/production-order.ts";
+import { NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
+import type { IErpRepository } from "../contracts/erp-repository.ts";
 
 export interface ConcludeProductionOrderOutput {
   orderId: number;

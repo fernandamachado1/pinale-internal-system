@@ -1,10 +1,10 @@
-import type { InsertSale } from "@shared/schema";
-import { InventoryMovement } from "../../domain/entities/inventory-movement";
-import { Product } from "../../domain/entities/product";
-import { ProducedProductStock } from "../../domain/entities/produced-product-stock";
-import { SaleAggregate } from "../../domain/entities/sale";
-import { NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
-import type { ISalesRepository } from "../contracts/sales-repository";
+import type { InsertSale } from "@shared/schema.ts";
+import { InventoryMovement } from "../../domain/entities/inventory-movement.ts";
+import { Product } from "../../domain/entities/product.ts";
+import { ProducedProductStock } from "../../domain/entities/produced-product-stock.ts";
+import { SaleAggregate } from "../../domain/entities/sale.ts";
+import { NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
+import type { ISalesRepository } from "../contracts/sales-repository.ts";
 
 export interface CreateSaleOutput {
   saleId: number;

@@ -22,7 +22,7 @@ import {
   sales,
   saleItems,
   inventoryMovements,
-} from "./schema";
+} from "./schema.ts";
 
 export const errorSchemas = {
   validation: z.object({ message: z.string(), field: z.string().optional() }),

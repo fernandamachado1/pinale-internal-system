@@ -1,6 +1,6 @@
-import type { CreateManyMaterialsInput, InsertMaterial, Material, UpdateMaterialRequest } from "@shared/schema";
-import type { IErpRepository } from "../contracts/erp-repository";
-import { ConflictDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
+import type { CreateManyMaterialsInput, InsertMaterial, Material, UpdateMaterialRequest } from "@shared/schema.ts";
+import type { IErpRepository } from "../contracts/erp-repository.ts";
+import { ConflictDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
 
 function normalizeMaterialInput(input: InsertMaterial | UpdateMaterialRequest): InsertMaterial | UpdateMaterialRequest {
   const normalized = { ...input };

@@ -4,19 +4,20 @@
 
 Nexus ERP is an internal management system built for Ateliê Pinale, a small artisan workshop. It replaces manual paper-and-pen tracking with a centralized web application for managing materials (insumos), products (artigos), production orders, sales, and inventory movements. The entire UI is localized in Brazilian Portuguese (pt-BR).
 
-The system is a full-stack TypeScript monorepo with a React frontend, Express backend, and PostgreSQL database. It follows an MVP scope focused on five core modules: Materials, Products (with technical specs/recipes), Production, Sales, and Inventory Movements. A dashboard aggregates key metrics and charts.
+The system is a full-stack TypeScript monorepo with a React frontend, a Deno (Hono) API, and a PostgreSQL database (Supabase). It follows an MVP scope focused on five core modules: Materials, Products (with technical specs/recipes), Production, Sales, and Inventory Movements. A dashboard aggregates key metrics and charts.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
 
-## System Architecture
+## System Architecture (current)
 
 ### Monorepo Structure
 
 ```
 client/          → React SPA (Vite)
-server/          → Express API server
+api/             → Deno (Hono) API server + static file serving
+server/          → Domain/use-cases (kept; no Express at runtime)
 shared/          → Shared schema, types, and route definitions
 migrations/      → Drizzle-generated migration files
 script/          → Build tooling
@@ -41,22 +42,22 @@ attached_assets/ → Requirements documents
 - The `@shared/routes` module defines API paths and Zod schemas used by both client and server, ensuring type safety across the stack
 - Path aliases: `@/` → `client/src/`, `@shared/` → `shared/`
 
-### Backend (server/)
+### Backend (api/)
 
-- **Framework**: Express 5 on Node.js
-- **Language**: TypeScript, run with `tsx` in development
+- **Runtime**: Deno
+- **Framework**: Hono
 - **API design**: RESTful JSON API under `/api/` prefix
-- **Route definitions**: Centralized in `shared/routes.ts` with Zod input validation schemas
-- **Storage layer**: `server/storage.ts` defines an `IStorage` interface implemented with direct Drizzle ORM queries — this abstraction allows swapping implementations
-- **Dev server**: Vite middleware is attached to the Express server for HMR in development; in production, static files are served from `dist/public`
+- **Auth**: Supabase Auth (JWT verified via Supabase JWKS)
+- **Database**: Supabase Postgres via Drizzle ORM (`DATABASE_URL`)
+- **Static serving**: In production the same Deno server serves `dist/public` with SPA fallback to `index.html`
 
 ### Database
 
 - **Database**: PostgreSQL (required, via `DATABASE_URL` environment variable)
 - **ORM**: Drizzle ORM with `drizzle-zod` for automatic Zod schema generation from table definitions
 - **Schema location**: `shared/schema.ts` — single source of truth for all table definitions, relations, and insert/update schemas
-- **Schema push**: `npm run db:push` uses `drizzle-kit push` to sync schema to database (no migration files needed for development)
-- **Connection**: `pg.Pool` from the `pg` package, configured in `server/db.ts`
+- **Schema push**: `yarn db:push` uses `drizzle-kit push` to sync schema to database
+- **Connection**: `pg.Pool` via Deno `npm:` compatibility, configured in `api/db.ts`
 
 **Database tables:**
 - `materials` — Raw materials/supplies with name, unit, and quantity
@@ -74,9 +75,11 @@ attached_assets/ → Requirements documents
 
 ### Build Process
 
-- **Development**: `npm run dev` — runs Express + Vite dev server via `tsx`
-- **Production build**: `npm run build` — Vite builds the client to `dist/public`, esbuild bundles the server to `dist/index.cjs`
-- **Production start**: `npm start` — runs the bundled server which serves static files
+- **Development**:
+  - `yarn dev:api` — runs the Deno API on `PORT` (default `8001`)
+  - `yarn dev` — runs Vite on `5173` and proxies `/api/*` to `API_PORT`
+- **Production build**: `yarn build` — Vite builds the client to `dist/public`
+- **Production start**: `yarn start` — runs the Deno server which serves static files + `/api/*`
 
 ### API Structure
 

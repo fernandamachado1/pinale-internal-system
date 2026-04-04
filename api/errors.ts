@@ -1,0 +1,40 @@
+import { z } from "zod";
+import { DomainError } from "../server/domain/errors/domain-error.ts";
+
+export type ErrorResponse = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+export function toErrorResponse(err: unknown): ErrorResponse {
+  if (err instanceof z.ZodError) {
+    return {
+      status: 400,
+      body: {
+        message: err.errors[0]?.message ?? "Validation error",
+        field: err.errors[0]?.path.join("."),
+        code: "VALIDATION_ERROR",
+      },
+    };
+  }
+
+  if (err instanceof DomainError) {
+    return {
+      status: err.statusCode,
+      body: { message: err.message, code: err.code },
+    };
+  }
+
+  if (err instanceof Error) {
+    const message = err.message?.trim() ? err.message : "Internal server error";
+    const details =
+      typeof (err as any)?.detail === "string" && (err as any).detail.trim()
+        ? String((err as any).detail)
+        : undefined;
+
+    return { status: 500, body: details ? { message, details } : { message } };
+  }
+
+  return { status: 500, body: { message: "Internal server error" } };
+}
+

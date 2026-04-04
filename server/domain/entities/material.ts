@@ -1,4 +1,4 @@
-import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error";
+import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error.ts";
 
 export type MaterialCategory = "PACKAGING" | "NOTIONS" | "RAW_MATERIAL";
 export type UnitOfMeasure = "UNIT" | "SQUARE_METER" | "METER";

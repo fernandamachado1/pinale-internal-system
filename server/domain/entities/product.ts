@@ -1,5 +1,5 @@
-import { ValidationDomainError } from "../errors/domain-error";
-import { TechnicalSpecItem } from "./technical-spec-item";
+import { ValidationDomainError } from "../errors/domain-error.ts";
+import { TechnicalSpecItem } from "./technical-spec-item.ts";
 
 export interface ProductProps {
   id: number;

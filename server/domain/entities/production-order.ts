@@ -1,4 +1,4 @@
-import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error";
+import { InvalidOperationDomainError, ValidationDomainError } from "../errors/domain-error.ts";
 
 export type ProductionOrderStatus = "BACKLOG" | "IN_PROGRESS" | "DONE";
 export type ActiveProductionOrderStatus = Exclude<ProductionOrderStatus, "DONE">;

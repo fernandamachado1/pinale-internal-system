@@ -1,4 +1,4 @@
-import type { IErpRepository } from "../contracts/erp-repository";
+import type { IErpRepository } from "../contracts/erp-repository.ts";
 
 export interface PeriodInput {
   from?: Date;

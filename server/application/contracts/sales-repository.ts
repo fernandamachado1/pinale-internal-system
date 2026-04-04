@@ -1,4 +1,4 @@
-import type { InventoryMovement, Product, ProducedProductStockWithProduct, Sale, SaleItem, SaleListItem } from "@shared/schema";
+import type { InventoryMovement, Product, ProducedProductStockWithProduct, Sale, SaleItem, SaleListItem } from "@shared/schema.ts";
 
 export interface CreateInventoryMovementData {
   entityType: "PRODUCT" | "MATERIAL";

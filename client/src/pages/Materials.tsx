@@ -90,59 +90,67 @@ export default function Materials() {
                   <TableHead className="hidden lg:table-cell">Unidade de medida</TableHead>
                   <TableHead className="hidden lg:table-cell text-right">Valor compra</TableHead>
                   <TableHead className="hidden lg:table-cell text-right">Valor por m²</TableHead>
+                  <TableHead className="hidden lg:table-cell text-right">Total m²</TableHead>
                   <TableHead className="text-right">Estoque</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="hidden sm:table-cell">#{item.id}</TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell className="hidden md:table-cell">{categoryLabels[item.category]}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{unitLabels[item.unitOfMeasure]}</TableCell>
-                    <TableCell className="hidden lg:table-cell text-right">{brl(Number(item.purchasePrice))}</TableCell>
-                    <TableCell className="hidden lg:table-cell text-right">
-                      {item.pricePerSquareMeter ? brl(Number(item.pricePerSquareMeter)) : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">{item.stockQty}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="hidden sm:flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setEditingMaterial(item)}>
-                          Editar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => deleteMutation.mutate(item.id)}
-                        >
-                          Inativar
-                        </Button>
-                      </div>
+                {filtered.map((item) => {
+                  const isRawMaterial = item.category === "RAW_MATERIAL";
+                  const pricePerSquareMeter = item.pricePerSquareMeter === null ? null : Number(item.pricePerSquareMeter);
+                  const totalPerSquareMeter = isRawMaterial && pricePerSquareMeter !== null
+                    ? pricePerSquareMeter * Number(item.stockQty)
+                    : null;
 
-                      <div className="flex justify-end sm:hidden">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => setEditingMaterial(item)}>Editar</DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              disabled={deleteMutation.isPending}
-                              onSelect={() => deleteMutation.mutate(item.id)}
-                            >
-                              Inativar
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className="hidden sm:table-cell">#{item.id}</TableCell>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell className="hidden md:table-cell">{categoryLabels[item.category]}</TableCell>
+                      <TableCell className="hidden lg:table-cell">{unitLabels[item.unitOfMeasure]}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-right">{isRawMaterial ? "-" : brl(Number(item.purchasePrice))}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-right">{pricePerSquareMeter !== null ? brl(pricePerSquareMeter) : "-"}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-right">{totalPerSquareMeter !== null ? brl(totalPerSquareMeter) : "-"}</TableCell>
+                      <TableCell className="text-right">{item.stockQty}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="hidden sm:flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setEditingMaterial(item)}>
+                            Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => deleteMutation.mutate(item.id)}
+                          >
+                            Inativar
+                          </Button>
+                        </div>
+
+                        <div className="flex justify-end sm:hidden">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => setEditingMaterial(item)}>Editar</DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                disabled={deleteMutation.isPending}
+                                onSelect={() => deleteMutation.mutate(item.id)}
+                              >
+                                Inativar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (

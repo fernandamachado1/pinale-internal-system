@@ -4,15 +4,15 @@ import type {
   PurchaseOrderItem,
   PurchaseOrderWithItems,
   UpdatePurchaseOrderInput,
-} from "@shared/schema";
-import type { IErpRepository } from "../contracts/erp-repository";
-import { Material } from "../../domain/entities/material";
-import { InventoryMovement } from "../../domain/entities/inventory-movement";
+} from "@shared/schema.ts";
+import type { IErpRepository } from "../contracts/erp-repository.ts";
+import { Material } from "../../domain/entities/material.ts";
+import { InventoryMovement } from "../../domain/entities/inventory-movement.ts";
 import {
   InvalidOperationDomainError,
   NotFoundDomainError,
   ValidationDomainError,
-} from "../../domain/errors/domain-error";
+} from "../../domain/errors/domain-error.ts";
 
 function toQty3(value: number): string {
   return value.toFixed(3);

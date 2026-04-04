@@ -1,6 +1,6 @@
-import type { SaleListItem } from "@shared/schema";
-import type { ISalesRepository } from "../contracts/sales-repository";
-import { NotFoundDomainError } from "../../domain/errors/domain-error";
+import type { SaleListItem } from "@shared/schema.ts";
+import type { ISalesRepository } from "../contracts/sales-repository.ts";
+import { NotFoundDomainError } from "../../domain/errors/domain-error.ts";
 
 export class ListSalesUseCase {
   constructor(private readonly repository: ISalesRepository) {}

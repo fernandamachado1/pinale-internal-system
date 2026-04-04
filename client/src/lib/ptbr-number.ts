@@ -4,12 +4,15 @@ export function toPtBrDecimal(value: string | number | null | undefined): string
   return asString.replace(".", ",");
 }
 
-export function fromPtBrDecimal(value: string): string {
+export function fromPtBrDecimal(value: string, maxFractionDigits?: number): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
 
   // Keep digits, comma, dot, minus
   let cleaned = trimmed.replace(/[^\d,.-]/g, "");
+
+  // Keep minus sign only at the beginning
+  cleaned = cleaned.replace(/(?!^)-/g, "");
 
   // Collapse multiple commas/dots to a single decimal separator
   const commaParts = cleaned.split(",");
@@ -20,12 +23,18 @@ export function fromPtBrDecimal(value: string): string {
 
   // If the user uses pt-BR style "1.234,56", treat dot as thousands separator
   if (cleaned.includes(",") && cleaned.includes(".")) {
-    return cleaned.replace(/\./g, "").replace(",", ".");
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (cleaned.includes(",")) {
+    // If only comma exists, treat it as decimal separator
+    cleaned = cleaned.replace(",", ".");
   }
 
-  // If only comma exists, treat it as decimal separator
-  if (cleaned.includes(",")) return cleaned.replace(",", ".");
+  if (maxFractionDigits !== undefined) {
+    const [integerPart, fractionPart] = cleaned.split(".");
+    if (fractionPart !== undefined) {
+      return `${integerPart}.${fractionPart.slice(0, Math.max(0, maxFractionDigits))}`;
+    }
+  }
 
   return cleaned;
 }
-
