@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Material } from "@shared/schema";
+import { useLocation } from "wouter";
 import { Layout } from "@/components/Layout";
 import { useDeleteMaterial, useMaterials } from "@/hooks/use-erp";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
@@ -12,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Layers, MoreVertical, Plus } from "lucide-react";
 import { brl } from "@/lib/format";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const categoryLabels: Record<Material["category"], string> = {
   PACKAGING: "Embalagens",
@@ -28,6 +30,8 @@ const unitLabels: Record<Material["unitOfMeasure"], string> = {
 export default function Materials() {
   const { data: materials, isLoading, error, refetch } = useMaterials();
   const deleteMutation = useDeleteMaterial();
+  const isMobile = useIsMobile();
+  const [, navigate] = useLocation();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -38,6 +42,22 @@ export default function Materials() {
     [materials, searchTerm],
   );
 
+  const openCreate = () => {
+    if (isMobile) {
+      navigate("/materials/new");
+      return;
+    }
+    setIsCreateOpen(true);
+  };
+
+  const openEdit = (item: Material) => {
+    if (isMobile) {
+      navigate(`/materials/${item.id}/edit`);
+      return;
+    }
+    setEditingMaterial(item);
+  };
+
   return (
     <Layout>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -46,7 +66,7 @@ export default function Materials() {
           Materiais
         </h1>
 
-        <Button onClick={() => setIsCreateOpen(true)}>
+        <Button onClick={openCreate}>
           <Plus className="w-4 h-4 mr-2" /> Novo Material
         </Button>
       </div>
@@ -115,7 +135,7 @@ export default function Materials() {
                       <TableCell className="text-right">{item.stockQty}</TableCell>
                       <TableCell className="text-right">
                         <div className="hidden sm:flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setEditingMaterial(item)}>
+                          <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
                             Editar
                           </Button>
                           <Button
@@ -136,7 +156,7 @@ export default function Materials() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => setEditingMaterial(item)}>Editar</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => openEdit(item)}>Editar</DropdownMenuItem>
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 disabled={deleteMutation.isPending}
@@ -169,7 +189,7 @@ export default function Materials() {
             <CardDescription>Materiais alimentam a ficha técnica e o consumo na produção.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => setIsCreateOpen(true)}>
+            <Button onClick={openCreate}>
               <Plus className="w-4 h-4 mr-2" /> Novo Material
             </Button>
           </CardContent>

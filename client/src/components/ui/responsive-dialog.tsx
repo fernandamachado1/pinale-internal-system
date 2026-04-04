@@ -12,16 +12,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer";
 
 type ResponsiveDialogContextValue = { isMobile: boolean };
 
@@ -46,26 +36,19 @@ export interface ResponsiveDialogProps {
 }
 
 export function ResponsiveDialog(props: ResponsiveDialogProps) {
-  const isMobile = useIsMobile();
-  const Root = isMobile ? Drawer : Dialog;
-
   return (
-    <ResponsiveDialogContext.Provider value={{ isMobile }}>
-      <Root {...props} />
+    <ResponsiveDialogContext.Provider value={{ isMobile: useIsMobile() }}>
+      <Dialog {...props} />
     </ResponsiveDialogContext.Provider>
   );
 }
 
 export function ResponsiveDialogTrigger(props: React.ComponentPropsWithoutRef<typeof DialogTrigger>) {
-  const { isMobile } = useResponsiveDialogContext();
-  const Trigger = isMobile ? DrawerTrigger : DialogTrigger;
-  return <Trigger {...props} />;
+  return <DialogTrigger {...props} />;
 }
 
 export function ResponsiveDialogClose(props: React.ComponentPropsWithoutRef<typeof DialogClose>) {
-  const { isMobile } = useResponsiveDialogContext();
-  const Close = isMobile ? DrawerClose : DialogClose;
-  return <Close {...props} />;
+  return <DialogClose {...props} />;
 }
 
 export type ResponsiveDialogContentProps = React.ComponentPropsWithoutRef<typeof DialogContent> & {
@@ -78,16 +61,19 @@ export function ResponsiveDialogContent(props: ResponsiveDialogContentProps) {
     const { children, className, noPadding, ...rest } = props as any;
     const padded = !noPadding && !(className ?? "").split(/\s+/).includes("p-0");
     return (
-      <DrawerContent
+      <DialogContent
         {...rest}
-        className={cn("mt-0 h-[100dvh] max-h-[100dvh] overflow-hidden rounded-none border-0 [&>div:first-child]:hidden", className)}
+        className={cn(
+          "left-0 top-0 h-[100dvh] max-h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 p-0 [&>button]:hidden",
+          className,
+        )}
       >
         <div className={cn("flex h-full min-h-0 flex-col", padded ? "px-4" : undefined)}>
           <div className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden", padded ? "pb-4" : undefined)}>
             <ResponsiveDialogPaddingContext.Provider value={{ padded }}>{children}</ResponsiveDialogPaddingContext.Provider>
           </div>
         </div>
-      </DrawerContent>
+      </DialogContent>
     );
   }
 
@@ -106,8 +92,8 @@ export function ResponsiveDialogHeader(props: React.ComponentPropsWithoutRef<typ
   if (isMobile) {
     const { children, className, ...rest } = props;
     return (
-      <DrawerHeader {...(rest as any)} className={cn("mb-2 flex flex-row items-start gap-2 border-b pb-3 pt-3", className)}>
-        <DrawerClose asChild>
+      <DialogHeader {...(rest as any)} className={cn("mb-2 flex flex-row items-start gap-2 border-b px-4 pb-3 pt-3", className)}>
+        <DialogClose asChild>
           <button
             type="button"
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:text-foreground"
@@ -115,9 +101,9 @@ export function ResponsiveDialogHeader(props: React.ComponentPropsWithoutRef<typ
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-        </DrawerClose>
+        </DialogClose>
         <div className="min-w-0 flex-1 space-y-1 text-left">{children}</div>
-      </DrawerHeader>
+      </DialogHeader>
     );
   }
   return <DialogHeader {...props} />;
@@ -128,7 +114,7 @@ export function ResponsiveDialogFooter(props: React.ComponentPropsWithoutRef<typ
   const { padded } = useResponsiveDialogPadding();
   if (isMobile)
     return (
-      <DrawerFooter
+      <DialogFooter
         {...(props as any)}
         className={cn(
           "sticky bottom-0 mt-4 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80",
@@ -141,13 +127,9 @@ export function ResponsiveDialogFooter(props: React.ComponentPropsWithoutRef<typ
 }
 
 export function ResponsiveDialogTitle(props: React.ComponentPropsWithoutRef<typeof DialogTitle>) {
-  const { isMobile } = useResponsiveDialogContext();
-  const Title = isMobile ? DrawerTitle : DialogTitle;
-  return <Title {...props} />;
+  return <DialogTitle {...props} />;
 }
 
 export function ResponsiveDialogDescription(props: React.ComponentPropsWithoutRef<typeof DialogDescription>) {
-  const { isMobile } = useResponsiveDialogContext();
-  const Description = isMobile ? DrawerDescription : DialogDescription;
-  return <Description {...props} />;
+  return <DialogDescription {...props} />;
 }

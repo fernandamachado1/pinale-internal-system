@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
+import { ArrowLeft } from "lucide-react";
 
 type MaterialCategory = InsertMaterial["category"];
 type UnitOfMeasure = InsertMaterial["unitOfMeasure"];
@@ -79,6 +80,8 @@ interface MaterialDialogProps {
   description?: string;
   initialName?: string;
   allowMultiple?: boolean;
+  asPage?: boolean;
+  onBack?: () => void;
 }
 
 export function MaterialDialog({
@@ -90,6 +93,8 @@ export function MaterialDialog({
   description,
   initialName,
   allowMultiple = true,
+  asPage = false,
+  onBack,
 }: MaterialDialogProps) {
   const createManyMutation = useCreateManyMaterials();
   const updateMutation = useUpdateMaterial();
@@ -118,6 +123,14 @@ export function MaterialDialog({
     setItems((current) => (current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index)));
   };
 
+  const closeView = () => {
+    if (asPage) {
+      onBack?.();
+      return;
+    }
+    onOpenChange(false);
+  };
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -128,7 +141,7 @@ export function MaterialDialog({
           data: toCreatePayload(items[0]),
         },
         {
-          onSuccess: () => onOpenChange(false),
+          onSuccess: closeView,
         },
       );
       return;
@@ -139,129 +152,168 @@ export function MaterialDialog({
       {
         onSuccess: (created) => {
           onCreated?.(created);
-          onOpenChange(false);
+          closeView();
         },
       },
     );
   };
 
+  const resolvedTitle = title ?? (isEditing ? "Editar material" : "Novo material");
+  const resolvedDescription = description ?? (isEditing ? "Atualize os dados do material selecionado." : "Cadastre um ou mais materiais no mesmo fluxo.");
+
+  const formContent = (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="max-h-[60vh] space-y-4 overflow-auto pr-1">
+        {items.map((item, index) => (
+          <div key={index} className="space-y-4 rounded-lg border p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Material {index + 1}</h3>
+              {!isEditing && allowMultiple ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(index)}>
+                  Remover
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} required />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Categoria</Label>
+                <Select
+                  value={item.category}
+                  onValueChange={(value) =>
+                    updateItem(index, {
+                      category: value as MaterialCategory,
+                      pricePerSquareMeter: value === "RAW_MATERIAL" ? item.pricePerSquareMeter || item.purchasePrice : item.pricePerSquareMeter,
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category.value} value={category.value ?? "NOTIONS"}>{category.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Unidade de medida</Label>
+                <Select value={item.unitOfMeasure} onValueChange={(value) => updateItem(index, { unitOfMeasure: value as UnitOfMeasure })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {unitOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value ?? "UNIT"}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Estoque inicial</Label>
+                <Input
+                  inputMode="decimal"
+                  value={toPtBrDecimal(item.stockQty)}
+                  onChange={(e) => updateItem(index, { stockQty: fromPtBrDecimal(e.target.value, 3) })}
+                  placeholder="0,000"
+                />
+              </div>
+              {item.category !== "RAW_MATERIAL" ? (
+                <div className="space-y-2">
+                  <Label>Valor de compra</Label>
+                  <Input
+                    inputMode="decimal"
+                    value={toPtBrDecimal(item.purchasePrice)}
+                    onChange={(e) => updateItem(index, { purchasePrice: fromPtBrDecimal(e.target.value, 2) })}
+                    placeholder="0,00"
+                    required
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            {item.category === "RAW_MATERIAL" ? (
+              <div className="space-y-2">
+                <Label>Valor por m²</Label>
+                <Input
+                  inputMode="decimal"
+                  value={toPtBrDecimal(item.pricePerSquareMeter)}
+                  onChange={(e) => updateItem(index, { pricePerSquareMeter: fromPtBrDecimal(e.target.value, 2) })}
+                  placeholder="0,00"
+                  required
+                />
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {asPage ? (
+        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            {!isEditing && allowMultiple ? (
+              <Button type="button" variant="outline" onClick={addItem}>
+                Adicionar novo material
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={closeView}>Cancelar</Button>
+            <Button type="submit" disabled={createManyMutation.isPending || updateMutation.isPending}>
+              {isEditing ? "Salvar" : allowMultiple ? "Criar materiais" : "Criar material"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <ResponsiveDialogFooter className="justify-between sm:justify-between">
+          <div>
+            {!isEditing && allowMultiple ? (
+              <Button type="button" variant="outline" onClick={addItem}>
+                Adicionar novo material
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={closeView}>Cancelar</Button>
+            <Button type="submit" disabled={createManyMutation.isPending || updateMutation.isPending}>
+              {isEditing ? "Salvar" : allowMultiple ? "Criar materiais" : "Criar material"}
+            </Button>
+          </div>
+        </ResponsiveDialogFooter>
+      )}
+    </form>
+  );
+
+  if (asPage) {
+    return (
+      <div className="mx-auto w-full max-w-3xl space-y-4">
+        <header className="flex items-start gap-3 border-b pb-3">
+          <Button type="button" variant="outline" size="icon" onClick={closeView} aria-label="Voltar">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-xl font-semibold">{resolvedTitle}</h1>
+            <p className="text-sm text-muted-foreground">{resolvedDescription}</p>
+          </div>
+        </header>
+        {formContent}
+      </div>
+    );
+  }
+
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent className="max-w-3xl">
         <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle>{title ?? (isEditing ? "Editar material" : "Novo material")}</ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>
-            {description ?? (isEditing ? "Atualize os dados do material selecionado." : "Cadastre um ou mais materiais no mesmo fluxo.")}
-          </ResponsiveDialogDescription>
+          <ResponsiveDialogTitle>{resolvedTitle}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>{resolvedDescription}</ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="max-h-[60vh] space-y-4 overflow-auto pr-1">
-            {items.map((item, index) => (
-              <div key={index} className="space-y-4 rounded-lg border p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">Material {index + 1}</h3>
-                  {!isEditing && allowMultiple ? (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => removeItem(index)}>
-                      Remover
-                    </Button>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Nome</Label>
-                  <Input value={item.name} onChange={(e) => updateItem(index, { name: e.target.value })} required />
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Categoria</Label>
-                    <Select
-                      value={item.category}
-                      onValueChange={(value) =>
-                        updateItem(index, {
-                          category: value as MaterialCategory,
-                          pricePerSquareMeter: value === "RAW_MATERIAL" ? item.pricePerSquareMeter || item.purchasePrice : item.pricePerSquareMeter,
-                        })
-                      }
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category.value} value={category.value ?? "NOTIONS"}>{category.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Unidade de medida</Label>
-                    <Select value={item.unitOfMeasure} onValueChange={(value) => updateItem(index, { unitOfMeasure: value as UnitOfMeasure })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {unitOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value ?? "UNIT"}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Estoque inicial</Label>
-                    <Input
-                      inputMode="decimal"
-                      value={toPtBrDecimal(item.stockQty)}
-                      onChange={(e) => updateItem(index, { stockQty: fromPtBrDecimal(e.target.value, 3) })}
-                      placeholder="0,000"
-                    />
-                  </div>
-                  {item.category !== "RAW_MATERIAL" ? (
-                    <div className="space-y-2">
-                      <Label>Valor de compra</Label>
-                      <Input
-                        inputMode="decimal"
-                        value={toPtBrDecimal(item.purchasePrice)}
-                        onChange={(e) => updateItem(index, { purchasePrice: fromPtBrDecimal(e.target.value, 2) })}
-                        placeholder="0,00"
-                        required
-                      />
-                    </div>
-                  ) : null}
-                </div>
-
-                {item.category === "RAW_MATERIAL" ? (
-                  <div className="space-y-2">
-                    <Label>Valor por m²</Label>
-                    <Input
-                      inputMode="decimal"
-                      value={toPtBrDecimal(item.pricePerSquareMeter)}
-                      onChange={(e) => updateItem(index, { pricePerSquareMeter: fromPtBrDecimal(e.target.value, 2) })}
-                      placeholder="0,00"
-                      required
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-
-          <ResponsiveDialogFooter className="justify-between sm:justify-between">
-            <div>
-              {!isEditing && allowMultiple ? (
-                <Button type="button" variant="outline" onClick={addItem}>
-                  Adicionar novo material
-                </Button>
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createManyMutation.isPending || updateMutation.isPending}>
-                {isEditing ? "Salvar" : allowMultiple ? "Criar materiais" : "Criar material"}
-              </Button>
-            </div>
-          </ResponsiveDialogFooter>
-        </form>
+        {formContent}
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );

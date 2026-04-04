@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 
 import Dashboard from "@/pages/Dashboard";
 import Materials from "@/pages/Materials";
+import MaterialFormPage from "@/pages/MaterialFormPage";
 import Products from "@/pages/Products";
 import ProducedStock from "@/pages/ProducedStock";
 import Production from "@/pages/Production";
@@ -21,6 +22,8 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/" component={Dashboard} />
+      <Route path="/materials/new" component={MaterialFormPage} />
+      <Route path="/materials/:id/edit" component={MaterialFormPage} />
       <Route path="/materials" component={Materials} />
       <Route path="/products" component={Products} />
       <Route path="/produced-stock" component={ProducedStock} />
