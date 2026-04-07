@@ -137,7 +137,7 @@ export default function Dashboard() {
           <div>
             <h2 className="text-2xl font-bold text-foreground">Visão Geral</h2>
             <p className="text-sm text-muted-foreground">
-              Acompanhamento consolidado de produção e vendas do ateliê.
+              Indicadores, tendências e alertas do período selecionado.
             </p>
           </div>
 
