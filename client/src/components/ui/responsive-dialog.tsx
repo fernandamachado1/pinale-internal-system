@@ -80,7 +80,7 @@ export function ResponsiveDialogContent(props: ResponsiveDialogContentProps) {
   const { children, className, ...rest } = props as any;
   return (
     <ResponsiveDialogPaddingContext.Provider value={{ padded: true }}>
-      <DialogContent {...rest} className={cn("overflow-x-hidden", className)}>
+      <DialogContent {...rest} className={cn("max-h-[90vh] overflow-y-auto overflow-x-hidden", className)}>
         {children}
       </DialogContent>
     </ResponsiveDialogPaddingContext.Provider>
