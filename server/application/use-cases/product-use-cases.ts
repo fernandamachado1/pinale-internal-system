@@ -64,6 +64,7 @@ export class CreateProductUseCase {
         name,
         price: input.product.price,
         isActive: input.product.isActive,
+        description: input.product.description ?? "",
       });
 
       await txRepository.replaceActiveBom(created.id, {

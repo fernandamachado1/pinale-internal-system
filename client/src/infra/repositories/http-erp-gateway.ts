@@ -154,6 +154,11 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<{ sale: unknown; items: unknown[] }>(res, "Falha ao criar venda");
   }
 
+  async deleteSale(id: number): Promise<void> {
+    const res = await apiFetch(buildUrl(api.sales.delete.path, { id }), { method: "DELETE" });
+    await throwIfNotOk(res, "Falha ao excluir venda");
+  }
+
   async getInventoryMovements(): Promise<MovementWithDetails[]> {
     const res = await apiFetch(api.inventory.movements.path);
     return parseJsonResponse<MovementWithDetails[]>(res, "Falha ao carregar movimentações de estoque");

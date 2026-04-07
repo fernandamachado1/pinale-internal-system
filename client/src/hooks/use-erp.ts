@@ -21,6 +21,7 @@ import {
   MoveProductionOrderUseCase,
   CreateProductionOrderUseCase,
   CreateSaleUseCase,
+  DeleteSaleUseCase,
   DeleteMaterialUseCase,
   DeleteProductUseCase,
   GetDashboardReportUseCase,
@@ -60,6 +61,7 @@ const concludeProductionOrderUseCase = new ConcludeProductionOrderUseCase(gatewa
 
 const getSalesUseCase = new GetSalesUseCase(gateway);
 const createSaleUseCase = new CreateSaleUseCase(gateway);
+const deleteSaleUseCase = new DeleteSaleUseCase(gateway);
 
 const getInventoryMovementsUseCase = new GetInventoryMovementsUseCase(gateway);
 const getDashboardReportUseCase = new GetDashboardReportUseCase(gateway);
@@ -217,6 +219,7 @@ export function useReceivePurchaseOrder() {
     mutationFn: ({ id, data }: { id: number; data: ReceivePurchaseOrderInput }) => receivePurchaseOrderUseCase.execute(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
       message.success("Recebimento registrado com sucesso.");
     },
     onError: message.error,
@@ -309,6 +312,8 @@ export function useMoveProductionOrder() {
     mutationFn: ({ id, data }: { id: number; data: { status: "BACKLOG" | "IN_PROGRESS"; orderedIds: number[] } }) => moveProductionOrderUseCase.execute(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Ordem de produção atualizada com sucesso.");
     },
     onError: message.error,
@@ -350,6 +355,22 @@ export function useCreateSale() {
       queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Venda registrada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useDeleteSale() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (id: number) => deleteSaleUseCase.execute(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      message.success("Venda excluída com sucesso.");
     },
     onError: message.error,
   });

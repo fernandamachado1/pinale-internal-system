@@ -1,13 +1,25 @@
 import { useMemo, useState } from "react";
+import type { SaleListItem } from "@shared/schema";
 import { Layout } from "@/components/Layout";
-import { useCreateSale, useProducedProductStocks, useProducts, useSales } from "@/hooks/use-erp";
+import { useCreateSale, useDeleteSale, useProducedProductStocks, useProducts, useSales } from "@/hooks/use-erp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogTrigger } from "@/components/ui/responsive-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,10 +39,13 @@ export default function Sales() {
   const { data: products, error: productsError } = useProducts();
   const { data: producedStocks, error: stocksError } = useProducedProductStocks();
   const createMutation = useCreateSale();
+  const deleteMutation = useDeleteSale();
 
   const [isOpen, setIsOpen] = useState(false);
   const [items, setItems] = useState<SaleItem[]>([emptyItem()]);
+  const [saleToDelete, setSaleToDelete] = useState<SaleListItem | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("PIX");
+  const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
 
   const activeProducts = useMemo(() => products?.filter((p) => p.isActive === 1) ?? [], [products]);
 
@@ -88,6 +103,7 @@ export default function Sales() {
     createMutation.mutate(
       {
         paymentMethod,
+        salesChannel,
         items: items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty) })),
       },
       { onSuccess: handleClose },
@@ -131,6 +147,20 @@ export default function Sales() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Canal de venda</Label>
+                <RadioGroup value={salesChannel} onValueChange={(value) => setSalesChannel(value as "ONLINE" | "PHYSICAL")} className="grid gap-3">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="ONLINE" id="sales-channel-online" />
+                    <Label htmlFor="sales-channel-online">Online</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="PHYSICAL" id="sales-channel-physical" />
+                    <Label htmlFor="sales-channel-physical">Físico</Label>
+                  </div>
+                </RadioGroup>
               </div>
 
               <Separator />
@@ -195,7 +225,7 @@ export default function Sales() {
                 Total: {brl(total)}
               </div>
 
-              <ResponsiveDialogFooter>
+              <ResponsiveDialogFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={handleClose}>Cancelar</Button>
                 <Button type="submit" disabled={createMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
                   Salvar
@@ -232,11 +262,13 @@ export default function Sales() {
             <TableRow>
               <TableHead>Venda</TableHead>
               <TableHead>Produto</TableHead>
+              <TableHead>Canal</TableHead>
               <TableHead>Qtd</TableHead>
               <TableHead>Unitário</TableHead>
               <TableHead>Total Item</TableHead>
               <TableHead>Pagamento</TableHead>
               <TableHead>Data</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -244,11 +276,24 @@ export default function Sales() {
               <TableRow key={item.id}>
                 <TableCell>#{item.saleId}</TableCell>
                 <TableCell>{item.product.name}</TableCell>
-                <TableCell>{item.qty}</TableCell>
+                <TableCell>{item.sale.salesChannel === "PHYSICAL" ? "Físico" : "Online"}</TableCell>
+               <TableCell>{item.qty}</TableCell>
                 <TableCell>{brl(Number(item.unitPrice))}</TableCell>
                 <TableCell>{brl(Number(item.totalPrice))}</TableCell>
                 <TableCell>{item.sale.paymentMethod}</TableCell>
                 <TableCell>{formatDateTimeBR(item.sale.createdAt)}</TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="flex items-center justify-end gap-1"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => setSaleToDelete(item)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Excluir
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -266,6 +311,39 @@ export default function Sales() {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog
+        open={saleToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSaleToDelete(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir venda #{saleToDelete?.sale.id ?? ""}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja excluir esta venda e devolver as unidades ao estoque produzido?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSaleToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!saleToDelete) return;
+                deleteMutation.mutate(saleToDelete.sale.id, {
+                  onSuccess: () => setSaleToDelete(null),
+                });
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </Layout>
   );
 }

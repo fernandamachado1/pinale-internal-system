@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ExternalLink, FileText, MoreVertical, Package, Plus, Trash2, X } from "lucide-react";
 import { brl } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
+import { Textarea } from "@/components/ui/textarea";
 
 type BomFormItem = { materialId?: number; qtyPerUnit: string };
 
@@ -144,6 +145,13 @@ function createEmptyBomItem(): BomFormItem {
 
 function normalizeAttachmentUrl(value: string): string {
   const trimmedValue = value.trim();
+  if (!trimmedValue) return "";
+  try {
+    new URL(trimmedValue);
+  } catch {
+    return "";
+  }
+
   const fileId = getDriveFileId(trimmedValue);
   if (!fileId) return trimmedValue;
   return `https://drive.google.com/file/d/${fileId}/view`;
@@ -166,6 +174,7 @@ export default function Products() {
   const [createMaterialForNewRow, setCreateMaterialForNewRow] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
   const [bomItems, setBomItems] = useState<BomFormItem[]>([createEmptyBomItem()]);
   const [attachments, setAttachments] = useState<ProductAttachment[]>([]);
   const [attachmentInput, setAttachmentInput] = useState("");
@@ -188,6 +197,7 @@ export default function Products() {
     if (editingProduct) {
       setName(editingProduct.name);
       setPrice(editingProduct.price);
+      setDescription(editingProduct.description ?? "");
       setBomItems(editingProduct.bomItems.length > 0 ? editingProduct.bomItems.map((item) => ({ materialId: item.materialId, qtyPerUnit: String(item.qtyPerUnit) })) : [createEmptyBomItem()]);
       setAttachments((editingProduct.attachments ?? []).map((attachment) => coerceAttachment(attachment as ProductAttachment | string)));
       setAttachmentInput("");
@@ -197,6 +207,7 @@ export default function Products() {
 
     setName("");
     setPrice("");
+    setDescription("");
     setBomItems([createEmptyBomItem()]);
     setAttachments([]);
     setAttachmentInput("");
@@ -214,15 +225,9 @@ export default function Products() {
   const addAttachment = () => {
     const nextAttachment = normalizeAttachmentUrl(attachmentInput);
     if (!nextAttachment) {
-      setAttachmentError(null);
-      return;
-    }
-
-    const fileId = getDriveFileId(nextAttachment);
-    if (!fileId) {
-      const message = "Use um link de arquivo do Google Drive, por exemplo /file/d/.../view ou open?id=...";
+      const message = "Informe um link público válido (Google Drive, imagem ou pdf).";
       setAttachmentError(message);
-      toast({ title: "Link invalido", description: message, variant: "destructive" });
+      toast({ title: "Link inválido", description: message, variant: "destructive" });
       return;
     }
 
@@ -261,7 +266,7 @@ export default function Products() {
   const handleProductSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     const payload = {
-      product: { name, price, attachments, isActive: 1 },
+      product: { name, price, attachments, isActive: 1, description },
       technicalSpec: {
         bomItems: bomItems
           .filter((item) => item.materialId)
@@ -441,6 +446,10 @@ export default function Products() {
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Informações adicionais sobre o produto" />
+            </div>
 
             <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:p-5">
               <div className="flex items-center justify-between">
@@ -455,7 +464,7 @@ export default function Products() {
                 </Button>
               </div>
 
-              <div className="max-h-[50vh] space-y-3 overflow-auto pr-1">
+              <div className="space-y-3">
                 {bomItems.map((item, index) => (
                   <div key={index} className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
                     <div className="flex items-center justify-between">
@@ -555,7 +564,7 @@ export default function Products() {
               )}
             </div>
 
-            <ResponsiveDialogFooter>
+            <ResponsiveDialogFooter className="justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>Salvar</Button>
             </ResponsiveDialogFooter>

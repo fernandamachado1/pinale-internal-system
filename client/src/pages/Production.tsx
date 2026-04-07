@@ -26,7 +26,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarIcon, Factory, GripVertical, Package, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -258,6 +257,7 @@ function ColumnDropZone({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const theme = columnTheme[status];
+  const visibleOrders = status === "DONE" ? [] : orders;
 
   return (
     <section
@@ -270,12 +270,12 @@ function ColumnDropZone({
           <h2 className="text-sm font-semibold sm:text-base">{columnMeta[status].title}</h2>
           <p className="text-xs text-muted-foreground sm:text-sm">{columnMeta[status].description}</p>
         </div>
-        <Badge className={theme.badge}>{orders.length}</Badge>
+        <Badge className={theme.badge}>{visibleOrders.length}</Badge>
       </div>
 
       <SortableContext id={status} items={orders.map((order) => String(order.id))} strategy={rectSortingStrategy}>
         <div className="flex flex-1 flex-col gap-3">
-          {orders.length > 0 ? (
+          {visibleOrders.length > 0 ? (
             children
           ) : (
             <div className={`flex flex-1 items-center justify-center rounded-xl border border-dashed p-4 text-xs sm:p-6 sm:text-sm ${theme.empty}`}>
@@ -314,7 +314,6 @@ export default function Production() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [productId, setProductId] = useState("");
   const [qtyPlanned, setQtyPlanned] = useState("1");
-  const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
   const [dueAt, setDueAt] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
@@ -340,13 +339,12 @@ export default function Production() {
       ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 12, 0, 0, 0).toISOString()
       : null;
     createMutation.mutate(
-      { productId: Number(productId), qtyPlanned: Number(qtyPlanned), salesChannel, dueAt: dueAtIso },
+      { productId: Number(productId), qtyPlanned: Number(qtyPlanned), salesChannel: "ONLINE", dueAt: dueAtIso },
       {
         onSuccess: () => {
           setIsCreateOpen(false);
           setProductId("");
           setQtyPlanned("1");
-          setSalesChannel("ONLINE");
           setDueAt(undefined);
         },
       },
@@ -487,33 +485,20 @@ export default function Production() {
               <ResponsiveDialogDescription>A nova OP entra no backlog. Os materiais serão baixados quando ela entrar em produção.</ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
 
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Canal de venda</Label>
-                <RadioGroup value={salesChannel} onValueChange={(value) => setSalesChannel(value as "ONLINE" | "PHYSICAL")} className="grid gap-3">
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="ONLINE" id="sales-channel-online" />
-                    <Label htmlFor="sales-channel-online">Online</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="PHYSICAL" id="sales-channel-physical" />
-                    <Label htmlFor="sales-channel-physical">Físico</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Produto</Label>
-                <Select value={productId} onValueChange={setProductId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    {activeProducts.map((product) => (
-                      <SelectItem key={product.id} value={String(product.id)}>{product.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
+            <form onSubmit={handleCreate} className="flex min-h-[320px] flex-col gap-4">
+              <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+                <div className="space-y-2">
+                  <Label>Produto</Label>
+                  <Select value={productId} onValueChange={setProductId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      {activeProducts.map((product) => (
+                        <SelectItem key={product.id} value={String(product.id)}>{product.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                 <Label>Quantidade planejada</Label>
                 <Input type="number" min="1" value={qtyPlanned} onChange={(e) => setQtyPlanned(e.target.value)} />
               </div>
@@ -550,12 +535,11 @@ export default function Production() {
                   <div><strong>Baixa de materiais:</strong> ao mover para Em produção</div>
                   <div><strong>Materiais na ficha:</strong> {selectedProduct.bomItems.length}</div>
                   <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
-                  <div><strong>Canal:</strong> {salesChannel === "PHYSICAL" ? "Físico" : "Online"}</div>
                   <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
                 </div>
               ) : null}
-
-              <ResponsiveDialogFooter>
+              </div>
+              <ResponsiveDialogFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
                 <Button type="submit" disabled={createMutation.isPending || !productId}>Criar</Button>
               </ResponsiveDialogFooter>
@@ -612,13 +596,18 @@ export default function Production() {
 
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2">
-              {columnOrder.map((status) => (
-                <ColumnDropZone key={status} status={status} orders={boardState[status] ?? []}>
-                  {(boardState[status] ?? []).map((order) => (
-                    <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />
-                  ))}
+            {columnOrder.map((status) => {
+              const columnOrders = boardState[status] ?? [];
+              return (
+                <ColumnDropZone key={status} status={status} orders={columnOrders}>
+                  {status === "DONE"
+                    ? null
+                    : columnOrders.map((order) => (
+                        <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />
+                      ))}
                 </ColumnDropZone>
-              ))}
+              );
+            })}
             </div>
 
             <DragOverlay>

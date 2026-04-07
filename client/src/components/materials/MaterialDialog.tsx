@@ -2,12 +2,21 @@ import { useEffect, useState } from "react";
 import type { InsertMaterial, Material } from "@shared/schema";
 import { useCreateManyMaterials, useUpdateMaterial } from "@/hooks/use-erp";
 import { Button } from "@/components/ui/button";
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { brl } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type MaterialCategory = InsertMaterial["category"];
 type UnitOfMeasure = InsertMaterial["unitOfMeasure"];
@@ -71,6 +80,13 @@ function fromMaterial(item: Material): MaterialFormValues {
   };
 }
 
+function ensureDefaultUnit(item: MaterialFormValues): MaterialFormValues {
+  if (item.category === "RAW_MATERIAL") {
+    return { ...item, unitOfMeasure: "SQUARE_METER" };
+  }
+  return item;
+}
+
 interface MaterialDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -82,6 +98,7 @@ interface MaterialDialogProps {
   allowMultiple?: boolean;
   asPage?: boolean;
   onBack?: () => void;
+  hideInitialStockField?: boolean;
 }
 
 export function MaterialDialog({
@@ -95,6 +112,7 @@ export function MaterialDialog({
   allowMultiple = true,
   asPage = false,
   onBack,
+  hideInitialStockField = false,
 }: MaterialDialogProps) {
   const createManyMutation = useCreateManyMaterials();
   const updateMutation = useUpdateMaterial();
@@ -104,14 +122,15 @@ export function MaterialDialog({
   useEffect(() => {
     if (!open) return;
     if (editMaterial) {
-      setItems([fromMaterial(editMaterial)]);
+      setItems([ensureDefaultUnit(fromMaterial(editMaterial))]);
       return;
     }
 
     const empty = createEmptyMaterialForm();
     if (initialName?.trim()) empty.name = initialName.trim();
-    setItems([empty]);
-  }, [open, editMaterial, initialName]);
+    if (hideInitialStockField) empty.stockQty = "0";
+    setItems([ensureDefaultUnit(empty)]);
+  }, [open, editMaterial, initialName, hideInitialStockField]);
 
   const updateItem = (index: number, patch: Partial<MaterialFormValues>) => {
     setItems((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
@@ -161,9 +180,32 @@ export function MaterialDialog({
   const resolvedTitle = title ?? (isEditing ? "Editar material" : "Novo material");
   const resolvedDescription = description ?? (isEditing ? "Atualize os dados do material selecionado." : "Cadastre um ou mais materiais no mesmo fluxo.");
 
+  const addMaterialButton = !isEditing && allowMultiple ? (
+    <Button type="button" variant="outline" onClick={addItem}>
+      Adicionar novo material
+    </Button>
+  ) : null;
+
+  const actionButtons = (
+    <>
+      <Button type="button" variant="outline" onClick={closeView}>
+        Cancelar
+      </Button>
+      <Button type="submit" disabled={createManyMutation.isPending || updateMutation.isPending}>
+        {isEditing ? "Salvar" : allowMultiple ? "Criar materiais" : "Criar material"}
+      </Button>
+    </>
+  );
+
+  const formClassName = cn("flex flex-col", { "h-full": asPage });
+  const scrollContainerClassName = cn("space-y-4", {
+    "max-h-[60vh] overflow-auto pr-1": !asPage,
+    "flex-1 overflow-y-auto": asPage,
+  });
+
   const formContent = (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="max-h-[60vh] space-y-4 overflow-auto pr-1">
+    <form onSubmit={handleSubmit} className={formClassName}>
+      <div className={scrollContainerClassName}>
         {items.map((item, index) => (
           <div key={index} className="space-y-4 rounded-lg border p-4">
             <div className="flex items-center justify-between">
@@ -189,6 +231,7 @@ export function MaterialDialog({
                     updateItem(index, {
                       category: value as MaterialCategory,
                       pricePerSquareMeter: value === "RAW_MATERIAL" ? item.pricePerSquareMeter || item.purchasePrice : item.pricePerSquareMeter,
+                      unitOfMeasure: value === "RAW_MATERIAL" ? "SQUARE_METER" : item.unitOfMeasure,
                     })
                   }
                 >
@@ -214,15 +257,27 @@ export function MaterialDialog({
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Estoque inicial</Label>
-                <Input
-                  inputMode="decimal"
-                  value={toPtBrDecimal(item.stockQty)}
-                  onChange={(e) => updateItem(index, { stockQty: fromPtBrDecimal(e.target.value, 3) })}
-                  placeholder="0,000"
-                />
-              </div>
+              {!hideInitialStockField ? (
+                <div className="space-y-2">
+                  <Label>Estoque inicial</Label>
+                  <Input
+                    inputMode="decimal"
+                    value={toPtBrDecimal(item.stockQty)}
+                    onChange={(e) => {
+                      const decimals = item.unitOfMeasure === "UNIT" ? 0 : 3;
+                      updateItem(index, { stockQty: fromPtBrDecimal(e.target.value, decimals) });
+                    }}
+                    placeholder="0,000"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label>Estoque inicial</Label>
+                  <p className="text-xs text-muted-foreground">
+                    O estoque será registrado automaticamente ao receber a ordem de compra.
+                  </p>
+                </div>
+              )}
               {item.category !== "RAW_MATERIAL" ? (
                 <div className="space-y-2">
                   <Label>Valor de compra</Label>
@@ -247,6 +302,9 @@ export function MaterialDialog({
                   placeholder="0,00"
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Valor total em estoque: {brl(Number(item.pricePerSquareMeter || "0") * Number(item.stockQty || "0"))}
+                </p>
               </div>
             ) : null}
           </div>
@@ -254,44 +312,30 @@ export function MaterialDialog({
       </div>
 
       {asPage ? (
-        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            {!isEditing && allowMultiple ? (
-              <Button type="button" variant="outline" onClick={addItem}>
-                Adicionar novo material
-              </Button>
-            ) : null}
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={closeView}>Cancelar</Button>
-            <Button type="submit" disabled={createManyMutation.isPending || updateMutation.isPending}>
-              {isEditing ? "Salvar" : allowMultiple ? "Criar materiais" : "Criar material"}
-            </Button>
+        <div className="border-t pt-4">
+          {addMaterialButton ? (
+            <div className="pb-4">{addMaterialButton}</div>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            {actionButtons}
           </div>
         </div>
       ) : (
-        <ResponsiveDialogFooter className="justify-between sm:justify-between">
-          <div>
-            {!isEditing && allowMultiple ? (
-              <Button type="button" variant="outline" onClick={addItem}>
-                Adicionar novo material
-              </Button>
-            ) : null}
-          </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={closeView}>Cancelar</Button>
-            <Button type="submit" disabled={createManyMutation.isPending || updateMutation.isPending}>
-              {isEditing ? "Salvar" : allowMultiple ? "Criar materiais" : "Criar material"}
-            </Button>
-          </div>
-        </ResponsiveDialogFooter>
+        <>
+          {addMaterialButton ? (
+            <div className="border-t pt-4">{addMaterialButton}</div>
+          ) : null}
+          <ResponsiveDialogFooter className="justify-end gap-2">
+            {actionButtons}
+          </ResponsiveDialogFooter>
+        </>
       )}
     </form>
   );
 
   if (asPage) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-4">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
         <header className="flex items-start gap-3 border-b pb-3">
           <Button type="button" variant="outline" size="icon" onClick={closeView} aria-label="Voltar">
             <ArrowLeft className="h-4 w-4" />
@@ -301,7 +345,9 @@ export function MaterialDialog({
             <p className="text-sm text-muted-foreground">{resolvedDescription}</p>
           </div>
         </header>
-        {formContent}
+        <div className="flex-1 flex flex-col overflow-hidden px-6 py-6">
+          {formContent}
+        </div>
       </div>
     );
   }

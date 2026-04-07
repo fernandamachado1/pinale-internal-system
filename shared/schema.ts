@@ -53,6 +53,7 @@ export const products = pgTable("products", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+  description: text("description").notNull().default(""),
   attachments: jsonb("attachments").$type<ProductAttachment[]>().notNull().default([]),
   isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -104,6 +105,7 @@ export const productionOrders = pgTable("production_orders", {
 export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
   paymentMethod: text("payment_method").notNull(),
+  salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -207,6 +209,7 @@ export const insertProductSchema = createInsertSchema(products)
     price: z.string(),
     isActive: z.number().int().default(1),
     attachments: z.array(productAttachmentSchema).default([]),
+    description: z.string().default(""),
   });
 
 export const bomItemInputSchema = z.object({
@@ -226,10 +229,12 @@ export const updateProductInputSchema = z.object({
   technicalSpec: technicalSpecSchema.partial().optional(),
 });
 
+const saleChannelEnum = z.enum(["ONLINE", "PHYSICAL"]);
+
 export const insertProductionOrderSchema = z.object({
   productId: z.number().int().positive(),
   qtyPlanned: z.number().int().positive(),
-  salesChannel: z.enum(["ONLINE", "PHYSICAL"]),
+  salesChannel: saleChannelEnum,
   dueAt: z.string().datetime().optional().nullable(),
 });
 
@@ -245,6 +250,7 @@ export const createManyMaterialsSchema = z.object({
 
 export const insertSaleSchema = z.object({
   paymentMethod: z.string().min(1),
+  salesChannel: saleChannelEnum,
   items: z
     .array(
       z.object({

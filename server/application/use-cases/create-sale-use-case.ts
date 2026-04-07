@@ -58,6 +58,7 @@ export class CreateSaleUseCase {
       const createdSale = await txRepository.createSale({
         paymentMethod: input.paymentMethod,
         totalAmount: totalAmount.toFixed(2),
+        salesChannel: input.salesChannel,
       });
 
       const createdItems = await txRepository.createSaleItems(

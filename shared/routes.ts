@@ -221,6 +221,11 @@ export const api = {
       input: insertSaleSchema,
       responses: { 201: saleSchema.and(z.object({ items: z.array(saleItemSchema) })), 400: errorSchemas.badRequest },
     },
+    delete: {
+      method: "DELETE" as const,
+      path: "/api/sales/:id" as const,
+      responses: { 204: z.void(), 404: errorSchemas.notFound },
+    },
   },
 
   inventory: {

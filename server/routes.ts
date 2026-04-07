@@ -1,12 +1,13 @@
 import type { Express } from "express";
 import type { Server } from "http";
+//@ts-ignore
 import { api } from "@shared/routes";
 import { DrizzleErpRepository } from "./infra/repositories/drizzle-erp-repository";
 import { ErpController, handleControllerError } from "./presentation/erp-controller";
 import { SalesController } from "./presentation/sales-controller";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  const repository = new DrizzleErpRepository();
+  const repository = new DrizzleErpRepository({});
   const controller = new ErpController(repository);
   const salesController = new SalesController(repository);
 
@@ -45,6 +46,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(api.sales.list.path, withHandler((req, res) => salesController.listSales(req, res)));
   app.get(api.sales.get.path, withHandler((req, res) => salesController.getSale(req, res)));
   app.post(api.sales.create.path, withHandler((req, res) => salesController.createSale(req, res)));
+  app.delete(api.sales.delete.path, withHandler((req, res) => salesController.deleteSale(req, res)));
 
   app.get(api.inventory.movements.path, withHandler((req, res) => controller.listInventoryMovements(req, res)));
 

@@ -110,7 +110,7 @@ export default function Materials() {
                   <TableHead className="hidden lg:table-cell">Unidade de medida</TableHead>
                   <TableHead className="hidden lg:table-cell text-right">Valor compra</TableHead>
                   <TableHead className="hidden lg:table-cell text-right">Valor por m²</TableHead>
-                  <TableHead className="hidden lg:table-cell text-right">Total m²</TableHead>
+                  <TableHead className="hidden lg:table-cell text-right">Valor total em estoque</TableHead>
                   <TableHead className="text-right">Estoque</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>

@@ -123,38 +123,49 @@ export default function Dashboard() {
   return (
     <Layout>
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Visão Geral</h2>
-          <p className="text-sm text-muted-foreground">
-            Acompanhamento consolidado de produção e vendas do ateliê.
+      <div className="space-y-8">
+        <section className="rounded-xl border bg-card/60 px-4 py-6 min-h-[104px] flex flex-col justify-center">
+          <p className="text-base font-semibold text-primary tracking-tight">
+            Bem-vindo ao Pinale ERP
           </p>
-        </div>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Aqui você acompanha produção, estoque e vendas do ateliê.
+          </p>
+        </section>
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                "gap-2 w-full justify-start sm:min-w-[220px] sm:w-auto",
-                !from && "text-muted-foreground",
-              )}
-            >
-              <CalendarIcon className="w-4 h-4" />
-              {rangeLabel}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align={isMobile ? "start" : "end"}>
-            <Calendar
-              mode="range"
-              selected={range}
-              onSelect={(r) => r && setRange(r)}
-              numberOfMonths={isMobile ? 1 : 2}
-              locale={ptBR}
-              disabled={{ after: new Date() }}
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">Visão Geral</h2>
+            <p className="text-sm text-muted-foreground">
+              Acompanhamento consolidado de produção e vendas do ateliê.
+            </p>
+          </div>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "gap-2 w-full justify-start sm:min-w-[220px] sm:w-auto",
+                  !from && "text-muted-foreground",
+                )}
+              >
+                <CalendarIcon className="w-4 h-4" />
+                {rangeLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align={isMobile ? "start" : "end"}>
+              <Calendar
+                mode="range"
+                selected={range}
+                onSelect={(r) => r && setRange(r)}
+                numberOfMonths={isMobile ? 1 : 2}
+                locale={ptBR}
+                disabled={{ after: new Date() }}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {error ? (

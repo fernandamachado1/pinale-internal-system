@@ -17,6 +17,7 @@ import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSelectField } from "@/components/materials/MaterialSelectField";
 import { ClipboardList, MoreVertical, Plus, Truck, X } from "lucide-react";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
+import { useToast } from "@/hooks/use-toast";
 
 type PurchaseOrderStatus = PurchaseOrderWithItems["status"];
 
@@ -69,6 +70,7 @@ export default function PurchaseOrders() {
   const updateMutation = useUpdatePurchaseOrder();
   const receiveMutation = useReceivePurchaseOrder();
   const cancelMutation = useCancelPurchaseOrder();
+  const { toast } = useToast();
 
   const activeMaterials = useMemo(() => (materials ?? []).filter((m) => m.isActive === 1), [materials]);
 
@@ -83,6 +85,7 @@ export default function PurchaseOrders() {
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
   const [materialDialogName, setMaterialDialogName] = useState("");
   const [materialDialogTargetItemId, setMaterialDialogTargetItemId] = useState<number | null>(null);
+  const [materialDialogHideInitialStockField, setMaterialDialogHideInitialStockField] = useState(false);
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -243,6 +246,7 @@ export default function PurchaseOrders() {
   const openCreateMaterialForReceiveItem = (item: { id: number; materialName: string }) => {
     setMaterialDialogTargetItemId(item.id);
     setMaterialDialogName(item.materialName);
+    setMaterialDialogHideInitialStockField(true);
     setMaterialDialogOpen(true);
   };
 
@@ -250,6 +254,11 @@ export default function PurchaseOrders() {
     const first = created[0];
     if (!first || materialDialogTargetItemId === null) return;
     updateReceiveLine(materialDialogTargetItemId, { materialId: first.id, materialName: first.name });
+    toast({
+      title: "Material criado",
+      description: `Material ${first.name} vinculado ao item da ordem.`,
+    });
+    setMaterialDialogHideInitialStockField(false);
   };
 
   return (
@@ -397,8 +406,8 @@ export default function PurchaseOrders() {
             <ResponsiveDialogDescription>Adicione itens e quantidades. Selecione um material ou informe o nome livre.</ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
-          <form onSubmit={submitOrder} className="space-y-4">
-            <div className="max-h-[60vh] space-y-4 overflow-auto pr-1">
+          <form onSubmit={submitOrder} className="flex min-h-[320px] flex-col gap-4">
+            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
               {formItems.map((item, index) => (
                 <div key={item.id ?? index} className="space-y-3 rounded-lg border p-4">
                   <div className="flex items-center justify-between">
@@ -447,7 +456,7 @@ export default function PurchaseOrders() {
               </button>
             </div>
 
-            <ResponsiveDialogFooter>
+            <ResponsiveDialogFooter className="justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
@@ -466,90 +475,92 @@ export default function PurchaseOrders() {
             <ResponsiveDialogDescription>Informe “Receber agora”. Para itens sem material, você pode vincular/criar um material antes de confirmar.</ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
-          {receivingOrder ? (
-            <div className="max-h-[60vh] space-y-4 overflow-auto pr-1">
-              {receivingOrder.items.map((item) => {
-                const line = receiveLines.find((l) => l.id === item.id);
-                const remaining = Number(item.qtyOrdered) - Number(item.qtyReceived);
-                const currentMaterialId = item.materialId ?? line?.materialId ?? null;
-                const currentMaterialName = item.materialId ? item.materialName : line?.materialName ?? item.materialName;
-                return (
-                  <div key={item.id} className="space-y-3 rounded-lg border p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold">{item.materialName}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Pedido: {item.qtyOrdered} · Já recebido: {item.qtyReceived} · Restante: {remaining.toFixed(3)}
+          <div className="flex min-h-[320px] flex-col gap-4">
+            {receivingOrder ? (
+              <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+                {receivingOrder.items.map((item) => {
+                  const line = receiveLines.find((l) => l.id === item.id);
+                  const remaining = Number(item.qtyOrdered) - Number(item.qtyReceived);
+                  const currentMaterialId = item.materialId ?? line?.materialId ?? null;
+                  const currentMaterialName = item.materialId ? item.materialName : line?.materialName ?? item.materialName;
+                  return (
+                    <div key={item.id} className="space-y-3 rounded-lg border p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-semibold">{item.materialName}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Pedido: {item.qtyOrdered} · Já recebido: {item.qtyReceived} · Restante: {remaining.toFixed(3)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
+                        <div className="space-y-2">
+                          <Label>Material</Label>
+                          <MaterialSelectField
+                            materials={activeMaterials}
+                            value={{ materialId: currentMaterialId, materialName: currentMaterialName }}
+                            onChange={(next) => updateReceiveLine(item.id, { materialId: next.materialId, materialName: next.materialName })}
+                            placeholder="Buscar ou digitar"
+                          />
+
+                          {!currentMaterialId ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCreateMaterialForReceiveItem({ id: item.id, materialName: currentMaterialName })}
+                            >
+                              Criar material
+                            </Button>
+                          ) : null}
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Receber agora</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
+                            onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
+                            placeholder="0,000"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Qtd pedida (opcional)</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={toPtBrDecimal(line?.qtyOrdered ?? String(item.qtyOrdered))}
+                            onChange={(e) => updateReceiveLine(item.id, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
+                            placeholder="0,000"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Nome (opcional)</Label>
+                          <Input
+                            value={line?.materialName ?? item.materialName}
+                            onChange={(e) => updateReceiveLine(item.id, { materialName: e.target.value })}
+                            disabled={Boolean(currentMaterialId)}
+                          />
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+            ) : null}
 
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
-                      <div className="space-y-2">
-                        <Label>Material</Label>
-                        <MaterialSelectField
-                          materials={activeMaterials}
-                          value={{ materialId: currentMaterialId, materialName: currentMaterialName }}
-                          onChange={(next) => updateReceiveLine(item.id, { materialId: next.materialId, materialName: next.materialName })}
-                          placeholder="Buscar ou digitar"
-                        />
-
-                        {!currentMaterialId ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openCreateMaterialForReceiveItem({ id: item.id, materialName: currentMaterialName })}
-                          >
-                            Criar material
-                          </Button>
-                        ) : null}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Receber agora</Label>
-                        <Input
-                          inputMode="decimal"
-                          value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
-                          onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
-                          placeholder="0,000"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Qtd pedida (opcional)</Label>
-                        <Input
-                          inputMode="decimal"
-                          value={toPtBrDecimal(line?.qtyOrdered ?? String(item.qtyOrdered))}
-                          onChange={(e) => updateReceiveLine(item.id, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
-                          placeholder="0,000"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Nome (opcional)</Label>
-                        <Input
-                          value={line?.materialName ?? item.materialName}
-                          onChange={(e) => updateReceiveLine(item.id, { materialName: e.target.value })}
-                          disabled={Boolean(currentMaterialId)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-
-          <ResponsiveDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setReceiveOpen(false)}>
-              Fechar
-            </Button>
-            <Button type="button" onClick={submitReceive} disabled={receiveMutation.isPending}>
-              Confirmar recebimento
-            </Button>
-          </ResponsiveDialogFooter>
+            <ResponsiveDialogFooter className="justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setReceiveOpen(false)}>
+                Fechar
+              </Button>
+              <Button type="button" onClick={submitReceive} disabled={receiveMutation.isPending}>
+                Confirmar recebimento
+              </Button>
+            </ResponsiveDialogFooter>
+          </div>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
 
@@ -572,13 +583,17 @@ export default function PurchaseOrders() {
         open={materialDialogOpen}
         onOpenChange={(open) => {
           setMaterialDialogOpen(open);
-          if (!open) setMaterialDialogTargetItemId(null);
+          if (!open) {
+            setMaterialDialogTargetItemId(null);
+            setMaterialDialogHideInitialStockField(false);
+          }
         }}
         initialName={materialDialogName}
         allowMultiple={false}
         title="Criar material"
         description="Crie o material para vincular ao item recebido. Depois disso, o recebimento pode atualizar o estoque."
         onCreated={onMaterialCreated}
+        hideInitialStockField={materialDialogHideInitialStockField}
       />
     </Layout>
   );

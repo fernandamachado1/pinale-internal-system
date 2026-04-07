@@ -130,6 +130,13 @@ export class CreateSaleUseCase {
   }
 }
 
+export class DeleteSaleUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number): Promise<void> {
+    return this.gateway.deleteSale(id);
+  }
+}
+
 export class GetPurchaseOrdersUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(): Promise<PurchaseOrderWithItems[]> {

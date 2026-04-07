@@ -23,7 +23,7 @@ export default function MaterialFormPage() {
   const goBack = () => navigate("/materials");
 
   return (
-    <Layout>
+    <Layout hideMobileMenu fullBleed innerClassName="flex h-full w-full">
       {error ? (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>Não foi possível carregar os materiais</AlertTitle>
@@ -56,16 +56,18 @@ export default function MaterialFormPage() {
           </AlertDescription>
         </Alert>
       ) : (
-        <MaterialDialog
-          open
-          onOpenChange={() => undefined}
-          asPage
-          onBack={goBack}
-          editMaterial={editMaterial}
-          allowMultiple={!isEditing}
-          title={isEditing ? "Editar material" : "Novo material"}
-          description={isEditing ? "Atualize os dados do material selecionado." : "Cadastre um novo material."}
-        />
+        <div className="flex h-full w-full" style={{ minHeight: "calc(100vh - 0px)" }}>
+          <MaterialDialog
+            open
+            onOpenChange={() => undefined}
+            asPage
+            onBack={goBack}
+            editMaterial={editMaterial}
+            allowMultiple={!isEditing}
+            title={isEditing ? "Editar material" : "Novo material"}
+            description={isEditing ? "Atualize os dados do material selecionado." : "Cadastre um novo material."}
+          />
+        </div>
       )}
     </Layout>
   );

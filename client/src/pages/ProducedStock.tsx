@@ -12,6 +12,7 @@ import { useLocation } from "wouter";
 export default function ProducedStock() {
   const { data: stocks, isLoading, error, refetch } = useProducedProductStocks();
   const [, setLocation] = useLocation();
+  const positiveStocks = (stocks ?? []).filter((stock) => Number(stock.stockQty) > 0);
 
   return (
     <Layout>
@@ -43,7 +44,7 @@ export default function ProducedStock() {
             <Skeleton key={index} className="h-10 w-full" />
           ))}
         </div>
-      ) : stocks?.length ? (
+      ) : positiveStocks.length ? (
         <Table>
           <TableHeader>
             <TableRow>
@@ -54,7 +55,7 @@ export default function ProducedStock() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {stocks.map((item) => (
+            {positiveStocks.map((item) => (
               <TableRow key={item.id}>
                 <TableCell>{item.product.name}</TableCell>
                 <TableCell>{brl(Number(item.product.price))}</TableCell>

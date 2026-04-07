@@ -323,10 +323,14 @@ export class DrizzleErpRepository implements IErpRepository {
     return updated;
   }
 
-  async createSale(data: { paymentMethod: string; totalAmount: string }): Promise<Sale> {
+  async createSale(data: { paymentMethod: string; totalAmount: string; salesChannel: "ONLINE" | "PHYSICAL" }): Promise<Sale> {
     const [created] = (await this.database
       .insert(sales)
-      .values({ paymentMethod: data.paymentMethod, totalAmount: data.totalAmount })
+      .values({
+        paymentMethod: data.paymentMethod,
+        totalAmount: data.totalAmount,
+        salesChannel: data.salesChannel,
+      })
       .returning()) as Sale[];
     return created;
   }
@@ -374,6 +378,14 @@ export class DrizzleErpRepository implements IErpRepository {
       .filter((item): item is SaleItem & { product: Product } => item !== undefined);
 
     return { sale, items };
+  }
+
+  async deleteSaleItemsBySaleId(saleId: number): Promise<void> {
+    await this.database.delete(saleItems).where(eq(saleItems.saleId, saleId));
+  }
+
+  async deleteSale(id: number): Promise<void> {
+    await this.database.delete(sales).where(eq(sales.id, id));
   }
 
   async getInventoryMovements(): Promise<MovementWithDetails[]> {
