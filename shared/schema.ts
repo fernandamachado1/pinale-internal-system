@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   jsonb,
   numeric,
@@ -8,6 +9,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -35,9 +37,23 @@ export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", [
   "RECEIVED",
   "CANCELED",
 ]);
+export const userRoleEnum = pgEnum("user_role", ["ADMIN", "STAFF", "VIEWER"]);
+
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: uuid("id").primaryKey(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    nameUniqueIdx: uniqueIndex("organizations_name_unique").on(table.name),
+  }),
+);
 
 export const materials = pgTable("materials", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   name: text("name").notNull(),
   unitOfMeasure: unitOfMeasureEnum("unit_of_measure").notNull().default("UNIT"),
   stockQty: numeric("stock_qty", { precision: 12, scale: 3 }).notNull().default("0"),
@@ -51,6 +67,7 @@ export const materials = pgTable("materials", {
 
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   name: text("name").notNull(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
   description: text("description").notNull().default(""),
@@ -62,6 +79,7 @@ export const products = pgTable("products", {
 
 export const boms = pgTable("boms", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   productId: integer("product_id").notNull(),
   isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -70,6 +88,7 @@ export const boms = pgTable("boms", {
 
 export const bomItems = pgTable("bom_items", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   bomId: integer("bom_id").notNull(),
   materialId: integer("material_id").notNull(),
   qtyPerUnit: numeric("qty_per_unit", { precision: 12, scale: 3 }).notNull(),
@@ -80,6 +99,7 @@ export const producedProductStocks = pgTable(
   "produced_product_stocks",
   {
     id: serial("id").primaryKey(),
+    orgId: uuid("org_id").notNull(),
     productId: integer("product_id").notNull(),
     stockQty: integer("stock_qty").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -92,6 +112,7 @@ export const producedProductStocks = pgTable(
 
 export const productionOrders = pgTable("production_orders", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   productId: integer("product_id").notNull(),
   qtyPlanned: integer("qty_planned").notNull(),
   status: productionOrderStatusEnum("status").notNull().default("BACKLOG"),
@@ -104,6 +125,7 @@ export const productionOrders = pgTable("production_orders", {
 
 export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   paymentMethod: text("payment_method").notNull(),
   salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
@@ -112,6 +134,7 @@ export const sales = pgTable("sales", {
 
 export const saleItems = pgTable("sale_items", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   saleId: integer("sale_id").notNull(),
   productId: integer("product_id").notNull(),
   qty: integer("qty").notNull(),
@@ -122,6 +145,7 @@ export const saleItems = pgTable("sale_items", {
 
 export const inventoryMovements = pgTable("inventory_movements", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   entityType: movementEntityTypeEnum("entity_type").notNull(),
   entityId: integer("entity_id"),
   direction: movementDirectionEnum("direction").notNull(),
@@ -135,6 +159,7 @@ export const inventoryMovements = pgTable("inventory_movements", {
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   status: purchaseOrderStatusEnum("status").notNull().default("OPEN"),
   isActive: integer("is_active").notNull().default(1),
   receivedAt: timestamp("received_at"),
@@ -144,6 +169,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
 
 export const purchaseOrderItems = pgTable("purchase_order_items", {
   id: serial("id").primaryKey(),
+  orgId: uuid("org_id").notNull(),
   purchaseOrderId: integer("purchase_order_id").notNull(),
   materialId: integer("material_id"),
   materialName: text("material_name").notNull(),
@@ -152,7 +178,29 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-const baseInsertMaterialSchema = createInsertSchema(materials).omit({ id: true, createdAt: true, updatedAt: true });
+export const profiles = pgTable(
+  "profiles",
+  {
+    id: uuid("id").primaryKey(),
+    orgId: uuid("org_id").notNull(),
+    email: text("email"),
+    username: text("username"),
+    displayName: text("display_name"),
+    avatarUrl: text("avatar_url"),
+    role: userRoleEnum("role").notNull().default("VIEWER"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    usernameUniqueIdx: uniqueIndex("profiles_username_unique").on(table.username),
+  }),
+);
+
+export const userRoleSchema = z.enum(["ADMIN", "STAFF", "VIEWER"]);
+export type UserRole = z.infer<typeof userRoleSchema>;
+
+const baseInsertMaterialSchema = createInsertSchema(materials).omit({ id: true, orgId: true, createdAt: true, updatedAt: true });
 export const insertMaterialSchema = baseInsertMaterialSchema.extend({
   category: z.enum(["PACKAGING", "NOTIONS", "RAW_MATERIAL"]).default("NOTIONS"),
   stockQty: z.string(),
@@ -204,7 +252,7 @@ export const updateMaterialSchema = baseInsertMaterialSchema
   });
 
 export const insertProductSchema = createInsertSchema(products)
-  .omit({ id: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, orgId: true, createdAt: true, updatedAt: true })
   .extend({
     price: z.string(),
     isActive: z.number().int().default(1),
@@ -261,7 +309,26 @@ export const insertSaleSchema = z.object({
     .min(1),
 });
 
-export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, createdAt: true });
+export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, orgId: true, createdAt: true });
+
+export const updateMyProfileSchema = z.object({
+  displayName: z.string().trim().min(1).max(80).optional(),
+  avatarUrl: z.string().trim().url().nullable().optional(),
+  username: z.string().trim().min(3).max(30).regex(/^[a-z0-9_]+$/i).optional(),
+});
+export type UpdateMyProfileInput = z.infer<typeof updateMyProfileSchema>;
+
+export const adminInviteUserSchema = z.object({
+  email: z.string().trim().email(),
+  role: userRoleSchema.default("VIEWER"),
+});
+export type AdminInviteUserInput = z.infer<typeof adminInviteUserSchema>;
+
+export const adminUpdateUserSchema = z.object({
+  role: userRoleSchema.optional(),
+  isActive: z.boolean().optional(),
+});
+export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
 
 export type Material = typeof materials.$inferSelect;
 export type Product = typeof products.$inferSelect;
@@ -274,6 +341,8 @@ export type SaleItem = typeof saleItems.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
+export type Profile = typeof profiles.$inferSelect;
+export type Organization = typeof organizations.$inferSelect;
 
 export type InsertMaterial = z.input<typeof insertMaterialSchema>;
 export type UpdateMaterialRequest = z.input<typeof updateMaterialSchema>;

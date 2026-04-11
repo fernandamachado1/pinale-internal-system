@@ -4,6 +4,8 @@ import {
   createManyMaterialsSchema,
   createPurchaseOrderSchema,
   createProductInputSchema,
+  adminInviteUserSchema,
+  adminUpdateUserSchema,
   insertMaterialSchema,
   receivePurchaseOrderSchema,
   moveProductionOrderSchema,
@@ -12,6 +14,7 @@ import {
   updatePurchaseOrderSchema,
   updateMaterialSchema,
   updateProductInputSchema,
+  updateMyProfileSchema,
   materials,
   products,
   bomItems,
@@ -22,6 +25,7 @@ import {
   sales,
   saleItems,
   inventoryMovements,
+  profiles,
 } from "./schema.ts";
 
 export const errorSchemas = {
@@ -41,6 +45,7 @@ const purchaseOrderItemSchema = z.custom<typeof purchaseOrderItems.$inferSelect>
 const saleSchema = z.custom<typeof sales.$inferSelect>();
 const saleItemSchema = z.custom<typeof saleItems.$inferSelect>();
 const inventoryMovementSchema = z.custom<typeof inventoryMovements.$inferSelect>();
+const profileSchema = z.custom<typeof profiles.$inferSelect>();
 
 const productWithBomSchema = productSchema.and(
   z.object({
@@ -89,6 +94,44 @@ const periodQuerySchema = z.object({
 });
 
 export const api = {
+  me: {
+    profile: {
+      get: {
+        method: "GET" as const,
+        path: "/api/me/profile" as const,
+        responses: { 200: profileSchema },
+      },
+      update: {
+        method: "PATCH" as const,
+        path: "/api/me/profile" as const,
+        input: updateMyProfileSchema,
+        responses: { 200: profileSchema, 400: errorSchemas.validation },
+      },
+    },
+  },
+
+  admin: {
+    users: {
+      list: {
+        method: "GET" as const,
+        path: "/api/admin/users" as const,
+        responses: { 200: z.array(profileSchema) },
+      },
+      invite: {
+        method: "POST" as const,
+        path: "/api/admin/users/invite" as const,
+        input: adminInviteUserSchema,
+        responses: { 201: profileSchema, 400: errorSchemas.validation },
+      },
+      update: {
+        method: "PATCH" as const,
+        path: "/api/admin/users/:id" as const,
+        input: adminUpdateUserSchema,
+        responses: { 200: profileSchema, 400: errorSchemas.validation, 404: errorSchemas.notFound },
+      },
+    },
+  },
+
   materials: {
     list: { method: "GET" as const, path: "/api/materials" as const, responses: { 200: z.array(materialSchema) } },
     get: { method: "GET" as const, path: "/api/materials/:id" as const, responses: { 200: materialSchema, 404: errorSchemas.notFound } },

@@ -6,6 +6,17 @@ export type ErrorResponse = {
   body: Record<string, unknown>;
 };
 
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(status: number, message: string, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export function toErrorResponse(err: unknown): ErrorResponse {
   if (err instanceof z.ZodError) {
     return {
@@ -15,6 +26,13 @@ export function toErrorResponse(err: unknown): ErrorResponse {
         field: err.errors[0]?.path.join("."),
         code: "VALIDATION_ERROR",
       },
+    };
+  }
+
+  if (err instanceof ApiError) {
+    return {
+      status: err.status,
+      body: err.code ? { message: err.message, code: err.code } : { message: err.message },
     };
   }
 
@@ -37,4 +55,3 @@ export function toErrorResponse(err: unknown): ErrorResponse {
 
   return { status: 500, body: { message: "Internal server error" } };
 }
-

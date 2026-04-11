@@ -15,12 +15,16 @@ import Sales from "@/pages/Sales";
 import Movements from "@/pages/Movements";
 import PurchaseOrders from "@/pages/PurchaseOrders";
 import Login from "@/pages/Login";
+import Profile from "@/pages/Profile";
+import AdminUsers from "@/pages/AdminUsers";
 import { AuthGate } from "@/components/AuthGate";
 
 function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/admin/users" component={AdminUsers} />
       <Route path="/" component={Dashboard} />
       <Route path="/materials/new" component={MaterialFormPage} />
       <Route path="/materials/:id/edit" component={MaterialFormPage} />

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import {
   boms,
   bomItems,
@@ -41,72 +41,105 @@ import type { IErpRepository } from "../../application/contracts/erp-repository.
 import type { CreateInventoryMovementData } from "../../application/contracts/sales-repository.ts";
 
 export class DrizzleErpRepository implements IErpRepository {
-  constructor(private readonly database: any) {}
+  constructor(
+    private readonly database: any,
+    private readonly orgId?: string,
+  ) {}
+
+  private orgIdValue(): string | SQL<unknown> {
+    return this.orgId ?? sql`public.ensure_default_org_id()`;
+  }
+
+  private orgWhere<T extends { orgId: any }>(table: T): SQL<unknown> | undefined {
+    if (!this.orgId) return undefined;
+    return eq((table as any).orgId, this.orgId);
+  }
 
   private async getNextProductionSortOrder(status: "BACKLOG" | "IN_PROGRESS" | "DONE"): Promise<number> {
     const [result] = (await this.database
       .select({ maxSortOrder: sql<number>`coalesce(max(${productionOrders.sortOrder}), -1)` })
       .from(productionOrders)
-      .where(eq(productionOrders.status, status))) as Array<{ maxSortOrder: number }>;
+      .where(
+        and(
+          eq(productionOrders.status, status),
+          ...(this.orgId ? [eq(productionOrders.orgId, this.orgId)] : []),
+        ),
+      )) as Array<{ maxSortOrder: number }>;
 
     return Number(result?.maxSortOrder ?? -1) + 1;
   }
 
   async withTransaction<T>(callback: (repository: IErpRepository) => Promise<T>): Promise<T> {
     return this.database.transaction(async (tx: any) => {
-      const repository = new DrizzleErpRepository(tx);
+      const repository = new DrizzleErpRepository(tx, this.orgId);
       return callback(repository);
     });
   }
 
   async getMaterials(): Promise<Material[]> {
-    return (await this.database
-      .select()
-      .from(materials)
-      .where(eq(materials.isActive, 1))
-      .orderBy(materials.name)) as Material[];
+    const conditions = [eq(materials.isActive, 1)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
+    return (await this.database.select().from(materials).where(and(...conditions)).orderBy(materials.name)) as Material[];
   }
 
   async getMaterial(id: number): Promise<Material | undefined> {
-    const [material] = (await this.database.select().from(materials).where(eq(materials.id, id))) as Material[];
+    const conditions = [eq(materials.id, id)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
+    const [material] = (await this.database.select().from(materials).where(and(...conditions))) as Material[];
     return material;
   }
 
   async getMaterialByName(name: string): Promise<Material | undefined> {
-    const [material] = (await this.database.select().from(materials).where(eq(materials.name, name))) as Material[];
+    const conditions = [eq(materials.name, name)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
+    const [material] = (await this.database.select().from(materials).where(and(...conditions))) as Material[];
     return material;
   }
 
   async createMaterial(material: InsertMaterial): Promise<Material> {
-    const [created] = (await this.database.insert(materials).values(material).returning()) as Material[];
+    const [created] = (await this.database
+      .insert(materials)
+      .values({ ...material, orgId: this.orgIdValue() } as any)
+      .returning()) as Material[];
     return created;
   }
 
   async createManyMaterials(input: CreateManyMaterialsInput): Promise<Material[]> {
-    return (await this.database.insert(materials).values(input.items).returning()) as Material[];
+    const values = input.items.map((item) => ({ ...item, orgId: this.orgIdValue() })) as any[];
+    return (await this.database.insert(materials).values(values).returning()) as Material[];
   }
 
   async updateMaterial(id: number, updates: UpdateMaterialRequest): Promise<Material> {
+    const conditions = [eq(materials.id, id)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
     const [updated] = (await this.database
       .update(materials)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(materials.id, id))
+      .where(and(...conditions))
       .returning()) as Material[];
     return updated;
   }
 
   async deactivateMaterial(id: number): Promise<void> {
-    await this.database.update(materials).set({ isActive: 0, updatedAt: new Date() }).where(eq(materials.id, id));
+    const conditions = [eq(materials.id, id)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
+    await this.database.update(materials).set({ isActive: 0, updatedAt: new Date() }).where(and(...conditions));
   }
 
   async updateMaterialStockQty(id: number, stockQty: string): Promise<void> {
-    await this.database.update(materials).set({ stockQty, updatedAt: new Date() }).where(eq(materials.id, id));
+    const conditions = [eq(materials.id, id)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
+    await this.database.update(materials).set({ stockQty, updatedAt: new Date() }).where(and(...conditions));
   }
 
   async getProducts(): Promise<ProductWithBom[]> {
-    const allProducts = (await this.database.select().from(products).orderBy(products.name)) as Product[];
-    const activeBoms = (await this.database.select().from(boms).where(eq(boms.isActive, 1))) as Array<typeof boms.$inferSelect>;
-    const allBomItems = (await this.database.select().from(bomItems)) as BomItem[];
+    const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
+    const bomsWhere = and(eq(boms.isActive, 1), ...(this.orgId ? [eq(boms.orgId, this.orgId)] : []));
+    const bomItemsWhere = this.orgId ? eq(bomItems.orgId, this.orgId) : undefined;
+
+    const allProducts = (await this.database.select().from(products).where(productsWhere).orderBy(products.name)) as Product[];
+    const activeBoms = (await this.database.select().from(boms).where(bomsWhere)) as Array<typeof boms.$inferSelect>;
+    const allBomItems = (await this.database.select().from(bomItems).where(bomItemsWhere)) as BomItem[];
 
     return allProducts.map((product) => {
       const activeBom = activeBoms.find((bom) => bom.productId === product.id);
@@ -118,7 +151,9 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getProduct(id: number): Promise<ProductWithBom | undefined> {
-    const [product] = (await this.database.select().from(products).where(eq(products.id, id))) as Product[];
+    const productConditions = [eq(products.id, id)];
+    if (this.orgId) productConditions.push(eq(products.orgId, this.orgId));
+    const [product] = (await this.database.select().from(products).where(and(...productConditions))) as Product[];
     if (!product) return undefined;
 
     const [activeBom] = (await this.database
@@ -129,7 +164,15 @@ export class DrizzleErpRepository implements IErpRepository {
     const items =
       activeBom === undefined
         ? []
-        : ((await this.database.select().from(bomItems).where(eq(bomItems.bomId, activeBom.id))) as BomItem[]);
+        : ((await this.database
+          .select()
+          .from(bomItems)
+          .where(
+            and(
+              eq(bomItems.bomId, activeBom.id),
+              ...(this.orgId ? [eq(bomItems.orgId, this.orgId)] : []),
+            ),
+          )) as BomItem[]);
 
     return {
       ...product,
@@ -138,31 +181,46 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getProductByName(name: string): Promise<Product | undefined> {
-    const [product] = (await this.database.select().from(products).where(eq(products.name, name))) as Product[];
+    const conditions = [eq(products.name, name)];
+    if (this.orgId) conditions.push(eq(products.orgId, this.orgId));
+    const [product] = (await this.database.select().from(products).where(and(...conditions))) as Product[];
     return product;
   }
 
   async createProduct(product: InsertProduct): Promise<Product> {
-    const [created] = (await this.database.insert(products).values(product).returning()) as Product[];
+    const [created] = (await this.database
+      .insert(products)
+      .values({ ...product, orgId: this.orgIdValue() } as any)
+      .returning()) as Product[];
     return created;
   }
 
   async updateProductBase(id: number, input: UpdateProductInput["product"]): Promise<Product> {
+    const conditions = [eq(products.id, id)];
+    if (this.orgId) conditions.push(eq(products.orgId, this.orgId));
     const [updated] = (await this.database
       .update(products)
       .set({ ...input, updatedAt: new Date() })
-      .where(eq(products.id, id))
+      .where(and(...conditions))
       .returning()) as Product[];
     return updated;
   }
 
   async deactivateProduct(id: number): Promise<void> {
-    await this.database.update(products).set({ isActive: 0, updatedAt: new Date() }).where(eq(products.id, id));
+    const conditions = [eq(products.id, id)];
+    if (this.orgId) conditions.push(eq(products.orgId, this.orgId));
+    await this.database.update(products).set({ isActive: 0, updatedAt: new Date() }).where(and(...conditions));
   }
 
   async getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]> {
-    const allStocks = (await this.database.select().from(producedProductStocks).orderBy(producedProductStocks.productId)) as ProducedProductStock[];
-    const allProducts = (await this.database.select().from(products).orderBy(products.name)) as Product[];
+    const stocksWhere = this.orgId ? eq(producedProductStocks.orgId, this.orgId) : undefined;
+    const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
+    const allStocks = (await this.database
+      .select()
+      .from(producedProductStocks)
+      .where(stocksWhere)
+      .orderBy(producedProductStocks.productId)) as ProducedProductStock[];
+    const allProducts = (await this.database.select().from(products).where(productsWhere).orderBy(products.name)) as Product[];
 
     return allStocks
       .map((stock) => {
@@ -174,36 +232,62 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getProducedProductStockByProductId(productId: number): Promise<ProducedProductStockWithProduct | undefined> {
-    const [stock] = (await this.database.select().from(producedProductStocks).where(eq(producedProductStocks.productId, productId))) as ProducedProductStock[];
+    const stockConditions = [eq(producedProductStocks.productId, productId)];
+    if (this.orgId) stockConditions.push(eq(producedProductStocks.orgId, this.orgId));
+    const [stock] = (await this.database
+      .select()
+      .from(producedProductStocks)
+      .where(and(...stockConditions))) as ProducedProductStock[];
     if (!stock) return undefined;
 
-    const [product] = (await this.database.select().from(products).where(eq(products.id, productId))) as Product[];
+    const productConditions = [eq(products.id, productId)];
+    if (this.orgId) productConditions.push(eq(products.orgId, this.orgId));
+    const [product] = (await this.database.select().from(products).where(and(...productConditions))) as Product[];
     if (!product) return undefined;
 
     return { ...stock, product };
   }
 
   async createProducedProductStock(productId: number): Promise<ProducedProductStock> {
-    const [created] = (await this.database.insert(producedProductStocks).values({ productId, stockQty: 0 }).returning()) as ProducedProductStock[];
+    const [created] = (await this.database
+      .insert(producedProductStocks)
+      .values({ productId, stockQty: 0, orgId: this.orgIdValue() } as any)
+      .returning()) as ProducedProductStock[];
     return created;
   }
 
   async updateProducedProductStockQty(productId: number, stockQty: number): Promise<void> {
+    const conditions = [eq(producedProductStocks.productId, productId)];
+    if (this.orgId) conditions.push(eq(producedProductStocks.orgId, this.orgId));
     await this.database
       .update(producedProductStocks)
       .set({ stockQty, updatedAt: new Date() })
-      .where(eq(producedProductStocks.productId, productId));
+      .where(and(...conditions));
   }
 
   async getActiveBomByProductId(productId: number): Promise<{ id: number; items: BomItem[] } | undefined> {
     const [activeBom] = (await this.database
       .select()
       .from(boms)
-      .where(and(eq(boms.productId, productId), eq(boms.isActive, 1)))) as Array<typeof boms.$inferSelect>;
+      .where(
+        and(
+          eq(boms.productId, productId),
+          eq(boms.isActive, 1),
+          ...(this.orgId ? [eq(boms.orgId, this.orgId)] : []),
+        ),
+      )) as Array<typeof boms.$inferSelect>;
 
     if (!activeBom) return undefined;
 
-    const items = (await this.database.select().from(bomItems).where(eq(bomItems.bomId, activeBom.id))) as BomItem[];
+    const items = (await this.database
+      .select()
+      .from(bomItems)
+      .where(
+        and(
+          eq(bomItems.bomId, activeBom.id),
+          ...(this.orgId ? [eq(bomItems.orgId, this.orgId)] : []),
+        ),
+      )) as BomItem[];
 
     return { id: activeBom.id, items };
   }
@@ -212,15 +296,25 @@ export class DrizzleErpRepository implements IErpRepository {
     productId: number,
     technicalSpec: { bomItems: BomItemInput[] },
   ): Promise<{ id: number; items: BomItem[] }> {
-    await this.database.update(boms).set({ isActive: 0, updatedAt: new Date() }).where(and(eq(boms.productId, productId), eq(boms.isActive, 1)));
+    await this.database
+      .update(boms)
+      .set({ isActive: 0, updatedAt: new Date() })
+      .where(
+        and(
+          eq(boms.productId, productId),
+          eq(boms.isActive, 1),
+          ...(this.orgId ? [eq(boms.orgId, this.orgId)] : []),
+        ),
+      );
 
     const [createdBom] = (await this.database
       .insert(boms)
       .values({
+        orgId: this.orgIdValue(),
         productId,
         isActive: 1,
         updatedAt: new Date(),
-      })
+      } as any)
       .returning()) as Array<typeof boms.$inferSelect>;
 
     if (technicalSpec.bomItems.length === 0) {
@@ -231,12 +325,13 @@ export class DrizzleErpRepository implements IErpRepository {
     }
 
     const values = technicalSpec.bomItems.map((item) => ({
+      orgId: this.orgIdValue(),
       bomId: createdBom.id,
       materialId: item.materialId,
       qtyPerUnit: item.qtyPerUnit,
     }));
 
-    const createdItems = (await this.database.insert(bomItems).values(values).returning()) as BomItem[];
+    const createdItems = (await this.database.insert(bomItems).values(values as any).returning()) as BomItem[];
 
     return {
       id: createdBom.id,
@@ -245,8 +340,14 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getProductionOrders(): Promise<ProductionOrderWithProduct[]> {
-    const allOrders = (await this.database.select().from(productionOrders).orderBy(asc(productionOrders.sortOrder), desc(productionOrders.createdAt), desc(productionOrders.id))) as ProductionOrder[];
-    const allProducts = (await this.database.select().from(products)) as Product[];
+    const ordersWhere = this.orgId ? eq(productionOrders.orgId, this.orgId) : undefined;
+    const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
+    const allOrders = (await this.database
+      .select()
+      .from(productionOrders)
+      .where(ordersWhere)
+      .orderBy(asc(productionOrders.sortOrder), desc(productionOrders.createdAt), desc(productionOrders.id))) as ProductionOrder[];
+    const allProducts = (await this.database.select().from(products).where(productsWhere)) as Product[];
     const statusOrder = new Map([
       ["BACKLOG", 0],
       ["IN_PROGRESS", 1],
@@ -270,10 +371,14 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getProductionOrder(id: number): Promise<ProductionOrderWithProduct | undefined> {
-    const [order] = (await this.database.select().from(productionOrders).where(eq(productionOrders.id, id))) as ProductionOrder[];
+    const orderConditions = [eq(productionOrders.id, id)];
+    if (this.orgId) orderConditions.push(eq(productionOrders.orgId, this.orgId));
+    const [order] = (await this.database.select().from(productionOrders).where(and(...orderConditions))) as ProductionOrder[];
     if (!order) return undefined;
 
-    const [product] = (await this.database.select().from(products).where(eq(products.id, order.productId))) as Product[];
+    const productConditions = [eq(products.id, order.productId)];
+    if (this.orgId) productConditions.push(eq(products.orgId, this.orgId));
+    const [product] = (await this.database.select().from(products).where(and(...productConditions))) as Product[];
     if (!product) return undefined;
 
     return { ...order, product };
@@ -284,41 +389,48 @@ export class DrizzleErpRepository implements IErpRepository {
     const [created] = (await this.database
       .insert(productionOrders)
       .values({
+        orgId: this.orgIdValue(),
         productId: data.productId,
         qtyPlanned: data.qtyPlanned,
         status: "BACKLOG",
         salesChannel: data.salesChannel,
         dueAt: data.dueAt ? new Date(data.dueAt) : null,
         sortOrder,
-      })
+      } as any)
       .returning()) as ProductionOrder[];
     return created;
   }
 
   async moveProductionOrder(id: number, input: MoveProductionOrderInput): Promise<ProductionOrder> {
+    const idConditions = [eq(productionOrders.id, id)];
+    if (this.orgId) idConditions.push(eq(productionOrders.orgId, this.orgId));
     await this.database
       .update(productionOrders)
       .set({ status: input.status })
-      .where(eq(productionOrders.id, id));
+      .where(and(...idConditions));
 
     for (let index = 0; index < input.orderedIds.length; index += 1) {
       const orderId = input.orderedIds[index];
+      const orderConditions = [eq(productionOrders.id, orderId)];
+      if (this.orgId) orderConditions.push(eq(productionOrders.orgId, this.orgId));
       await this.database
         .update(productionOrders)
         .set({ status: input.status, sortOrder: index })
-        .where(eq(productionOrders.id, orderId));
+        .where(and(...orderConditions));
     }
 
-    const [updated] = (await this.database.select().from(productionOrders).where(eq(productionOrders.id, id))) as ProductionOrder[];
+    const [updated] = (await this.database.select().from(productionOrders).where(and(...idConditions))) as ProductionOrder[];
     return updated;
   }
 
   async markProductionOrderDone(id: number, completedAt: Date): Promise<ProductionOrder> {
     const sortOrder = await this.getNextProductionSortOrder("DONE");
+    const conditions = [eq(productionOrders.id, id)];
+    if (this.orgId) conditions.push(eq(productionOrders.orgId, this.orgId));
     const [updated] = (await this.database
       .update(productionOrders)
       .set({ status: "DONE", sortOrder, completedAt })
-      .where(eq(productionOrders.id, id))
+      .where(and(...conditions))
       .returning()) as ProductionOrder[];
     return updated;
   }
@@ -327,16 +439,18 @@ export class DrizzleErpRepository implements IErpRepository {
     const [created] = (await this.database
       .insert(sales)
       .values({
+        orgId: this.orgIdValue(),
         paymentMethod: data.paymentMethod,
         totalAmount: data.totalAmount,
         salesChannel: data.salesChannel,
-      })
+      } as any)
       .returning()) as Sale[];
     return created;
   }
 
   async createSaleItems(saleId: number, items: Array<{ productId: number; qty: number; unitPrice: string; totalPrice: string }>): Promise<SaleItem[]> {
     const rows = items.map((item) => ({
+      orgId: this.orgIdValue(),
       saleId,
       productId: item.productId,
       qty: item.qty,
@@ -344,13 +458,16 @@ export class DrizzleErpRepository implements IErpRepository {
       totalPrice: item.totalPrice,
     }));
 
-    return (await this.database.insert(saleItems).values(rows).returning()) as SaleItem[];
+    return (await this.database.insert(saleItems).values(rows as any).returning()) as SaleItem[];
   }
 
   async getSales(): Promise<SaleListItem[]> {
-    const allSaleItems = (await this.database.select().from(saleItems).orderBy(desc(saleItems.createdAt))) as SaleItem[];
-    const allSales = (await this.database.select().from(sales)) as Sale[];
-    const allProducts = (await this.database.select().from(products)) as Product[];
+    const saleItemsWhere = this.orgId ? eq(saleItems.orgId, this.orgId) : undefined;
+    const salesWhere = this.orgId ? eq(sales.orgId, this.orgId) : undefined;
+    const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
+    const allSaleItems = (await this.database.select().from(saleItems).where(saleItemsWhere).orderBy(desc(saleItems.createdAt))) as SaleItem[];
+    const allSales = (await this.database.select().from(sales).where(salesWhere)) as Sale[];
+    const allProducts = (await this.database.select().from(products).where(productsWhere)) as Product[];
 
     return allSaleItems
       .map((item) => {
@@ -363,11 +480,17 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getSaleWithItems(id: number): Promise<{ sale: Sale; items: Array<SaleItem & { product: Product }> } | undefined> {
-    const [sale] = (await this.database.select().from(sales).where(eq(sales.id, id))) as Sale[];
+    const saleConditions = [eq(sales.id, id)];
+    if (this.orgId) saleConditions.push(eq(sales.orgId, this.orgId));
+    const [sale] = (await this.database.select().from(sales).where(and(...saleConditions))) as Sale[];
     if (!sale) return undefined;
 
-    const entries = (await this.database.select().from(saleItems).where(eq(saleItems.saleId, id))) as SaleItem[];
-    const allProducts = (await this.database.select().from(products)) as Product[];
+    const entryConditions = [eq(saleItems.saleId, id)];
+    if (this.orgId) entryConditions.push(eq(saleItems.orgId, this.orgId));
+    const entries = (await this.database.select().from(saleItems).where(and(...entryConditions))) as SaleItem[];
+
+    const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
+    const allProducts = (await this.database.select().from(products).where(productsWhere)) as Product[];
 
     const items = entries
       .map((item) => {
@@ -381,17 +504,24 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async deleteSaleItemsBySaleId(saleId: number): Promise<void> {
-    await this.database.delete(saleItems).where(eq(saleItems.saleId, saleId));
+    const conditions = [eq(saleItems.saleId, saleId)];
+    if (this.orgId) conditions.push(eq(saleItems.orgId, this.orgId));
+    await this.database.delete(saleItems).where(and(...conditions));
   }
 
   async deleteSale(id: number): Promise<void> {
-    await this.database.delete(sales).where(eq(sales.id, id));
+    const conditions = [eq(sales.id, id)];
+    if (this.orgId) conditions.push(eq(sales.orgId, this.orgId));
+    await this.database.delete(sales).where(and(...conditions));
   }
 
   async getInventoryMovements(): Promise<MovementWithDetails[]> {
-    const allMovements = (await this.database.select().from(inventoryMovements).orderBy(desc(inventoryMovements.createdAt))) as MovementWithDetails[];
-    const allProducts = (await this.database.select().from(products)) as Product[];
-    const allMaterials = (await this.database.select().from(materials)) as Material[];
+    const movementsWhere = this.orgId ? eq(inventoryMovements.orgId, this.orgId) : undefined;
+    const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
+    const materialsWhere = this.orgId ? eq(materials.orgId, this.orgId) : undefined;
+    const allMovements = (await this.database.select().from(inventoryMovements).where(movementsWhere).orderBy(desc(inventoryMovements.createdAt))) as MovementWithDetails[];
+    const allProducts = (await this.database.select().from(products).where(productsWhere)) as Product[];
+    const allMaterials = (await this.database.select().from(materials).where(materialsWhere)) as Material[];
 
     return allMovements.map((movement) => ({
       ...movement,
@@ -412,16 +542,17 @@ export class DrizzleErpRepository implements IErpRepository {
       metadata: movement.metadata ?? null,
     };
 
-    const [created] = (await this.database.insert(inventoryMovements).values(insertMovement).returning()) as InventoryMovement[];
+    const [created] = (await this.database
+      .insert(inventoryMovements)
+      .values({ ...insertMovement, orgId: this.orgIdValue() } as any)
+      .returning()) as InventoryMovement[];
     return created;
   }
 
   async getPurchaseOrders(): Promise<PurchaseOrderWithItems[]> {
-    const orders = (await this.database
-      .select()
-      .from(purchaseOrders)
-      .where(eq(purchaseOrders.isActive, 1))
-      .orderBy(desc(purchaseOrders.id))) as PurchaseOrder[];
+    const conditions = [eq(purchaseOrders.isActive, 1)];
+    if (this.orgId) conditions.push(eq(purchaseOrders.orgId, this.orgId));
+    const orders = (await this.database.select().from(purchaseOrders).where(and(...conditions)).orderBy(desc(purchaseOrders.id))) as PurchaseOrder[];
 
     if (orders.length === 0) return [];
 
@@ -429,7 +560,12 @@ export class DrizzleErpRepository implements IErpRepository {
     const items = (await this.database
       .select()
       .from(purchaseOrderItems)
-      .where(inArray(purchaseOrderItems.purchaseOrderId, orderIds))
+      .where(
+        and(
+          inArray(purchaseOrderItems.purchaseOrderId, orderIds),
+          ...(this.orgId ? [eq(purchaseOrderItems.orgId, this.orgId)] : []),
+        ),
+      )
       .orderBy(asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
 
     const itemsByOrderId = new Map<number, PurchaseOrderItem[]>();
@@ -443,20 +579,30 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined> {
-    const [order] = (await this.database.select().from(purchaseOrders).where(eq(purchaseOrders.id, id))) as PurchaseOrder[];
+    const orderConditions = [eq(purchaseOrders.id, id)];
+    if (this.orgId) orderConditions.push(eq(purchaseOrders.orgId, this.orgId));
+    const [order] = (await this.database.select().from(purchaseOrders).where(and(...orderConditions))) as PurchaseOrder[];
     if (!order) return undefined;
 
     const items = (await this.database
       .select()
       .from(purchaseOrderItems)
-      .where(eq(purchaseOrderItems.purchaseOrderId, id))
+      .where(
+        and(
+          eq(purchaseOrderItems.purchaseOrderId, id),
+          ...(this.orgId ? [eq(purchaseOrderItems.orgId, this.orgId)] : []),
+        ),
+      )
       .orderBy(asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
 
     return { ...order, items };
   }
 
   async createPurchaseOrderBase(): Promise<PurchaseOrder> {
-    const [created] = (await this.database.insert(purchaseOrders).values({}).returning()) as PurchaseOrder[];
+    const [created] = (await this.database
+      .insert(purchaseOrders)
+      .values({ orgId: this.orgIdValue() } as any)
+      .returning()) as PurchaseOrder[];
     return created;
   }
 
@@ -464,10 +610,12 @@ export class DrizzleErpRepository implements IErpRepository {
     id: number,
     input: Partial<Pick<PurchaseOrder, "status" | "isActive" | "receivedAt">>,
   ): Promise<PurchaseOrder> {
+    const conditions = [eq(purchaseOrders.id, id)];
+    if (this.orgId) conditions.push(eq(purchaseOrders.orgId, this.orgId));
     const [updated] = (await this.database
       .update(purchaseOrders)
       .set({ ...input, updatedAt: new Date() })
-      .where(eq(purchaseOrders.id, id))
+      .where(and(...conditions))
       .returning()) as PurchaseOrder[];
     return updated;
   }
@@ -477,28 +625,33 @@ export class DrizzleErpRepository implements IErpRepository {
     items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
   ): Promise<PurchaseOrderItem[]> {
     const payload = items.map((item) => ({
+      orgId: this.orgIdValue(),
       purchaseOrderId,
       materialId: item.materialId ?? null,
       materialName: item.materialName,
       qtyOrdered: item.qtyOrdered,
       qtyReceived: item.qtyReceived,
     }));
-    return (await this.database.insert(purchaseOrderItems).values(payload).returning()) as PurchaseOrderItem[];
+    return (await this.database.insert(purchaseOrderItems).values(payload as any).returning()) as PurchaseOrderItem[];
   }
 
   async updatePurchaseOrderItem(
     id: number,
     input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
   ): Promise<PurchaseOrderItem> {
+    const conditions = [eq(purchaseOrderItems.id, id)];
+    if (this.orgId) conditions.push(eq(purchaseOrderItems.orgId, this.orgId));
     const [updated] = (await this.database
       .update(purchaseOrderItems)
       .set({ ...input })
-      .where(eq(purchaseOrderItems.id, id))
+      .where(and(...conditions))
       .returning()) as PurchaseOrderItem[];
     return updated;
   }
 
   async deletePurchaseOrderItem(id: number): Promise<void> {
-    await this.database.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+    const conditions = [eq(purchaseOrderItems.id, id)];
+    if (this.orgId) conditions.push(eq(purchaseOrderItems.orgId, this.orgId));
+    await this.database.delete(purchaseOrderItems).where(and(...conditions));
   }
 }

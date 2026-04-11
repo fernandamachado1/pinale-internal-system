@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Layers, MoreVertical, Plus } from "lucide-react";
 import { brl } from "@/lib/format";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuthz } from "@/hooks/use-authz";
 
 const categoryLabels: Record<Material["category"], string> = {
   PACKAGING: "Embalagens",
@@ -32,6 +33,7 @@ export default function Materials() {
   const deleteMutation = useDeleteMaterial();
   const isMobile = useIsMobile();
   const [, navigate] = useLocation();
+  const { canWrite } = useAuthz();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -43,6 +45,7 @@ export default function Materials() {
   );
 
   const openCreate = () => {
+    if (!canWrite) return;
     if (isMobile) {
       navigate("/materials/new");
       return;
@@ -51,6 +54,7 @@ export default function Materials() {
   };
 
   const openEdit = (item: Material) => {
+    if (!canWrite) return;
     if (isMobile) {
       navigate(`/materials/${item.id}/edit`);
       return;
@@ -66,7 +70,7 @@ export default function Materials() {
           Materiais
         </h1>
 
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={!canWrite}>
           <Plus className="w-4 h-4 mr-2" /> Novo Material
         </Button>
       </div>
@@ -134,39 +138,45 @@ export default function Materials() {
                       <TableCell className="hidden lg:table-cell text-right">{totalPerSquareMeter !== null ? brl(totalPerSquareMeter) : "-"}</TableCell>
                       <TableCell className="text-right">{item.stockQty}</TableCell>
                       <TableCell className="text-right">
-                        <div className="hidden sm:flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
-                            Editar
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={deleteMutation.isPending}
-                            onClick={() => deleteMutation.mutate(item.id)}
-                          >
-                            Inativar
-                          </Button>
-                        </div>
-
-                        <div className="flex justify-end sm:hidden">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
-                                <MoreVertical className="h-4 w-4" />
+                        {canWrite ? (
+                          <>
+                            <div className="hidden sm:flex justify-end gap-2">
+                              <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
+                                Editar
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => openEdit(item)}>Editar</DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
+                              <Button
+                                size="sm"
+                                variant="destructive"
                                 disabled={deleteMutation.isPending}
-                                onSelect={() => deleteMutation.mutate(item.id)}
+                                onClick={() => deleteMutation.mutate(item.id)}
                               >
                                 Inativar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                              </Button>
+                            </div>
+
+                            <div className="flex justify-end sm:hidden">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => openEdit(item)}>Editar</DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    disabled={deleteMutation.isPending}
+                                    onSelect={() => deleteMutation.mutate(item.id)}
+                                  >
+                                    Inativar
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -189,7 +199,7 @@ export default function Materials() {
             <CardDescription>Materiais alimentam a ficha técnica e o consumo na produção.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} disabled={!canWrite}>
               <Plus className="w-4 h-4 mr-2" /> Novo Material
             </Button>
           </CardContent>

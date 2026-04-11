@@ -1,10 +1,13 @@
 import type { Hono } from "npm:hono";
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
 import { api } from "../shared/routes.ts";
 import { DrizzleErpRepository } from "../server/infra/repositories/drizzle-erp-repository.ts";
 import { initDb } from "./db.ts";
-import { requireSupabaseUser } from "./auth.ts";
-import { toErrorResponse } from "./errors.ts";
-import { sql } from "drizzle-orm";
+import { getSupabaseConfig, requireSupabaseUser } from "./auth.ts";
+import { ensureProfile, requireRole } from "./authz.ts";
+import { ApiError, toErrorResponse } from "./errors.ts";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { profiles, type Profile, type UserRole } from "../shared/schema.ts";
 import {
   CreateMaterialUseCase,
   CreateManyMaterialsUseCase,
@@ -46,14 +49,14 @@ import {
   SalesReportUseCase,
 } from "../server/application/use-cases/report-use-cases.ts";
 
-export type AppVariables = { user: { id: string; email?: string | null } };
+export type AppVariables = {
+  user: { id: string; email?: string | null };
+  profile: Profile;
+};
 
-let repositorySingleton: DrizzleErpRepository | undefined;
-async function repository(): Promise<DrizzleErpRepository> {
-  if (repositorySingleton) return repositorySingleton;
+async function repositoryForOrg(orgId: string): Promise<DrizzleErpRepository> {
   const { db } = await initDb();
-  repositorySingleton = new DrizzleErpRepository(db);
-  return repositorySingleton;
+  return new DrizzleErpRepository(db, orgId);
 }
 
 function periodFromQuery(query: Record<string, string | string[] | undefined>): { from?: Date; to?: Date } {
@@ -148,6 +151,9 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       }
       const user = await requireSupabaseUser(c.req.header("Authorization"));
       c.set("user", user);
+      const { db } = await initDb();
+      const profile = await ensureProfile(db, user);
+      c.set("profile", profile);
       await next();
     } catch (err) {
       if (err instanceof Error && err.message === "UNAUTHORIZED") {
@@ -158,12 +164,163 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     }
   });
 
-  app.get("/api/whoami", (c) => c.json(c.get("user"), 200));
+  app.use("/api/*", async (c, next) => {
+    const path = c.req.path;
+    const method = c.req.method.toUpperCase();
+    if (path.startsWith("/api/health")) {
+      return await next();
+    }
+
+    const profile = c.get("profile");
+
+    // Self-service profile endpoints (any active user).
+    if (path === api.me.profile.get.path || path === api.me.profile.update.path) {
+      return await next();
+    }
+
+    if (path === "/api/whoami") {
+      return await next();
+    }
+
+    if (path.startsWith("/api/admin/")) {
+      requireRole(profile, ["ADMIN"]);
+      return await next();
+    }
+
+    // Default ERP authz: GET is readable; everything else requires write access.
+    if (method === "GET") {
+      requireRole(profile, ["VIEWER", "STAFF", "ADMIN"]);
+      return await next();
+    }
+
+    requireRole(profile, ["STAFF", "ADMIN"]);
+    return await next();
+  });
+
+  app.get("/api/whoami", (c) => c.json({ ...c.get("user"), profile: c.get("profile") }, 200));
+
+  // Me
+  app.get(api.me.profile.get.path, (c) => c.json(c.get("profile"), 200));
+  app.patch(api.me.profile.update.path, async (c) => {
+    try {
+      const input = api.me.profile.update.input.parse(await c.req.json());
+      const user = c.get("user");
+      const currentProfile = c.get("profile");
+      const { db } = await initDb();
+
+      const updates: Record<string, unknown> = {};
+      if (input.displayName !== undefined) updates.displayName = input.displayName;
+      if (input.avatarUrl !== undefined) updates.avatarUrl = input.avatarUrl;
+      if (input.username !== undefined) updates.username = input.username;
+      // Keep email mirrored when available.
+      if (user.email) updates.email = user.email;
+
+      const [updated] = (await db
+        .update(profiles)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(and(eq(profiles.id, user.id), eq(profiles.orgId, currentProfile.orgId)))
+        .returning()) as Profile[];
+
+      return c.json(updated ?? c.get("profile"), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  // Admin - Users
+  app.get(api.admin.users.list.path, async (c) => {
+    try {
+      const { db } = await initDb();
+      const orgId = c.get("profile").orgId;
+      const items = (await db
+        .select()
+        .from(profiles)
+        .where(eq(profiles.orgId, orgId))
+        .orderBy(desc(profiles.createdAt))) as Profile[];
+      return c.json(items, 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.admin.users.invite.path, async (c) => {
+    try {
+      const input = api.admin.users.invite.input.parse(await c.req.json());
+      const orgId = c.get("profile").orgId;
+      const serviceRoleKey = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim();
+      if (!serviceRoleKey) throw new ApiError(500, "SUPABASE_SERVICE_ROLE_KEY must be set");
+
+      const { url } = getSupabaseConfig();
+      const admin = createClient(url, serviceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      });
+
+      const { data, error } = await admin.auth.admin.inviteUserByEmail(input.email);
+      if (error) throw new ApiError(400, error.message, "BAD_REQUEST");
+      const invited = data.user;
+      if (!invited?.id) throw new ApiError(500, "Invite succeeded but no user returned", "INVITE_FAILED");
+
+      const { db } = await initDb();
+      try {
+        await db
+          .insert(profiles)
+          .values({ id: invited.id, orgId, email: invited.email ?? input.email, role: input.role as UserRole })
+          .onConflictDoNothing();
+      } catch {
+        // ignore and update below
+      }
+
+      const [updated] = (await db
+        .update(profiles)
+        .set({ orgId, email: invited.email ?? input.email, role: input.role as UserRole, updatedAt: new Date() })
+        .where(and(eq(profiles.id, invited.id), eq(profiles.orgId, orgId)))
+        .returning()) as Profile[];
+
+      return c.json(updated, 201);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.patch(api.admin.users.update.path, async (c) => {
+    try {
+      const userId = c.req.param("id");
+      const input = api.admin.users.update.input.parse(await c.req.json());
+      const orgId = c.get("profile").orgId;
+      const isSelf = userId === c.get("profile").id;
+      if (isSelf && (input.role !== undefined || input.isActive !== undefined)) {
+        throw new ApiError(400, "Cannot update own role/isActive", "BAD_REQUEST");
+      }
+      const { db } = await initDb();
+
+      const updates: Record<string, unknown> = {};
+      if (input.role !== undefined) updates.role = input.role as UserRole;
+      if (input.isActive !== undefined) updates.isActive = input.isActive;
+
+      const [updated] = (await db
+        .update(profiles)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(and(eq(profiles.id, userId), eq(profiles.orgId, orgId)))
+        .returning()) as Profile[];
+
+      if (!updated) {
+        return c.json({ message: "Not found", code: "NOT_FOUND" }, 404);
+      }
+
+      return c.json(updated, 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
 
   // Materials
   app.get(api.materials.list.path, async (c) => {
     try {
-      const useCase = new ListMaterialsUseCase(await repository());
+      const useCase = new ListMaterialsUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -173,7 +330,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.materials.get.path, async (c) => {
     try {
-      const useCase = new GetMaterialUseCase(await repository());
+      const useCase = new GetMaterialUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id"))), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -184,7 +341,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.materials.create.path, async (c) => {
     try {
       const input = api.materials.create.input.parse(await c.req.json());
-      const useCase = new CreateMaterialUseCase(await repository());
+      const useCase = new CreateMaterialUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(input), 201);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -195,7 +352,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.materials.createMany.path, async (c) => {
     try {
       const input = api.materials.createMany.input.parse(await c.req.json());
-      const useCase = new CreateManyMaterialsUseCase(await repository());
+      const useCase = new CreateManyMaterialsUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(input), 201);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -206,7 +363,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.put(api.materials.update.path, async (c) => {
     try {
       const input = api.materials.update.input.parse(await c.req.json());
-      const useCase = new UpdateMaterialUseCase(await repository());
+      const useCase = new UpdateMaterialUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -216,7 +373,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.delete(api.materials.delete.path, async (c) => {
     try {
-      const useCase = new DeleteMaterialUseCase(await repository());
+      const useCase = new DeleteMaterialUseCase(await repositoryForOrg(c.get("profile").orgId));
       await useCase.execute(Number(c.req.param("id")));
       return c.body(null, 204);
     } catch (err) {
@@ -228,7 +385,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   // Products
   app.get(api.products.list.path, async (c) => {
     try {
-      const useCase = new ListProductsUseCase(await repository());
+      const useCase = new ListProductsUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -238,7 +395,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.products.get.path, async (c) => {
     try {
-      const useCase = new GetProductUseCase(await repository());
+      const useCase = new GetProductUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id"))), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -249,7 +406,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.products.create.path, async (c) => {
     try {
       const input = api.products.create.input.parse(await c.req.json());
-      const useCase = new CreateProductUseCase(await repository());
+      const useCase = new CreateProductUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(input), 201);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -260,7 +417,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.put(api.products.update.path, async (c) => {
     try {
       const input = api.products.update.input.parse(await c.req.json());
-      const useCase = new UpdateProductUseCase(await repository());
+      const useCase = new UpdateProductUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -270,7 +427,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.delete(api.products.delete.path, async (c) => {
     try {
-      const useCase = new DeleteProductUseCase(await repository());
+      const useCase = new DeleteProductUseCase(await repositoryForOrg(c.get("profile").orgId));
       await useCase.execute(Number(c.req.param("id")));
       return c.body(null, 204);
     } catch (err) {
@@ -282,7 +439,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   // Produced product stocks
   app.get(api.producedProductStocks.list.path, async (c) => {
     try {
-      const useCase = new ListProducedProductStocksUseCase(await repository());
+      const useCase = new ListProducedProductStocksUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -293,7 +450,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   // Production orders
   app.get(api.productionOrders.list.path, async (c) => {
     try {
-      const useCase = new ListProductionOrdersUseCase(await repository());
+      const useCase = new ListProductionOrdersUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -303,7 +460,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.productionOrders.get.path, async (c) => {
     try {
-      const useCase = new GetProductionOrderUseCase(await repository());
+      const useCase = new GetProductionOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id"))), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -314,7 +471,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.productionOrders.create.path, async (c) => {
     try {
       const input = api.productionOrders.create.input.parse(await c.req.json());
-      const useCase = new CreateProductionOrderUseCase(await repository());
+      const useCase = new CreateProductionOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(input), 201);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -325,7 +482,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.productionOrders.move.path, async (c) => {
     try {
       const input = api.productionOrders.move.input.parse(await c.req.json());
-      const useCase = new MoveProductionOrderUseCase(await repository());
+      const useCase = new MoveProductionOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -336,7 +493,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.productionOrders.conclude.path, async (c) => {
     try {
       const input = api.productionOrders.conclude.input.parse(await c.req.json());
-      const repo = await repository();
+      const repo = await repositoryForOrg(c.get("profile").orgId);
       const completeUseCase = new CompleteProductionUseCase(repo);
       const getUseCase = new GetProductionOrderUseCase(repo);
       await completeUseCase.execute(Number(c.req.param("id")), input);
@@ -350,7 +507,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   // Sales
   app.get(api.sales.list.path, async (c) => {
     try {
-      const useCase = new ListSalesUseCase(await repository());
+      const useCase = new ListSalesUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -360,7 +517,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.sales.get.path, async (c) => {
     try {
-      const useCase = new GetSaleUseCase(await repository());
+      const useCase = new GetSaleUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id"))), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -371,7 +528,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.sales.create.path, async (c) => {
     try {
       const input = api.sales.create.input.parse(await c.req.json());
-      const repo = await repository();
+      const repo = await repositoryForOrg(c.get("profile").orgId);
       const createUseCase = new CreateSaleUseCase(repo);
       const getUseCase = new GetSaleUseCase(repo);
       const result = await createUseCase.execute(input);
@@ -385,7 +542,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   // Inventory movements
   app.get(api.inventory.movements.path, async (c) => {
     try {
-      const useCase = new ListInventoryMovementsUseCase(await repository());
+      const useCase = new ListInventoryMovementsUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -396,7 +553,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   // Purchase orders
   app.get(api.purchaseOrders.list.path, async (c) => {
     try {
-      const useCase = new ListPurchaseOrdersUseCase(await repository());
+      const useCase = new ListPurchaseOrdersUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -406,7 +563,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.purchaseOrders.get.path, async (c) => {
     try {
-      const useCase = new GetPurchaseOrderUseCase(await repository());
+      const useCase = new GetPurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id"))), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -417,7 +574,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.purchaseOrders.create.path, async (c) => {
     try {
       const input = api.purchaseOrders.create.input.parse(await c.req.json());
-      const useCase = new CreatePurchaseOrderUseCase(await repository());
+      const useCase = new CreatePurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(input), 201);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -428,7 +585,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.put(api.purchaseOrders.update.path, async (c) => {
     try {
       const input = api.purchaseOrders.update.input.parse(await c.req.json());
-      const useCase = new UpdatePurchaseOrderUseCase(await repository());
+      const useCase = new UpdatePurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -439,7 +596,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.post(api.purchaseOrders.receive.path, async (c) => {
     try {
       const input = api.purchaseOrders.receive.input.parse(await c.req.json());
-      const useCase = new ReceivePurchaseOrderUseCase(await repository());
+      const useCase = new ReceivePurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
@@ -449,7 +606,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.delete(api.purchaseOrders.cancel.path, async (c) => {
     try {
-      const useCase = new CancelPurchaseOrderUseCase(await repository());
+      const useCase = new CancelPurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       await useCase.execute(Number(c.req.param("id")));
       return c.body(null, 204);
     } catch (err) {
@@ -461,7 +618,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   // Reports
   app.get(api.reports.production.path, async (c) => {
     try {
-      const useCase = new ProductionReportUseCase(await repository());
+      const useCase = new ProductionReportUseCase(await repositoryForOrg(c.get("profile").orgId));
       const period = periodFromQuery(c.req.query());
       return c.json(await useCase.execute(period), 200);
     } catch (err) {
@@ -472,7 +629,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.reports.leatherConsumption.path, async (c) => {
     try {
-      const useCase = new LeatherConsumptionReportUseCase(await repository());
+      const useCase = new LeatherConsumptionReportUseCase(await repositoryForOrg(c.get("profile").orgId));
       const period = periodFromQuery(c.req.query());
       return c.json(await useCase.execute(period), 200);
     } catch (err) {
@@ -483,7 +640,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.reports.sales.path, async (c) => {
     try {
-      const useCase = new SalesReportUseCase(await repository());
+      const useCase = new SalesReportUseCase(await repositoryForOrg(c.get("profile").orgId));
       const period = periodFromQuery(c.req.query());
       return c.json(await useCase.execute(period), 200);
     } catch (err) {
@@ -494,7 +651,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.get(api.reports.dashboard.path, async (c) => {
     try {
-      const useCase = new DashboardReportUseCase(await repository());
+      const useCase = new DashboardReportUseCase(await repositoryForOrg(c.get("profile").orgId));
       const period = periodFromQuery(c.req.query());
       return c.json(await useCase.execute(period), 200);
     } catch (err) {

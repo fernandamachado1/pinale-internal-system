@@ -6,6 +6,7 @@ import { useMaterials } from "@/hooks/use-erp";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuthz } from "@/hooks/use-authz";
 
 export default function MaterialFormPage() {
   const [isEditMatch, editParams] = useRoute("/materials/:id/edit");
@@ -14,6 +15,7 @@ export default function MaterialFormPage() {
 
   const { data: materials, isLoading, error, refetch } = useMaterials();
   const [, navigate] = useLocation();
+  const { canWrite } = useAuthz();
 
   const editMaterial = useMemo(() => {
     if (!isEditing || !materials) return null;
@@ -24,6 +26,22 @@ export default function MaterialFormPage() {
 
   return (
     <Layout hideMobileMenu fullBleed innerClassName="flex h-full w-full">
+      {!canWrite ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Sem permissão</AlertTitle>
+          <AlertDescription>
+            Seu usuário não tem permissão para criar/editar materiais.
+            <div className="mt-3">
+              <Button variant="outline" onClick={goBack}>
+                Voltar para materiais
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {!canWrite ? null : (
+        <>
       {error ? (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>Não foi possível carregar os materiais</AlertTitle>
@@ -68,6 +86,8 @@ export default function MaterialFormPage() {
             description={isEditing ? "Atualize os dados do material selecionado." : "Cadastre um novo material."}
           />
         </div>
+      )}
+        </>
       )}
     </Layout>
   );

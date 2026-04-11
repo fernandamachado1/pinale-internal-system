@@ -12,6 +12,25 @@ Dependencies:
   - `client/src/components/ui/button.tsx`
   - `client/src/lib/supabase.ts`
 
+## /profile
+Entry: `client/src/pages/Profile.tsx`
+Dependencies:
+- `client/src/pages/Profile.tsx`
+  - `client/src/components/Layout.tsx`
+  - `client/src/hooks/use-authz.ts`
+    - `client/src/lib/queryClient.ts`
+  - `client/src/hooks/use-toast.ts`
+    - `client/src/components/ui/toast.tsx`
+  - `client/src/components/ui/avatar.tsx`
+  - `client/src/components/ui/badge.tsx`
+  - `client/src/components/ui/card.tsx`
+  - `client/src/components/ui/label.tsx`
+  - `client/src/components/ui/input.tsx`
+  - `client/src/components/ui/button.tsx`
+  - `client/src/components/ui/alert.tsx`
+  - `client/src/components/ui/separator.tsx`
+  - `client/src/lib/supabase.ts`
+
 ## /
 Entry: `client/src/pages/Dashboard.tsx`
 Dependencies:

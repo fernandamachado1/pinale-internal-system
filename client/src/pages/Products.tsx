@@ -18,6 +18,7 @@ import { ExternalLink, FileText, MoreVertical, Package, Plus, Trash2, X } from "
 import { brl } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuthz } from "@/hooks/use-authz";
 
 type BomFormItem = { materialId?: number; qtyPerUnit: string };
 
@@ -165,6 +166,7 @@ export default function Products() {
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const deleteMutation = useDeleteProduct();
+  const { canWrite } = useAuthz();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [productDialogOpen, setProductDialogOpen] = useState(false);
@@ -238,26 +240,31 @@ export default function Products() {
   };
 
   const removeAttachment = (attachmentToRemove: string) => {
+    if (!canWrite) return;
     setAttachments((current) => current.filter((attachment) => attachment.url !== attachmentToRemove));
   };
 
   const openCreateProductDialog = () => {
+    if (!canWrite) return;
     setEditingProduct(null);
     setProductDialogOpen(true);
   };
 
   const openEditProductDialog = (product: ProductWithBom) => {
+    if (!canWrite) return;
     setEditingProduct(product);
     setProductDialogOpen(true);
   };
 
   const openCreateMaterialDialog = (index: number) => {
+    if (!canWrite) return;
     setMaterialRowIndex(index);
     setCreateMaterialForNewRow(false);
     setMaterialDialogOpen(true);
   };
 
   const handleCreateNewMaterialFromSpec = () => {
+    if (!canWrite) return;
     setMaterialRowIndex(null);
     setCreateMaterialForNewRow(true);
     setMaterialDialogOpen(true);
@@ -265,6 +272,10 @@ export default function Products() {
 
   const handleProductSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!canWrite) {
+      toast({ title: "Sem permissão", description: "Seu usuário não pode criar/editar produtos.", variant: "destructive" });
+      return;
+    }
     const payload = {
       product: { name, price, attachments, isActive: 1, description },
       technicalSpec: {
@@ -304,7 +315,7 @@ export default function Products() {
           <Package className="w-8 h-8 text-primary" /> Produtos
         </h1>
 
-        <Button onClick={openCreateProductDialog}>
+        <Button onClick={openCreateProductDialog} disabled={!canWrite}>
           <Plus className="w-4 h-4 mr-2" /> Novo Produto
         </Button>
       </div>
@@ -361,39 +372,45 @@ export default function Products() {
                       <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="hidden sm:flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)}>
-                          Editar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => deleteMutation.mutate(item.id)}
-                        >
-                          Inativar
-                        </Button>
-                      </div>
-
-                      <div className="flex justify-end sm:hidden">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
-                              <MoreVertical className="h-4 w-4" />
+                      {canWrite ? (
+                        <>
+                          <div className="hidden sm:flex justify-end gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)}>
+                              Editar
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => openEditProductDialog(item)}>Editar</DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
+                            <Button
+                              size="sm"
+                              variant="destructive"
                               disabled={deleteMutation.isPending}
-                              onSelect={() => deleteMutation.mutate(item.id)}
+                              onClick={() => deleteMutation.mutate(item.id)}
                             >
                               Inativar
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                            </Button>
+                          </div>
+
+                          <div className="flex justify-end sm:hidden">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => openEditProductDialog(item)}>Editar</DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  disabled={deleteMutation.isPending}
+                                  onSelect={() => deleteMutation.mutate(item.id)}
+                                >
+                                  Inativar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -415,7 +432,7 @@ export default function Products() {
             <CardDescription>Produtos precisam de ficha técnica para gerar ordens de produção.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={openCreateProductDialog}>
+            <Button onClick={openCreateProductDialog} disabled={!canWrite}>
               <Plus className="w-4 h-4 mr-2" /> Novo Produto
             </Button>
           </CardContent>
@@ -544,7 +561,7 @@ export default function Products() {
                   }}
                   placeholder="https://drive.google.com/file/d/..."
                 />
-                <Button type="button" variant="outline" onClick={addAttachment}>
+                <Button type="button" variant="outline" onClick={addAttachment} disabled={!canWrite}>
                   <Plus className="h-4 w-4 mr-2" /> Adicionar link
                 </Button>
               </div>
@@ -566,7 +583,7 @@ export default function Products() {
 
             <ResponsiveDialogFooter className="justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>Salvar</Button>
+              <Button type="submit" disabled={!canWrite || createMutation.isPending || updateMutation.isPending}>Salvar</Button>
             </ResponsiveDialogFooter>
           </form>
         </ResponsiveDialogContent>

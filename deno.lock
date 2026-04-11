@@ -49,6 +49,7 @@
     "npm:@replit/vite-plugin-cartographer@~0.4.4": "0.4.11",
     "npm:@replit/vite-plugin-dev-banner@~0.1.1": "0.1.2",
     "npm:@replit/vite-plugin-runtime-error-modal@^0.0.3": "0.0.3",
+    "npm:@supabase/supabase-js@2.101.1": "2.101.1",
     "npm:@supabase/supabase-js@^2.101.1": "2.101.1",
     "npm:@tailwindcss/typography@~0.5.15": "0.5.19_tailwindcss@3.4.19__postcss@8.5.8__jiti@1.21.7__tsx@4.21.0_tsx@4.21.0",
     "npm:@tailwindcss/vite@^4.1.18": "4.2.2_vite@7.3.1__@types+node@20.19.27__tsx@4.21.0__picomatch@4.0.4_@types+node@20.19.27_tsx@4.21.0",

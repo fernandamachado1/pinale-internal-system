@@ -18,6 +18,7 @@ import { MaterialSelectField } from "@/components/materials/MaterialSelectField"
 import { ClipboardList, MoreVertical, Plus, Truck, X } from "lucide-react";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { useToast } from "@/hooks/use-toast";
+import { useAuthz } from "@/hooks/use-authz";
 
 type PurchaseOrderStatus = PurchaseOrderWithItems["status"];
 
@@ -71,6 +72,7 @@ export default function PurchaseOrders() {
   const receiveMutation = useReceivePurchaseOrder();
   const cancelMutation = useCancelPurchaseOrder();
   const { toast } = useToast();
+  const { canWrite } = useAuthz();
 
   const activeMaterials = useMemo(() => (materials ?? []).filter((m) => m.isActive === 1), [materials]);
 
@@ -118,16 +120,19 @@ export default function PurchaseOrders() {
   }, [receiveOpen, receivingOrder]);
 
   const openCreateDialog = () => {
+    if (!canWrite) return;
     setEditingOrder(null);
     setDialogOpen(true);
   };
 
   const openEditDialog = (order: PurchaseOrderWithItems) => {
+    if (!canWrite) return;
     setEditingOrder(order);
     setDialogOpen(true);
   };
 
   const openReceiveDialog = (order: PurchaseOrderWithItems) => {
+    if (!canWrite) return;
     setReceivingOrder(order);
     setReceiveOpen(true);
   };
@@ -143,6 +148,10 @@ export default function PurchaseOrders() {
 
   const submitOrder = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!canWrite) {
+      toast({ title: "Sem permissão", description: "Seu usuário não pode criar/editar ordens de compra.", variant: "destructive" });
+      return;
+    }
 
     const payloadItems = formItems.map((item) => ({
       ...(item.id ? { id: item.id } : {}),
@@ -189,6 +198,10 @@ export default function PurchaseOrders() {
   }, [receiveLines, receivingOrder]);
 
   const submitReceive = () => {
+    if (!canWrite) {
+      toast({ title: "Sem permissão", description: "Seu usuário não pode receber ordens de compra.", variant: "destructive" });
+      return;
+    }
     if (!receivingOrder) return;
 
     const linesToSend = receiveLines
@@ -269,7 +282,7 @@ export default function PurchaseOrders() {
           Ordens de Compra
         </h1>
 
-        <Button onClick={openCreateDialog}>
+        <Button onClick={openCreateDialog} disabled={!canWrite}>
           <Plus className="w-4 h-4 mr-2" /> Nova Ordem
         </Button>
       </div>
@@ -338,47 +351,53 @@ export default function PurchaseOrders() {
                   <TableCell className="hidden md:table-cell">{formatDate(order.createdAt)}</TableCell>
                   <TableCell className="hidden md:table-cell">{formatDate(order.receivedAt)}</TableCell>
                   <TableCell className="text-right">
-                    <div className="hidden sm:flex justify-end gap-2">
-                      <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
-                        Editar
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
-                        <Truck className="w-4 h-4 mr-2" /> Receber
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={!canCancel || cancelMutation.isPending}
-                        onClick={() => cancelMutation.mutate(order.id)}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
-
-                    <div className="flex justify-end sm:hidden">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem disabled={!canEdit} onSelect={() => openEditDialog(order)}>
+                    {canWrite ? (
+                      <>
+                        <div className="hidden sm:flex justify-end gap-2">
+                          <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
                             Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem disabled={!canReceive} onSelect={() => openReceiveDialog(order)}>
-                            Receber
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
+                            <Truck className="w-4 h-4 mr-2" /> Receber
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
                             disabled={!canCancel || cancelMutation.isPending}
-                            onSelect={() => cancelMutation.mutate(order.id)}
+                            onClick={() => cancelMutation.mutate(order.id)}
                           >
                             Cancelar
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                          </Button>
+                        </div>
+
+                        <div className="flex justify-end sm:hidden">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem disabled={!canEdit} onSelect={() => openEditDialog(order)}>
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem disabled={!canReceive} onSelect={() => openReceiveDialog(order)}>
+                                Receber
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                disabled={!canCancel || cancelMutation.isPending}
+                                onSelect={() => cancelMutation.mutate(order.id)}
+                              >
+                                Cancelar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                 </TableRow>
               );
@@ -392,7 +411,7 @@ export default function PurchaseOrders() {
             <CardDescription>Crie itens por material ou texto livre e registre recebimentos parciais.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={openCreateDialog}>
+            <Button onClick={openCreateDialog} disabled={!canWrite}>
               <Plus className="w-4 h-4 mr-2" /> Nova Ordem
             </Button>
           </CardContent>
@@ -412,7 +431,7 @@ export default function PurchaseOrders() {
                 <div key={item.id ?? index} className="space-y-3 rounded-lg border p-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold">Item {index + 1}</h3>
-                    <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => removeFormItem(index)}>
+                    <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => removeFormItem(index)} disabled={!canWrite}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -449,6 +468,7 @@ export default function PurchaseOrders() {
               <button
                 type="button"
                 onClick={addFormItem}
+                disabled={!canWrite}
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               >
                 <Plus className="h-4 w-4" />
@@ -460,7 +480,7 @@ export default function PurchaseOrders() {
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+              <Button type="submit" disabled={!canWrite || createMutation.isPending || updateMutation.isPending}>
                 {editingOrder ? "Salvar" : "Criar"}
               </Button>
             </ResponsiveDialogFooter>
@@ -556,7 +576,7 @@ export default function PurchaseOrders() {
               <Button type="button" variant="outline" onClick={() => setReceiveOpen(false)}>
                 Fechar
               </Button>
-              <Button type="button" onClick={submitReceive} disabled={receiveMutation.isPending}>
+              <Button type="button" onClick={submitReceive} disabled={!canWrite || receiveMutation.isPending}>
                 Confirmar recebimento
               </Button>
             </ResponsiveDialogFooter>

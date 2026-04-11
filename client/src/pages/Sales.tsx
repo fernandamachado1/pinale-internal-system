@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShoppingCart, Plus, Trash2 } from "lucide-react";
 import { brl, formatDateTimeBR } from "@/lib/format";
+import { useAuthz } from "@/hooks/use-authz";
 
 type SaleItem = { productId: string; qty: string };
 
@@ -40,6 +41,7 @@ export default function Sales() {
   const { data: producedStocks, error: stocksError } = useProducedProductStocks();
   const createMutation = useCreateSale();
   const deleteMutation = useDeleteSale();
+  const { canWrite } = useAuthz();
 
   const [isOpen, setIsOpen] = useState(false);
   const [items, setItems] = useState<SaleItem[]>([emptyItem()]);
@@ -119,7 +121,7 @@ export default function Sales() {
 
         <ResponsiveDialog open={isOpen} onOpenChange={(open) => (open ? setIsOpen(true) : handleClose())}>
           <ResponsiveDialogTrigger asChild>
-            <Button>
+            <Button disabled={!canWrite}>
               <Plus className="w-4 h-4 mr-2" /> Nova Venda
             </Button>
           </ResponsiveDialogTrigger>
@@ -227,7 +229,7 @@ export default function Sales() {
 
               <ResponsiveDialogFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={handleClose}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
+                <Button type="submit" disabled={!canWrite || createMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
                   Salvar
                 </Button>
               </ResponsiveDialogFooter>
@@ -283,16 +285,20 @@ export default function Sales() {
                 <TableCell>{item.sale.paymentMethod}</TableCell>
                 <TableCell>{formatDateTimeBR(item.sale.createdAt)}</TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="flex items-center justify-end gap-1"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => setSaleToDelete(item)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Excluir
-                  </Button>
+                  {canWrite ? (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="flex items-center justify-end gap-1"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => setSaleToDelete(item)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Excluir
+                    </Button>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -305,7 +311,7 @@ export default function Sales() {
             <CardDescription>Registre sua primeira venda para ver o histórico e movimentações.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => setIsOpen(true)}>
+            <Button onClick={() => setIsOpen(true)} disabled={!canWrite}>
               <Plus className="w-4 h-4 mr-2" /> Nova Venda
             </Button>
           </CardContent>

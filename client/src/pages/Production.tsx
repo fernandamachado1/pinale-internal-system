@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CalendarIcon, Factory, GripVertical, Package, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatQty } from "@/lib/format";
+import { useAuthz } from "@/hooks/use-authz";
 
 type ProductionKanbanStatus = ProductionOrderWithProduct["status"];
 type ActiveProductionKanbanStatus = Exclude<ProductionKanbanStatus, "DONE">;
@@ -296,6 +297,7 @@ export default function Production() {
   const createMutation = useCreateProductionOrder();
   const moveMutation = useMoveProductionOrder();
   const concludeMutation = useConcludeProductionOrder();
+  const { canWrite } = useAuthz();
 
   const activeProducts = useMemo(() => products?.filter((product) => product.isActive === 1) ?? [], [products]);
   const [boardState, setBoardState] = useState<ProductionBoardState>(createBoardState(undefined));
@@ -335,6 +337,10 @@ export default function Production() {
 
   const handleCreate = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!canWrite) {
+      toast({ title: "Sem permissão", description: "Seu usuário não pode criar ordens de produção.", variant: "destructive" });
+      return;
+    }
     const dueAtIso = dueAt
       ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 12, 0, 0, 0).toISOString()
       : null;
@@ -475,7 +481,7 @@ export default function Production() {
 
         <ResponsiveDialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <ResponsiveDialogTrigger asChild>
-            <Button>
+            <Button disabled={!canWrite}>
               <Plus className="mr-2 h-4 w-4" /> Nova OP
             </Button>
           </ResponsiveDialogTrigger>

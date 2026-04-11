@@ -11,11 +11,15 @@ import {
   ClipboardList,
   Menu,
   LogOut,
+  UserRound,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/lib/supabase";
+import { useAuthz } from "@/hooks/use-authz";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,6 +30,7 @@ interface LayoutProps {
 
 export function Layout({ children, hideMobileMenu = false, fullBleed = false, innerClassName }: LayoutProps) {
   const [location, navigate] = useLocation();
+  const { isAdmin, canWrite, role, profile } = useAuthz();
 
   const logout = async () => {
     await supabase.auth.signOut().catch(() => undefined);
@@ -61,7 +66,23 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
         { icon: ArrowLeftRight, label: "Histórico de Estoque", href: "/movements" },
       ],
     },
+    {
+      label: "Conta",
+      items: [
+        { icon: UserRound, label: "Meu Perfil", href: "/profile" },
+        ...(isAdmin ? [{ icon: Users, label: "Usuários", href: "/admin/users" }] : []),
+      ],
+    },
   ];
+
+  const initials = (() => {
+    const value = (profile?.displayName ?? profile?.email ?? "").trim();
+    if (!value) return "U";
+    const parts = value.split(/\s+/).filter(Boolean);
+    const first = parts[0]?.[0] ?? value[0] ?? "U";
+    const second = parts.length > 1 ? parts[1]?.[0] : value[1];
+    return (first + (second ?? "")).toUpperCase();
+  })();
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
@@ -141,6 +162,19 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
       </nav>
 
       <div className="p-4 border-t border-sidebar-border">
+        <Link
+          href="/profile"
+          className="mb-3 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-sidebar-accent transition-colors"
+        >
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={profile?.avatarUrl ?? undefined} alt={profile?.displayName ?? profile?.email ?? "Usuário"} />
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-sidebar-foreground">{profile?.displayName ?? "Meu perfil"}</div>
+            <div className="truncate text-xs text-sidebar-foreground/60">{profile?.email ?? "—"}</div>
+          </div>
+        </Link>
         <Button variant="ghost" className="w-full justify-start gap-2" onClick={logout}>
           <LogOut className="w-4 h-4" />
           Sair
@@ -178,6 +212,14 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
           <div
             className={innerClassName ?? "flex h-full w-full flex-col gap-6 max-w-7xl mx-auto animate-in fade-in duration-500 slide-in-from-bottom-2"}
           >
+            {!canWrite ? (
+              <Alert>
+                <AlertTitle>Modo leitura</AlertTitle>
+                <AlertDescription>
+                  Seu acesso atual é <span className="font-semibold">{role}</span>. Você pode navegar e consultar dados, mas não pode criar/editar.
+                </AlertDescription>
+              </Alert>
+            ) : null}
             {children}
           </div>
         </div>

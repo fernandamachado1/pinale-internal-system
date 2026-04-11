@@ -1,10 +1,19 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { AppError } from "@/lib/app-error";
 import { apiFetch } from "@/lib/api-fetch";
+import { hasSupabaseEnv, supabase } from "@/lib/supabase";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const payload = (await res.json().catch(() => null)) as { message?: string; code?: string; field?: string } | null;
+    if (res.status === 403 && payload?.code === "USER_INACTIVE") {
+      if (hasSupabaseEnv) {
+        await supabase.auth.signOut().catch(() => undefined);
+      }
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
     const message =
       payload?.message?.trim()
         ? payload.message

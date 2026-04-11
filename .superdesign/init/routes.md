@@ -1,6 +1,7 @@
 # Route Map
 
 - `/login` → `client/src/pages/Login.tsx` (standalone form; not wrapped by `Layout` in App. Uses card-based login view.)
+- `/profile` → `client/src/pages/Profile.tsx` (wrapped by `Layout`. Profile identity + avatar upload + editable fields.)
 - `/` → `client/src/pages/Dashboard.tsx` (wrapped by `Layout` with sidebar + header.)
 - `/materials/new` → `client/src/pages/MaterialFormPage.tsx` (Layout wrapper; used to create materials.)
 - `/materials/:id/edit` → `client/src/pages/MaterialFormPage.tsx` (Layout wrapper; editing materials.)
