@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { differenceInCalendarDays, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { closestCorners, DndContext, DragOverlay, PointerSensor, TouchSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { closestCorners, DndContext, DragOverlay, MouseSensor, TouchSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ProductionOrderWithProduct } from "@shared/schema";
@@ -213,6 +213,7 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
   const {
     attributes,
     listeners,
+    setActivatorNodeRef,
     setNodeRef,
     transform,
     transition,
@@ -231,16 +232,21 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
     <article
       ref={setNodeRef}
       style={style}
-      className={`touch-pan-x min-h-[108px] rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
-      {...(!dragDisabled ? attributes : {})}
-      {...(!dragDisabled ? listeners : {})}
+      className={`touch-pan-x min-h-[108px] rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-default"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
     >
       <ProductionCardBody
         order={order}
         dragHandle={!dragDisabled ? (
-          <div className="rounded-md bg-black/5 p-1 text-muted-foreground">
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            className="touch-none rounded-md bg-black/5 p-1 text-muted-foreground hover:bg-black/10 active:bg-black/15 cursor-grab active:cursor-grabbing"
+            aria-label="Arrastar ordem de produção"
+            {...attributes}
+            {...listeners}
+          >
             <GripVertical className="h-4 w-4" />
-          </div>
+          </button>
         ) : undefined}
       />
     </article>
@@ -323,9 +329,10 @@ export default function Production() {
   }, [orders]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    // Mobile: permite scroll horizontal; "segurar" para arrastar
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 10 } }),
+    // Desktop: mouse drag.
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    // Mobile: "segurar" para arrastar (swipe deve rolar o board).
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
   const selectedProduct = useMemo(() => activeProducts.find((product) => String(product.id) === productId), [activeProducts, productId]);
@@ -601,7 +608,7 @@ export default function Production() {
           ) : null}
 
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2">
+            <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2 touch-pan-x">
             {columnOrder.map((status) => {
               const columnOrders = boardState[status] ?? [];
               return (
