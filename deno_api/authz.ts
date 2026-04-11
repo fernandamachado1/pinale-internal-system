@@ -12,6 +12,15 @@ export async function ensureProfile(
   db: any,
   user: { id: string; email?: string | null },
 ): Promise<Profile> {
+  // Fast path: most requests should only need a single SELECT.
+  const rows = (await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)) as Profile[];
+  const existing = rows[0];
+  if (existing?.orgId) {
+    if (!existing.isActive) throw new ApiError(403, "User is inactive", "USER_INACTIVE");
+    return existing;
+  }
+
+  // Slow path: only when profile is missing or missing orgId.
   // Drizzle's `execute` return shape depends on driver; support the common ones.
   // - node-postgres: { rows: [...] }
   // - some adapters: array of rows
@@ -24,34 +33,38 @@ export async function ensureProfile(
     throw new ApiError(500, "Failed to resolve default org id. Did you run migrations?", "ORG_MISSING");
   }
 
-  // Best-effort: if migrations weren't run yet, this will fail loudly.
-  try {
-    await db
-      .insert(profiles)
-      .values({
-        id: user.id,
-        orgId: resolvedDefaultOrgId,
-        email: user.email ?? null,
-      })
-      .onConflictDoNothing();
-  } catch {
-    // ignore insert failures; we still try to load below.
+  // Best-effort insert when missing.
+  if (!existing) {
+    try {
+      await db
+        .insert(profiles)
+        .values({
+          id: user.id,
+          orgId: resolvedDefaultOrgId,
+          email: user.email ?? null,
+        })
+        .onConflictDoNothing();
+    } catch {
+      // ignore insert failures; we still try to load below.
+    }
   }
 
-  const rows = (await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)) as Profile[];
-  const profile = rows[0];
-  if (!profile) throw new ApiError(500, "Profile not found. Did you run migrations?", "PROFILE_MISSING");
-
-  if (!profile.orgId) {
+  // Backfill orgId if needed.
+  if (existing && !existing.orgId) {
     const [updated] = (await db
       .update(profiles)
       .set({ orgId: resolvedDefaultOrgId, updatedAt: new Date() })
       .where(eq(profiles.id, user.id))
       .returning()) as Profile[];
-    if (updated) return updated;
+    if (updated) {
+      if (!updated.isActive) throw new ApiError(403, "User is inactive", "USER_INACTIVE");
+      return updated;
+    }
   }
 
+  const rowsAfter = (await db.select().from(profiles).where(eq(profiles.id, user.id)).limit(1)) as Profile[];
+  const profile = rowsAfter[0];
+  if (!profile) throw new ApiError(500, "Profile not found. Did you run migrations?", "PROFILE_MISSING");
   if (!profile.isActive) throw new ApiError(403, "User is inactive", "USER_INACTIVE");
-
   return profile;
 }

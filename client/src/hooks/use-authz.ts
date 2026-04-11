@@ -10,11 +10,12 @@ export function useMeProfile() {
 }
 
 export function useAuthz() {
-  const { data: profile } = useMeProfile();
-  const role = (profile?.role as UserRole | undefined) ?? "VIEWER";
+  const { data: profile, isLoading, isFetching } = useMeProfile();
+  const role = (profile?.role as UserRole | undefined) ?? undefined;
   const isAdmin = role === "ADMIN";
   const canWrite = role === "ADMIN" || role === "STAFF";
-  return { role, isAdmin, canWrite, profile };
+  const isAuthzLoading = isLoading || isFetching;
+  return { role, isAdmin, canWrite, profile, isAuthzLoading };
 }
 
 export function useUpdateMyProfile() {
@@ -61,4 +62,3 @@ export function useAdminUpdateUser() {
     },
   });
 }
-

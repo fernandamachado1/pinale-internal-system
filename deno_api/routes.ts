@@ -149,11 +149,26 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       if (c.req.path === "/api/health/net") {
         return await next();
       }
+      const debugPerf = Deno.env.get("DEBUG_PERF") === "true";
+      const t0 = debugPerf ? performance.now() : 0;
       const user = await requireSupabaseUser(c.req.header("Authorization"));
+      const t1 = debugPerf ? performance.now() : 0;
       c.set("user", user);
       const { db } = await initDb();
+      const t2 = debugPerf ? performance.now() : 0;
       const profile = await ensureProfile(db, user);
+      const t3 = debugPerf ? performance.now() : 0;
       c.set("profile", profile);
+
+      if (debugPerf) {
+        const authMs = t1 - t0;
+        const dbMs = t2 - t1;
+        const profileMs = t3 - t2;
+        c.header(
+          "Server-Timing",
+          `auth;dur=${authMs.toFixed(1)},db;dur=${dbMs.toFixed(1)},profile;dur=${profileMs.toFixed(1)}`,
+        );
+      }
       await next();
     } catch (err) {
       if (err instanceof Error && err.message === "UNAUTHORIZED") {

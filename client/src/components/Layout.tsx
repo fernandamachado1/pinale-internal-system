@@ -30,7 +30,7 @@ interface LayoutProps {
 
 export function Layout({ children, hideMobileMenu = false, fullBleed = false, innerClassName }: LayoutProps) {
   const [location, navigate] = useLocation();
-  const { isAdmin, canWrite, role, profile } = useAuthz();
+  const { isAdmin, canWrite, role, profile, isAuthzLoading } = useAuthz();
 
   const logout = async () => {
     await supabase.auth.signOut().catch(() => undefined);
@@ -212,11 +212,11 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
           <div
             className={innerClassName ?? "flex h-full w-full flex-col gap-6 max-w-7xl mx-auto animate-in fade-in duration-500 slide-in-from-bottom-2"}
           >
-            {!canWrite ? (
+            {!isAuthzLoading && !canWrite ? (
               <Alert>
                 <AlertTitle>Modo leitura</AlertTitle>
                 <AlertDescription>
-                  Seu acesso atual é <span className="font-semibold">{role}</span>. Você pode navegar e consultar dados, mas não pode criar/editar.
+                  Seu acesso atual é <span className="font-semibold">{role ?? "—"}</span>. Você pode navegar e consultar dados, mas não pode criar/editar.
                 </AlertDescription>
               </Alert>
             ) : null}
