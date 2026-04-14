@@ -664,7 +664,7 @@ export default function Products() {
             </div>
             {!editingProduct ? (
               <div className="space-y-2">
-                <Label>Quantidade inicial no estoque de acabados</Label>
+                <Label>Quantidade inicial no estoque produzido</Label>
                 <Input
                   type="number"
                   min="0"

@@ -86,7 +86,7 @@ export class HttpErpGateway implements IErpGateway {
 
   async getProducedProductStockSummary(): Promise<ProducedProductStockSummary[]> {
     const res = await apiFetch(api.producedProductStocks.summary.path);
-    return parseJsonResponse<ProducedProductStockSummary[]>(res, "Falha ao carregar resumo de estoque de acabados");
+    return parseJsonResponse<ProducedProductStockSummary[]>(res, "Falha ao carregar resumo de estoque produzido");
   }
 
   async registerInitialProducedStock(data: RegisterInitialProducedStockInput): Promise<ProducedProductStockWithProduct> {

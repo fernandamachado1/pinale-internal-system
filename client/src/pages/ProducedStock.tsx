@@ -55,14 +55,14 @@ export default function ProducedStock() {
       <div className="mb-6 flex flex-col gap-2">
         <h1 className="flex items-center gap-3 text-3xl font-bold">
           <Boxes className="h-8 w-8 text-primary" />
-          Estoque de Acabados
+          Estoque Produzido
         </h1>
         <p className="text-muted-foreground">Cada produto do catálogo mostra entradas, saídas e saldo final de itens acabados.</p>
       </div>
 
       {hasError ? (
         <Alert variant="destructive" className="mb-4">
-          <AlertTitle>Não foi possível carregar o estoque de acabados</AlertTitle>
+          <AlertTitle>Não foi possível carregar o estoque produzido</AlertTitle>
           <AlertDescription>
             Verifique se o servidor e o banco estão rodando e tente novamente.
             <div className="mt-3">
@@ -120,7 +120,7 @@ export default function ProducedStock() {
         <Card>
           <CardHeader>
             <CardTitle>Nenhum produto cadastrado</CardTitle>
-            <CardDescription>Cadastre itens no catálogo para controlar o estoque de acabados.</CardDescription>
+            <CardDescription>Cadastre itens no catálogo para controlar o estoque produzido.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={() => (window.location.href = "/products")}>Ir para Catálogo</Button>
