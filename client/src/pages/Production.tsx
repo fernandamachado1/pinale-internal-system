@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { differenceInCalendarDays, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { closestCorners, DndContext, DragOverlay, MouseSensor, pointerWithin, TouchSensor, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragMoveEvent, type DragOverEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ProductionOrderWithProduct } from "@shared/schema";
@@ -31,6 +31,7 @@ import { CalendarIcon, Factory, GripVertical, Loader2, Package, Plus } from "luc
 import { useToast } from "@/hooks/use-toast";
 import { formatQty } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type ProductionKanbanStatus = ProductionOrderWithProduct["status"];
 type ActiveProductionKanbanStatus = Exclude<ProductionKanbanStatus, "DONE">;
@@ -78,7 +79,8 @@ const columnTheme: Record<ProductionKanbanStatus, { shell: string; accent: strin
 };
 
 const collisionDetection: CollisionDetection = (args) => {
-  return pointerWithin(args);
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCorners(args);
 };
 
 function createBoardState(orders: ProductionOrderWithProduct[] | undefined): ProductionBoardState {
@@ -244,7 +246,7 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
           <button
             type="button"
             ref={setActivatorNodeRef}
-            className="touch-none rounded-md bg-black/5 p-1 text-muted-foreground hover:bg-black/10 active:bg-black/15 cursor-grab active:cursor-grabbing"
+            className="touch-none flex h-11 w-11 items-center justify-center rounded-md bg-black/5 p-2 text-muted-foreground hover:bg-black/10 active:bg-black/15 cursor-grab active:cursor-grabbing sm:h-auto sm:w-auto sm:p-1"
             aria-label="Arrastar ordem de produção"
             {...attributes}
             {...listeners}
@@ -261,10 +263,12 @@ function ColumnDropZone({
   status,
   orders,
   children,
+  isActiveTarget,
 }: {
   status: ProductionKanbanStatus;
   orders: ProductionOrderWithProduct[];
   children: ReactNode;
+  isActiveTarget?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const theme = columnTheme[status];
@@ -273,13 +277,14 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex min-h-[280px] min-w-[240px] flex-none snap-start flex-col rounded-2xl border p-3 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:p-4 ${theme.shell} ${isOver ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]" : ""}`}
+      className={`flex min-h-[280px] min-w-[calc(100vw-1rem)] flex-none snap-center flex-col rounded-2xl border p-3 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:snap-start sm:p-4 ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className={`mb-2 h-1.5 w-14 rounded-full ${theme.accent}`} />
           <h2 className="text-sm font-semibold sm:text-base">{columnMeta[status].title}</h2>
           <p className="text-xs text-muted-foreground sm:text-sm">{columnMeta[status].description}</p>
+          {isActiveTarget ? <p className="mt-1 text-[11px] font-medium text-primary">Solte aqui</p> : null}
         </div>
         <Badge className={theme.badge}>{visibleOrders.length}</Badge>
       </div>
@@ -308,6 +313,7 @@ export default function Production() {
   const moveMutation = useMoveProductionOrder();
   const concludeMutation = useConcludeProductionOrder();
   const { canWrite } = useAuthz();
+  const isMobile = useIsMobile();
 
   const activeProducts = useMemo(() => products?.filter((product) => product.isActive === 1) ?? [], [products]);
   const [boardState, setBoardState] = useState<ProductionBoardState>(createBoardState(undefined));
@@ -327,14 +333,17 @@ export default function Production() {
   const [productId, setProductId] = useState("");
   const [qtyPlanned, setQtyPlanned] = useState("1");
   const [dueAt, setDueAt] = useState<Date | undefined>(undefined);
-
+  const [activeDropTarget, setActiveDropTarget] = useState<ProductionKanbanStatus | null>(null);
+  const [activeOverId, setActiveOverId] = useState<string | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRectRef = useRef<{ left: number; width: number } | null>(null);
   useEffect(() => {
     setBoardState(createBoardState(orders));
   }, [orders]);
 
   const sensors = useSensors(
-    // Usa pointer events para desktop + mobile sem depender de long-press.
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
   );
 
   const selectedProduct = useMemo(() => activeProducts.find((product) => String(product.id) === productId), [activeProducts, productId]);
@@ -368,45 +377,61 @@ export default function Production() {
 
   const handleDragStart = (event: DragStartEvent) => {
     const nextOrderId = Number(event.active.id);
-    if (!Number.isNaN(nextOrderId)) setActiveOrderId(nextOrderId);
+    if (!Number.isNaN(nextOrderId)) {
+      setActiveOrderId(nextOrderId);
+      const activeRect = event.active.rect.current as { initial?: { left: number; width: number } } | null;
+      dragStartRectRef.current = activeRect?.initial
+        ? {
+            left: activeRect.initial.left,
+            width: activeRect.initial.width,
+          }
+        : null;
+    }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveOrderId(null);
-    const { active, over } = event;
-    if (!over) return;
+  const handleDragMove = (event: DragMoveEvent) => {
+    const board = boardScrollRef.current;
+    if (!board || !dragStartRectRef.current) return;
 
-    const activeId = Number(active.id);
-    if (Number.isNaN(activeId)) return;
+    const { left, width } = dragStartRectRef.current;
+    const cardCenter = left + event.delta.x + width / 2;
+    const boardRect = board.getBoundingClientRect();
+    const edgeThreshold = isMobile ? 180 : 100;
+    const scrollStep = isMobile ? 60 : 24;
 
-    const sourceStatus = findStatusByOrderId(boardState, activeId);
+    if (cardCenter > boardRect.right - edgeThreshold) {
+      board.scrollLeft += scrollStep;
+    } else if (cardCenter < boardRect.left + edgeThreshold) {
+      board.scrollLeft -= scrollStep;
+    }
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    setActiveOverId(event.over ? String(event.over.id) : null);
+    const targetStatus = event.over ? resolveDropTargetStatus(boardState, String(event.over.id)) : null;
+    setActiveDropTarget(targetStatus ?? null);
+  };
+
+  const moveOrderWithConfirmation = (orderId: number, destinationStatus: ActiveProductionKanbanStatus | "DONE") => {
+    const sourceStatus = findStatusByOrderId(boardState, orderId);
     if (!sourceStatus || sourceStatus === "DONE") return;
 
-    const result = moveOrderOnBoard(boardState, activeId, String(over.id));
+    const result = moveOrderOnBoard(boardState, orderId, destinationStatus);
     if (!result) return;
 
-    const { destinationStatus, nextBoard } = result;
     const previousBoard = boardState;
-
-    if (sourceStatus === "IN_PROGRESS" && destinationStatus === "BACKLOG") {
-      toast({
-        title: "Movimento não permitido",
-        description: "Ordens que já iniciaram produção não podem voltar para o backlog porque os materiais já foram baixados.",
-        variant: "destructive",
-      });
-      return;
-    }
+    const { nextBoard } = result;
 
     setBoardState(nextBoard);
 
     if (destinationStatus === "DONE") {
-      setPendingCompletion({ orderId: activeId, previousBoard, nextBoard });
+      setPendingCompletion({ orderId, previousBoard, nextBoard });
       return;
     }
 
     if (sourceStatus === "BACKLOG" && destinationStatus === "IN_PROGRESS") {
       setPendingStart({
-        orderId: activeId,
+        orderId,
         previousBoard,
         nextBoard,
         orderedIds: nextBoard[destinationStatus].map((order) => order.id),
@@ -416,9 +441,9 @@ export default function Production() {
 
     moveMutation.mutate(
       {
-        id: activeId,
+        id: orderId,
         data: {
-          status: destinationStatus as ActiveProductionKanbanStatus,
+          status: destinationStatus,
           orderedIds: nextBoard[destinationStatus].map((order) => order.id),
         },
       },
@@ -428,6 +453,33 @@ export default function Production() {
         },
       },
     );
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveOrderId(null);
+    setActiveDropTarget(null);
+    setActiveOverId(null);
+    dragStartRectRef.current = null;
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = Number(active.id);
+    if (Number.isNaN(activeId)) return;
+
+    const sourceStatus = findStatusByOrderId(boardState, activeId);
+    if (!sourceStatus || sourceStatus === "DONE") return;
+    const destinationStatus = resolveDropTargetStatus(boardState, String(over.id));
+    if (!destinationStatus) return;
+
+    if (sourceStatus === "IN_PROGRESS" && destinationStatus === "BACKLOG") {
+      toast({
+        title: "Movimento não permitido",
+        description: "Ordens que já iniciaram produção não podem voltar para o backlog porque os materiais já foram baixados.",
+        variant: "destructive",
+      });
+      return;
+    }
+    moveOrderWithConfirmation(activeId, destinationStatus === "DONE" ? "DONE" : destinationStatus);
   };
 
   const handleCompletionCancel = () => {
@@ -479,6 +531,15 @@ export default function Production() {
       },
     );
   };
+
+  const renderInsertionMarker = (key: string) => (
+    <div
+      key={key}
+      className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 px-4 py-6 text-center text-xs font-medium text-primary"
+    >
+      Solte aqui para inserir
+    </div>
+  );
 
   return (
     <Layout>
@@ -613,17 +674,36 @@ export default function Production() {
             </Card>
           ) : null}
 
-          <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2 touch-pan-x">
+          {isMobile ? (
+            <div className="mb-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Segure o ícone do card por um instante para arrastar. Arraste para a coluna desejada e solte.
+            </div>
+          ) : null}
+
+          <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+            <div ref={boardScrollRef} className="-mx-2 flex snap-x snap-mandatory gap-2 overflow-x-auto px-2 pb-2 touch-pan-x sm:gap-4">
               {columnOrder.map((status) => {
                 const columnOrders = boardState[status] ?? [];
+                const activeOverIsColumn = activeOverId === status;
+                const activeOverOrderId = activeOverId && activeOverId !== status ? Number(activeOverId) : Number.NaN;
                 return (
-                  <ColumnDropZone key={status} status={status} orders={columnOrders}>
+                  <ColumnDropZone key={status} status={status} orders={columnOrders} isActiveTarget={activeDropTarget === status}>
                     {status === "DONE"
                       ? null
-                      : columnOrders.map((order) => (
-                          <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />
-                        ))}
+                      : columnOrders.flatMap((order, index) => {
+                          const items: ReactNode[] = [];
+                          const shouldInsertBefore = !Number.isNaN(activeOverOrderId) && order.id === activeOverOrderId;
+                          if (shouldInsertBefore) {
+                            items.push(renderInsertionMarker(`${status}-before-${order.id}`));
+                          }
+                          items.push(
+                            <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />,
+                          );
+                          if (index === columnOrders.length - 1 && activeOverIsColumn) {
+                            items.push(renderInsertionMarker(`${status}-end`));
+                          }
+                          return items;
+                        })}
                   </ColumnDropZone>
                 );
               })}
@@ -631,7 +711,7 @@ export default function Production() {
 
             <DragOverlay>
               {activeOrder ? (
-                <article className={`rounded-xl border p-3 shadow-xl ring-2 ring-primary/30 sm:p-4 ${columnTheme[activeOrder.status].card}`}>
+                <article className={`rounded-xl border p-3 shadow-xl ring-2 ring-primary/30 sm:p-4 ${columnTheme[activeOrder.status].card} opacity-95`}>
                   <ProductionCardBody order={activeOrder} />
                 </article>
               ) : null}
