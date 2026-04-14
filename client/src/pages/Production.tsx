@@ -172,7 +172,15 @@ function moveOrderOnBoard(
   };
 }
 
-function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithProduct; dragHandle?: ReactNode }) {
+function ProductionCardBody({
+  order,
+  dragHandle,
+  statusHint,
+}: {
+  order: ProductionOrderWithProduct;
+  dragHandle?: ReactNode;
+  statusHint?: ReactNode;
+}) {
   const dueDate = order.dueAt ? new Date(order.dueAt as any) : null;
   const daysToDue = dueDate ? differenceInCalendarDays(startOfDay(dueDate), startOfDay(new Date())) : null;
   const isOverdue = order.status !== "DONE" && daysToDue !== null && daysToDue < 0;
@@ -203,6 +211,7 @@ function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithP
           <Package className="h-4 w-4" />
           <span>{order.qtyPlanned} unidade(s)</span>
         </div>
+        {statusHint ? <div>{statusHint}</div> : null}
         <div className="text-[11px] text-muted-foreground">
           <span className="sm:hidden">Criada {format(new Date(order.createdAt), "dd/MM", { locale: ptBR })}</span>
           <span className="hidden sm:inline">
@@ -214,7 +223,7 @@ function ProductionCardBody({ order, dragHandle }: { order: ProductionOrderWithP
   );
 }
 
-function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithProduct; dragDisabled: boolean }) {
+function ProductionCard({ order, dragDisabled, bomWarning }: { order: ProductionOrderWithProduct; dragDisabled: boolean; bomWarning: boolean }) {
   const theme = columnTheme[order.status];
   const {
     attributes,
@@ -242,6 +251,7 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
     >
       <ProductionCardBody
         order={order}
+        statusHint={bomWarning ? <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">Sem ficha técnica</span> : null}
         dragHandle={!dragDisabled ? (
           <button
             type="button"
@@ -352,11 +362,20 @@ export default function Production() {
 
   const productById = useMemo(() => new Map((products ?? []).map((product) => [product.id, product])), [products]);
   const materialById = useMemo(() => new Map((materials ?? []).map((material) => [material.id, material])), [materials]);
+  const selectedProductBomCount = selectedProduct?.bomItems?.length ?? 0;
 
   const handleCreate = (event: React.FormEvent) => {
     event.preventDefault();
     if (!canWrite) {
       toast({ title: "Sem permissão", description: "Seu usuário não pode criar ordens de produção.", variant: "destructive" });
+      return;
+    }
+    if (selectedProductBomCount === 0) {
+      toast({
+        title: "Produto sem ficha técnica",
+        description: "Não é possível criar OP sem uma ficha técnica ativa para este produto.",
+        variant: "destructive",
+      });
       return;
     }
     const dueAtIso = dueAt
@@ -415,6 +434,19 @@ export default function Production() {
   const moveOrderWithConfirmation = (orderId: number, destinationStatus: ActiveProductionKanbanStatus | "DONE") => {
     const sourceStatus = findStatusByOrderId(boardState, orderId);
     if (!sourceStatus || sourceStatus === "DONE") return;
+
+    const order = findOrder(boardState, orderId);
+    if (!order) return;
+
+    const productBomCount = productById.get(order.productId)?.bomItems?.length ?? 0;
+    if (destinationStatus === "IN_PROGRESS" && productBomCount === 0) {
+      toast({
+        title: "Produto sem ficha técnica",
+        description: "Este produto ainda não possui ficha técnica ativa. Adicione a ficha antes de iniciar a produção.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const result = moveOrderOnBoard(boardState, orderId, destinationStatus);
     if (!result) return;
@@ -609,7 +641,12 @@ export default function Production() {
                 <div className="space-y-1 rounded border p-3 text-sm">
                   <div><strong>Entrada inicial:</strong> Backlog</div>
                   <div><strong>Baixa de materiais:</strong> ao mover para Em produção</div>
-                  <div><strong>Materiais na ficha:</strong> {selectedProduct.bomItems.length}</div>
+                  <div><strong>Materiais na ficha:</strong> {selectedProductBomCount}</div>
+                  {selectedProductBomCount === 0 ? (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
+                      Este produto não pode gerar OP até ter uma ficha técnica ativa.
+                    </div>
+                  ) : null}
                   <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
                   <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
                 </div>
@@ -617,7 +654,7 @@ export default function Production() {
               </div>
               <ResponsiveDialogFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending || !productId}>
+                <Button type="submit" disabled={createMutation.isPending || !productId || selectedProductBomCount === 0}>
                   {createMutation.isPending ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando...</>
                   ) : "Criar"}
@@ -696,8 +733,14 @@ export default function Production() {
                           if (shouldInsertBefore) {
                             items.push(renderInsertionMarker(`${status}-before-${order.id}`));
                           }
+                          const bomWarning = (productById.get(order.productId)?.bomItems?.length ?? 0) === 0;
                           items.push(
-                            <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />,
+                            <ProductionCard
+                              key={order.id}
+                              order={order}
+                              bomWarning={bomWarning}
+                              dragDisabled={interactionsDisabled || order.status === "DONE"}
+                            />,
                           );
                           if (index === columnOrders.length - 1 && activeOverIsColumn) {
                             items.push(renderInsertionMarker(`${status}-end`));
