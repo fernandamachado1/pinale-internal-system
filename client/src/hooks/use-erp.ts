@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { HttpErpGateway } from "@/infra/repositories/http-erp-gateway";
 import { isAppError } from "@/lib/app-error";
 import {
+  AdjustProducedStockUseCase,
   ConcludeProductionOrderUseCase,
   CreateMaterialUseCase,
   CreateManyMaterialsUseCase,
@@ -29,9 +30,12 @@ import {
   GetMaterialsUseCase,
   GetPurchaseOrdersUseCase,
   GetProductionOrdersUseCase,
+  GetCatalogProductsUseCase,
+  GetProducedProductStockSummaryUseCase,
   GetProducedProductStocksUseCase,
   GetProductsUseCase,
   GetSalesUseCase,
+  RegisterInitialProducedStockUseCase,
   CancelPurchaseOrderUseCase,
   CreatePurchaseOrderUseCase,
   ReceivePurchaseOrderUseCase,
@@ -49,7 +53,11 @@ const updateMaterialUseCase = new UpdateMaterialUseCase(gateway);
 const deleteMaterialUseCase = new DeleteMaterialUseCase(gateway);
 
 const getProductsUseCase = new GetProductsUseCase(gateway);
+const getCatalogProductsUseCase = new GetCatalogProductsUseCase(gateway);
 const getProducedProductStocksUseCase = new GetProducedProductStocksUseCase(gateway);
+const getProducedProductStockSummaryUseCase = new GetProducedProductStockSummaryUseCase(gateway);
+const registerInitialProducedStockUseCase = new RegisterInitialProducedStockUseCase(gateway);
+const adjustProducedStockUseCase = new AdjustProducedStockUseCase(gateway);
 const createProductUseCase = new CreateProductUseCase(gateway);
 const updateProductUseCase = new UpdateProductUseCase(gateway);
 const deleteProductUseCase = new DeleteProductUseCase(gateway);
@@ -169,10 +177,64 @@ export function useProducts() {
   });
 }
 
+export function useCatalogProducts(q: string, page: number, pageSize: number) {
+  return useQuery({
+    queryKey: [api.products.catalog.path, q, page, pageSize],
+    placeholderData: (previous) => previous,
+    queryFn: () =>
+      getCatalogProductsUseCase.execute({
+        q: q.trim() || undefined,
+        page,
+        pageSize,
+      }),
+  });
+}
+
 export function useProducedProductStocks() {
   return useQuery({
     queryKey: [api.producedProductStocks.list.path],
     queryFn: () => getProducedProductStocksUseCase.execute(),
+  });
+}
+
+export function useProducedProductStockSummary() {
+  return useQuery({
+    queryKey: [api.producedProductStocks.summary.path],
+    queryFn: () => getProducedProductStockSummaryUseCase.execute(),
+  });
+}
+
+export function useRegisterInitialProducedStock() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (data: { productId: number; qty: number; note?: string | null }) => registerInitialProducedStockUseCase.execute(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      message.success("Entrada inicial registrada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useAdjustProducedStock() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (data: { productId: number; qtyChange: number; note?: string | null }) => adjustProducedStockUseCase.execute(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      message.success("Ajuste de estoque registrado com sucesso.");
+    },
+    onError: message.error,
   });
 }
 
@@ -248,7 +310,9 @@ export function useCreateProduct() {
     mutationFn: (data: unknown) => createProductUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
       queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
       message.success("Produto criado com sucesso.");
     },
     onError: message.error,
@@ -263,6 +327,8 @@ export function useUpdateProduct() {
     mutationFn: ({ id, data }: { id: number; data: unknown }) => updateProductUseCase.execute(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
       message.success("Produto atualizado com sucesso.");
     },
     onError: message.error,
@@ -277,6 +343,8 @@ export function useDeleteProduct() {
     mutationFn: (id: number) => deleteProductUseCase.execute(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
       message.success("Produto inativado com sucesso.");
     },
     onError: message.error,
@@ -330,6 +398,7 @@ export function useConcludeProductionOrder() {
       queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Ordem de produção concluída com sucesso.");
     },
@@ -353,6 +422,8 @@ export function useCreateSale() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Venda registrada com sucesso.");
     },
@@ -369,6 +440,8 @@ export function useDeleteSale() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Venda excluída com sucesso.");
     },

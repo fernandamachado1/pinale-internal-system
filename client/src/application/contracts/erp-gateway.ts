@@ -1,4 +1,6 @@
 import type {
+  AdjustProducedStockInput,
+  CatalogProduct,
   CreateManyMaterialsInput,
   ConcludeProductionOrderInput,
   InsertMaterial,
@@ -8,12 +10,14 @@ import type {
   Material,
   MovementWithDetails,
   ProductWithBom,
+  ProducedProductStockSummary,
   ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
   PurchaseOrderWithItems,
   CreatePurchaseOrderInput,
   UpdatePurchaseOrderInput,
   ReceivePurchaseOrderInput,
+  RegisterInitialProducedStockInput,
   SaleListItem,
 } from "@shared/schema";
 import type { DashboardReport } from "@shared/routes";
@@ -26,8 +30,12 @@ export interface IErpGateway {
   deleteMaterial(id: number): Promise<void>;
 
   getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]>;
+  getProducedProductStockSummary(): Promise<ProducedProductStockSummary[]>;
+  registerInitialProducedStock(data: RegisterInitialProducedStockInput): Promise<ProducedProductStockWithProduct>;
+  adjustProducedStock(data: AdjustProducedStockInput): Promise<ProducedProductStockWithProduct>;
 
   getProducts(): Promise<ProductWithBom[]>;
+  getCatalogProducts(input: { q?: string; page: number; pageSize: number }): Promise<{ items: CatalogProduct[]; total: number }>;
   createProduct(data: unknown): Promise<ProductWithBom>;
   updateProduct(id: number, data: unknown): Promise<ProductWithBom>;
   deleteProduct(id: number): Promise<void>;

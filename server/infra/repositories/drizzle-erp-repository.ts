@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, sql, type SQL } from "drizzle-orm";
 import {
   boms,
   bomItems,
@@ -22,9 +22,11 @@ import {
   type Material,
   type MovementWithDetails,
   type MoveProductionOrderInput,
+  type CatalogProduct,
   type Product,
   type ProductWithBom,
   type ProducedProductStock,
+  type ProducedProductStockSummary,
   type ProducedProductStockWithProduct,
   type ProductionOrder,
   type ProductionOrderWithProduct,
@@ -150,6 +152,112 @@ export class DrizzleErpRepository implements IErpRepository {
     });
   }
 
+  async getCatalogProducts(input: { q?: string; page: number; pageSize: number }): Promise<{ items: CatalogProduct[]; total: number }> {
+    const query = input.q?.trim();
+    const offset = (input.page - 1) * input.pageSize;
+
+    const filters = [
+      ...(this.orgId ? [eq(products.orgId, this.orgId)] : []),
+      ...(query ? [ilike(products.name, `%${query}%`)] : []),
+    ];
+    const productsWhere = filters.length > 0 ? and(...filters) : undefined;
+
+    const [totalRow] = (await this.database
+      .select({ count: sql<number>`count(*)` })
+      .from(products)
+      .where(productsWhere)) as Array<{ count: number }>;
+    const total = Number(totalRow?.count ?? 0);
+
+    const pageProducts = (await this.database
+      .select()
+      .from(products)
+      .where(productsWhere)
+      .orderBy(products.name)
+      .limit(input.pageSize)
+      .offset(offset)) as Product[];
+
+    if (pageProducts.length === 0) return { items: [], total };
+
+    const pageProductIds = pageProducts.map((product) => product.id);
+
+    const activeBoms = (await this.database
+      .select()
+      .from(boms)
+      .where(
+        and(
+          inArray(boms.productId, pageProductIds),
+          eq(boms.isActive, 1),
+          ...(this.orgId ? [eq(boms.orgId, this.orgId)] : []),
+        ),
+      )) as Array<typeof boms.$inferSelect>;
+    const bomItemsForPage = activeBoms.length === 0
+      ? []
+      : ((await this.database
+        .select()
+        .from(bomItems)
+        .where(
+          and(
+            inArray(
+              bomItems.bomId,
+              activeBoms.map((bom) => bom.id),
+            ),
+            ...(this.orgId ? [eq(bomItems.orgId, this.orgId)] : []),
+          ),
+        )) as BomItem[]);
+
+    const stockRows = (await this.database
+      .select({ productId: producedProductStocks.productId, stockQty: producedProductStocks.stockQty })
+      .from(producedProductStocks)
+      .where(
+        and(
+          inArray(producedProductStocks.productId, pageProductIds),
+          ...(this.orgId ? [eq(producedProductStocks.orgId, this.orgId)] : []),
+        ),
+      )) as Array<{ productId: number; stockQty: number }>;
+    const movementTotals = (await this.database
+      .select({
+        productId: inventoryMovements.entityId,
+        direction: inventoryMovements.direction,
+        qty: sql<number>`coalesce(sum((${inventoryMovements.qty})::numeric), 0)`,
+      })
+      .from(inventoryMovements)
+      .where(
+        and(
+          eq(inventoryMovements.entityType, "PRODUCT"),
+          inArray(inventoryMovements.entityId, pageProductIds),
+          ...(this.orgId ? [eq(inventoryMovements.orgId, this.orgId)] : []),
+        ),
+      )
+      .groupBy(inventoryMovements.entityId, inventoryMovements.direction)) as Array<{
+      productId: number | null;
+      direction: "IN" | "OUT";
+      qty: number;
+    }>;
+
+    const stockByProductId = new Map(stockRows.map((row) => [row.productId, Number(row.stockQty)]));
+    const inByProductId = new Map<number, number>();
+    const outByProductId = new Map<number, number>();
+
+    for (const row of movementTotals) {
+      if (!row.productId) continue;
+      if (row.direction === "IN") inByProductId.set(row.productId, Number(row.qty));
+      else outByProductId.set(row.productId, Number(row.qty));
+    }
+
+    const items = pageProducts.map((product) => {
+      const activeBom = activeBoms.find((bom) => bom.productId === product.id);
+      return {
+        ...product,
+        bomItems: activeBom ? bomItemsForPage.filter((item) => item.bomId === activeBom.id) : [],
+        inQty: inByProductId.get(product.id) ?? 0,
+        outQty: outByProductId.get(product.id) ?? 0,
+        stockQty: stockByProductId.get(product.id) ?? 0,
+      };
+    });
+
+    return { items, total };
+  }
+
   async getProduct(id: number): Promise<ProductWithBom | undefined> {
     const productConditions = [eq(products.id, id)];
     if (this.orgId) productConditions.push(eq(products.orgId, this.orgId));
@@ -229,6 +337,54 @@ export class DrizzleErpRepository implements IErpRepository {
         return { ...stock, product };
       })
       .filter((item): item is ProducedProductStockWithProduct => item !== undefined);
+  }
+
+  async getProducedProductStockSummary(): Promise<ProducedProductStockSummary[]> {
+    const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
+    const stocksWhere = this.orgId ? eq(producedProductStocks.orgId, this.orgId) : undefined;
+    const movementsWhere = and(
+      eq(inventoryMovements.entityType, "PRODUCT"),
+      ...(this.orgId ? [eq(inventoryMovements.orgId, this.orgId)] : []),
+    );
+
+    const allProducts = (await this.database
+      .select({ id: products.id })
+      .from(products)
+      .where(productsWhere)) as Array<{ id: number }>;
+    const allStocks = (await this.database
+      .select({ productId: producedProductStocks.productId, stockQty: producedProductStocks.stockQty })
+      .from(producedProductStocks)
+      .where(stocksWhere)) as Array<{ productId: number; stockQty: number }>;
+    const movementTotals = (await this.database
+      .select({
+        productId: inventoryMovements.entityId,
+        direction: inventoryMovements.direction,
+        qty: sql<number>`coalesce(sum((${inventoryMovements.qty})::numeric), 0)`,
+      })
+      .from(inventoryMovements)
+      .where(movementsWhere)
+      .groupBy(inventoryMovements.entityId, inventoryMovements.direction)) as Array<{
+      productId: number | null;
+      direction: "IN" | "OUT";
+      qty: number;
+    }>;
+
+    const stockByProductId = new Map(allStocks.map((row) => [row.productId, Number(row.stockQty)]));
+    const inByProductId = new Map<number, number>();
+    const outByProductId = new Map<number, number>();
+
+    for (const row of movementTotals) {
+      if (!row.productId) continue;
+      if (row.direction === "IN") inByProductId.set(row.productId, Number(row.qty));
+      else outByProductId.set(row.productId, Number(row.qty));
+    }
+
+    return allProducts.map((product) => ({
+      productId: product.id,
+      inQty: inByProductId.get(product.id) ?? 0,
+      outQty: outByProductId.get(product.id) ?? 0,
+      stockQty: stockByProductId.get(product.id) ?? 0,
+    }));
   }
 
   async getProducedProductStockByProductId(productId: number): Promise<ProducedProductStockWithProduct | undefined> {

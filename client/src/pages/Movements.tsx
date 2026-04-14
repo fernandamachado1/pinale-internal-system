@@ -1,4 +1,5 @@
 import { Layout } from "@/components/Layout";
+import type { MovementWithDetails } from "@shared/schema";
 import { useInventoryMovements } from "@/hooks/use-erp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeftRight } from "lucide-react";
@@ -33,6 +34,14 @@ const referenceTypeLabels: Record<"OP" | "SALE" | "MANUAL", string> = {
 export default function Movements() {
   const { data: movements, isLoading, error, refetch } = useInventoryMovements();
   const [, setLocation] = useLocation();
+
+  const getReasonLabel = (movement: MovementWithDetails) => {
+    const subtype = typeof movement?.metadata === "object" && movement?.metadata
+      ? (movement.metadata as { subtype?: string }).subtype
+      : undefined;
+    if (movement.reason === "ADJUSTMENT" && subtype === "INITIAL_ENTRY") return "Entrada inicial";
+    return reasonLabels[movement.reason];
+  };
 
   return (
     <Layout>
@@ -88,7 +97,7 @@ export default function Movements() {
                 </TableCell>
                 <TableCell>{directionLabels[movement.direction]}</TableCell>
                 <TableCell>{movement.qty}</TableCell>
-                <TableCell>{reasonLabels[movement.reason]}</TableCell>
+                <TableCell>{getReasonLabel(movement)}</TableCell>
                 <TableCell>
                   {referenceTypeLabels[movement.referenceType]}
                   {movement.referenceId ? ` #${movement.referenceId}` : ""}

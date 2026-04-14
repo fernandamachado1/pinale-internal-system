@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { differenceInCalendarDays, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { closestCorners, DndContext, DragOverlay, MouseSensor, TouchSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { closestCorners, DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ProductionOrderWithProduct } from "@shared/schema";
@@ -27,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, Factory, GripVertical, Package, Plus } from "lucide-react";
+import { CalendarIcon, Factory, GripVertical, Loader2, Package, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatQty } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
@@ -329,10 +329,8 @@ export default function Production() {
   }, [orders]);
 
   const sensors = useSensors(
-    // Desktop: mouse drag.
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    // Mobile: "segurar" para arrastar (swipe deve rolar o board).
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    // Usa pointer events para desktop + mobile sem depender de long-press.
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
   const selectedProduct = useMemo(() => activeProducts.find((product) => String(product.id) === productId), [activeProducts, productId]);
@@ -488,7 +486,7 @@ export default function Production() {
 
         <ResponsiveDialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <ResponsiveDialogTrigger asChild>
-            <Button disabled={!canWrite}>
+            <Button disabled={!canWrite || createMutation.isPending}>
               <Plus className="mr-2 h-4 w-4" /> Nova OP
             </Button>
           </ResponsiveDialogTrigger>
@@ -554,7 +552,11 @@ export default function Production() {
               </div>
               <ResponsiveDialogFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending || !productId}>Criar</Button>
+                <Button type="submit" disabled={createMutation.isPending || !productId}>
+                  {createMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando...</>
+                  ) : "Criar"}
+                </Button>
               </ResponsiveDialogFooter>
             </form>
           </ResponsiveDialogContent>
@@ -696,7 +698,9 @@ export default function Production() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleStartCancel}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleStartConfirm} disabled={moveMutation.isPending}>
-              Iniciar produção
+              {moveMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Iniciando...</>
+              ) : "Iniciar produção"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -719,7 +723,11 @@ export default function Production() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCompletionCancel}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCompletionConfirm} disabled={concludeMutation.isPending}>Concluir OP</AlertDialogAction>
+            <AlertDialogAction onClick={handleCompletionConfirm} disabled={concludeMutation.isPending}>
+              {concludeMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Concluindo...</>
+              ) : "Concluir OP"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

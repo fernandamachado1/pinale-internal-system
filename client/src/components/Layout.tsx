@@ -48,14 +48,14 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
       label: "Cadastros",
       items: [
         { icon: Layers, label: "Materiais", href: "/materials" },
-        { icon: Package, label: "Produtos", href: "/products" },
+        { icon: Package, label: "Catálogo de Produtos", href: "/products" },
       ],
     },
     {
       label: "Operação",
       items: [
         { icon: Factory, label: "Ordens de Produção", href: "/production" },
-        { icon: Boxes, label: "Estoque Pronto", href: "/produced-stock" },
+        { icon: Boxes, label: "Estoque de Acabados", href: "/produced-stock" },
         { icon: ClipboardList, label: "Ordens de Compra", href: "/purchase-orders" },
         { icon: ShoppingCart, label: "Vendas", href: "/sales" },
       ],

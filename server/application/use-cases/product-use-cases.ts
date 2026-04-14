@@ -1,4 +1,6 @@
-import type { BomItemInput, CreateProductInput, ProductWithBom, UpdateProductInput } from "@shared/schema.ts";
+import type { BomItemInput, CatalogProduct, CreateProductInput, ProductWithBom, UpdateProductInput } from "@shared/schema.ts";
+import { InventoryMovement } from "../../domain/entities/inventory-movement.ts";
+import { ProducedProductStock } from "../../domain/entities/produced-product-stock.ts";
 import type { IErpRepository } from "../contracts/erp-repository.ts";
 import { ConflictDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
 
@@ -28,6 +30,14 @@ export class ListProductsUseCase {
   }
 }
 
+export class ListCatalogProductsUseCase {
+  constructor(private readonly repository: IErpRepository) {}
+
+  async execute(input: { q?: string; page: number; pageSize: number }): Promise<{ items: CatalogProduct[]; total: number }> {
+    return this.repository.getCatalogProducts(input);
+  }
+}
+
 export class GetProductUseCase {
   constructor(private readonly repository: IErpRepository) {}
 
@@ -47,6 +57,9 @@ export class CreateProductUseCase {
 
     if (Number(input.product.price) < 0) {
       throw new ValidationDomainError("Product price must be greater than or equal to zero");
+    }
+    if (!Number.isInteger(input.initialStockQty) || input.initialStockQty < 0) {
+      throw new ValidationDomainError("initialStockQty must be an integer greater than or equal to zero");
     }
 
     const existing = await this.repository.getProductByName(name);
@@ -71,6 +84,29 @@ export class CreateProductUseCase {
         bomItems: input.technicalSpec.bomItems ?? [],
       });
       await txRepository.createProducedProductStock(created.id);
+
+      if (input.initialStockQty > 0) {
+        const producedStock = new ProducedProductStock({
+          productId: created.id,
+          stockQty: 0,
+        });
+        producedStock.increase(input.initialStockQty);
+        await txRepository.updateProducedProductStockQty(created.id, producedStock.toPersistence().stockQty);
+        await txRepository.createInventoryMovement(
+          InventoryMovement.create({
+            entityType: "PRODUCT",
+            entityId: created.id,
+            direction: "IN",
+            qty: input.initialStockQty,
+            reason: "ADJUSTMENT",
+            referenceType: "MANUAL",
+            metadata: {
+              subtype: "INITIAL_ENTRY",
+              source: "PRODUCT_CREATE",
+            },
+          }).toData(),
+        );
+      }
 
       const product = await txRepository.getProduct(created.id);
       if (!product) throw new NotFoundDomainError("Product not found after creation");

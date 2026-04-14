@@ -6,8 +6,9 @@ import { initDb } from "./db.ts";
 import { getSupabaseConfig, requireSupabaseUser } from "./auth.ts";
 import { ensureProfile, requireRole } from "./authz.ts";
 import { ApiError, toErrorResponse } from "./errors.ts";
-import { and, desc, eq, sql } from "drizzle-orm";
-import { profiles, type Profile, type UserRole } from "../shared/schema.ts";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { profiles, pushSubscriptions, type Profile, type UserRole } from "../shared/schema.ts";
+import { getVapidPublicKey, isPushConfigured, sendWebPush, type WebPushSubscription } from "./push.ts";
 import {
   CreateMaterialUseCase,
   CreateManyMaterialsUseCase,
@@ -20,6 +21,7 @@ import {
   CreateProductUseCase,
   DeleteProductUseCase,
   GetProductUseCase,
+  ListCatalogProductsUseCase,
   ListProductsUseCase,
   UpdateProductUseCase,
 } from "../server/application/use-cases/product-use-cases.ts";
@@ -29,7 +31,12 @@ import {
   ListProductionOrdersUseCase,
   MoveProductionOrderUseCase,
 } from "../server/application/use-cases/production-use-cases.ts";
-import { ListProducedProductStocksUseCase } from "../server/application/use-cases/produced-product-stock-use-cases.ts";
+import {
+  AdjustProducedStockUseCase,
+  ListProducedProductStockSummaryUseCase,
+  ListProducedProductStocksUseCase,
+  RegisterInitialProducedStockUseCase,
+} from "../server/application/use-cases/produced-product-stock-use-cases.ts";
 import { ListInventoryMovementsUseCase } from "../server/application/use-cases/inventory-movement-use-cases.ts";
 import { CreateSaleUseCase } from "../server/application/use-cases/create-sale-use-case.ts";
 import { GetSaleUseCase, ListSalesUseCase } from "../server/application/use-cases/sale-use-cases.ts";
@@ -57,6 +64,44 @@ export type AppVariables = {
 async function repositoryForOrg(orgId: string): Promise<DrizzleErpRepository> {
   const { db } = await initDb();
   return new DrizzleErpRepository(db, orgId);
+}
+
+async function notifyPurchaseOrderCreated(orgId: string, purchaseOrder: any): Promise<void> {
+  if (!isPushConfigured()) return;
+
+  const { db } = await initDb();
+  const subs = await db
+    .select({
+      id: pushSubscriptions.id,
+      subscription: pushSubscriptions.subscription,
+    })
+    .from(pushSubscriptions)
+    .innerJoin(profiles, and(eq(profiles.id, pushSubscriptions.profileId), eq(profiles.orgId, orgId)))
+    .where(
+      and(
+        eq(pushSubscriptions.orgId, orgId),
+        eq(profiles.isActive, true),
+        inArray(profiles.role, ["ADMIN", "STAFF"]),
+      ),
+    );
+
+  if (subs.length === 0) return;
+
+  const itemCount = Array.isArray(purchaseOrder?.items) ? purchaseOrder.items.length : 0;
+  const payload = {
+    title: "Novo pedido de compra",
+    body: `Pedido #${purchaseOrder?.id ?? "—"} criado (${itemCount} ${itemCount === 1 ? "item" : "itens"})`,
+    data: { url: "/purchase-orders", purchaseOrderId: purchaseOrder?.id },
+  };
+
+  await Promise.allSettled(
+    subs.map(async (row) => {
+      const result = await sendWebPush(row.subscription as WebPushSubscription, payload);
+      if (!result.ok && (result.statusCode === 404 || result.statusCode === 410)) {
+        await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, row.id));
+      }
+    }),
+  );
 }
 
 function periodFromQuery(query: Record<string, string | string[] | undefined>): { from?: Date; to?: Date } {
@@ -197,6 +242,11 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       return await next();
     }
 
+    // Push notifications: any active user can opt-in/out.
+    if (path === api.push.publicKey.path || path === api.push.subscribe.path || path === api.push.unsubscribe.path) {
+      return await next();
+    }
+
     if (path.startsWith("/api/admin/")) {
       requireRole(profile, ["ADMIN"]);
       return await next();
@@ -213,6 +263,70 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   });
 
   app.get("/api/whoami", (c) => c.json({ ...c.get("user"), profile: c.get("profile") }, 200));
+
+  // Push notifications
+  app.get(api.push.publicKey.path, (c) => {
+    try {
+      return c.json({ publicKey: getVapidPublicKey() }, 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.push.subscribe.path, async (c) => {
+    try {
+      const input = api.push.subscribe.input.parse(await c.req.json());
+      const profile = c.get("profile");
+      const { db } = await initDb();
+      const userAgent = c.req.header("User-Agent") ?? null;
+      const now = new Date();
+
+      await db
+        .insert(pushSubscriptions)
+        .values({
+          orgId: profile.orgId,
+          profileId: profile.id,
+          endpoint: input.endpoint,
+          subscription: input,
+          userAgent,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: pushSubscriptions.endpoint,
+          set: {
+            orgId: profile.orgId,
+            profileId: profile.id,
+            subscription: input,
+            userAgent,
+            updatedAt: now,
+          },
+        });
+
+      return c.body(null, 204);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.push.unsubscribe.path, async (c) => {
+    try {
+      const input = api.push.unsubscribe.input.parse(await c.req.json());
+      const profile = c.get("profile");
+      const { db } = await initDb();
+
+      await db
+        .delete(pushSubscriptions)
+        .where(and(eq(pushSubscriptions.orgId, profile.orgId), eq(pushSubscriptions.profileId, profile.id), eq(pushSubscriptions.endpoint, input.endpoint)));
+
+      return c.body(null, 204);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
 
   // Me
   app.get(api.me.profile.get.path, (c) => c.json(c.get("profile"), 200));
@@ -408,6 +522,17 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     }
   });
 
+  app.get(api.products.catalog.path, async (c) => {
+    try {
+      const query = api.products.catalog.query.parse(c.req.query());
+      const useCase = new ListCatalogProductsUseCase(await repositoryForOrg(c.get("profile").orgId));
+      return c.json(await useCase.execute(query), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
   app.get(api.products.get.path, async (c) => {
     try {
       const useCase = new GetProductUseCase(await repositoryForOrg(c.get("profile").orgId));
@@ -456,6 +581,38 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     try {
       const useCase = new ListProducedProductStocksUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.get(api.producedProductStocks.summary.path, async (c) => {
+    try {
+      const useCase = new ListProducedProductStockSummaryUseCase(await repositoryForOrg(c.get("profile").orgId));
+      return c.json(await useCase.execute(), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.producedProductStocks.registerInitial.path, async (c) => {
+    try {
+      const input = api.producedProductStocks.registerInitial.input.parse(await c.req.json());
+      const useCase = new RegisterInitialProducedStockUseCase(await repositoryForOrg(c.get("profile").orgId));
+      return c.json(await useCase.execute(input), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.producedProductStocks.adjust.path, async (c) => {
+    try {
+      const input = api.producedProductStocks.adjust.input.parse(await c.req.json());
+      const useCase = new AdjustProducedStockUseCase(await repositoryForOrg(c.get("profile").orgId));
+      return c.json(await useCase.execute(input), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);
@@ -590,7 +747,11 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     try {
       const input = api.purchaseOrders.create.input.parse(await c.req.json());
       const useCase = new CreatePurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
-      return c.json(await useCase.execute(input), 201);
+      const created = await useCase.execute(input);
+      notifyPurchaseOrderCreated(c.get("profile").orgId, created).catch((err) => {
+        console.error("[push] purchase order created notification failed", err);
+      });
+      return c.json(created, 201);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);

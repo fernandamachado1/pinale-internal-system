@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   concludeProductionOrderSchema,
+  registerInitialProducedStockSchema,
+  adjustProducedStockSchema,
   createManyMaterialsSchema,
   createPurchaseOrderSchema,
   createProductInputSchema,
@@ -55,6 +57,28 @@ const productWithBomSchema = productSchema.and(
 const productionOrderWithProductSchema = productionOrderSchema.and(z.object({ product: productSchema }));
 const saleListItemSchema = saleItemSchema.and(z.object({ sale: saleSchema, product: productSchema }));
 const producedProductStockWithProductSchema = producedProductStockSchema.and(z.object({ product: productSchema }));
+const producedProductStockSummarySchema = z.object({
+  productId: z.number(),
+  inQty: z.number(),
+  outQty: z.number(),
+  stockQty: z.number(),
+});
+const catalogProductSchema = productWithBomSchema.and(
+  z.object({
+    inQty: z.number(),
+    outQty: z.number(),
+    stockQty: z.number(),
+  }),
+);
+const paginatedCatalogProductsSchema = z.object({
+  items: z.array(catalogProductSchema),
+  total: z.number(),
+});
+const catalogProductsQuerySchema = z.object({
+  q: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
 const purchaseOrderWithItemsSchema = purchaseOrderSchema.and(z.object({ items: z.array(purchaseOrderItemSchema) }));
 
 const reportProductionSchema = z.object({
@@ -93,6 +117,17 @@ const periodQuerySchema = z.object({
   to: z.string().datetime().optional(),
 });
 
+const webPushSubscriptionSchema = z
+  .object({
+    endpoint: z.string().min(1),
+    expirationTime: z.number().nullable().optional(),
+    keys: z.object({
+      p256dh: z.string().min(1),
+      auth: z.string().min(1),
+    }),
+  })
+  .passthrough();
+
 export const api = {
   me: {
     profile: {
@@ -107,6 +142,26 @@ export const api = {
         input: updateMyProfileSchema,
         responses: { 200: profileSchema, 400: errorSchemas.validation },
       },
+    },
+  },
+
+  push: {
+    publicKey: {
+      method: "GET" as const,
+      path: "/api/push/public-key" as const,
+      responses: { 200: z.object({ publicKey: z.string() }), 400: errorSchemas.badRequest },
+    },
+    subscribe: {
+      method: "POST" as const,
+      path: "/api/push/subscribe" as const,
+      input: webPushSubscriptionSchema,
+      responses: { 204: z.void(), 400: errorSchemas.validation },
+    },
+    unsubscribe: {
+      method: "POST" as const,
+      path: "/api/push/unsubscribe" as const,
+      input: z.object({ endpoint: z.string().min(1) }),
+      responses: { 204: z.void(), 400: errorSchemas.validation },
     },
   },
 
@@ -162,10 +217,33 @@ export const api = {
       path: "/api/produced-product-stocks" as const,
       responses: { 200: z.array(producedProductStockWithProductSchema) },
     },
+    summary: {
+      method: "GET" as const,
+      path: "/api/produced-product-stocks/summary" as const,
+      responses: { 200: z.array(producedProductStockSummarySchema) },
+    },
+    registerInitial: {
+      method: "POST" as const,
+      path: "/api/produced-product-stocks/register-initial" as const,
+      input: registerInitialProducedStockSchema,
+      responses: { 200: producedProductStockWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
+    adjust: {
+      method: "POST" as const,
+      path: "/api/produced-product-stocks/adjust" as const,
+      input: adjustProducedStockSchema,
+      responses: { 200: producedProductStockWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
   },
 
   products: {
     list: { method: "GET" as const, path: "/api/products" as const, responses: { 200: z.array(productWithBomSchema) } },
+    catalog: {
+      method: "GET" as const,
+      path: "/api/products/catalog" as const,
+      query: catalogProductsQuerySchema,
+      responses: { 200: paginatedCatalogProductsSchema },
+    },
     get: {
       method: "GET" as const,
       path: "/api/products/:id" as const,

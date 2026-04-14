@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSelectField } from "@/components/materials/MaterialSelectField";
-import { ClipboardList, MoreVertical, Plus, Truck, X } from "lucide-react";
+import { ClipboardList, Loader2, MoreVertical, Plus, Truck, X } from "lucide-react";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthz } from "@/hooks/use-authz";
@@ -88,6 +88,9 @@ export default function PurchaseOrders() {
   const [materialDialogName, setMaterialDialogName] = useState("");
   const [materialDialogTargetItemId, setMaterialDialogTargetItemId] = useState<number | null>(null);
   const [materialDialogHideInitialStockField, setMaterialDialogHideInitialStockField] = useState(false);
+  const [cancelingOrderId, setCancelingOrderId] = useState<number | null>(null);
+
+  const isSavingOrder = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -282,7 +285,7 @@ export default function PurchaseOrders() {
           Ordens de Compra
         </h1>
 
-        <Button onClick={openCreateDialog} disabled={!canWrite}>
+        <Button onClick={openCreateDialog} disabled={!canWrite || isSavingOrder}>
           <Plus className="w-4 h-4 mr-2" /> Nova Ordem
         </Button>
       </div>
@@ -364,9 +367,16 @@ export default function PurchaseOrders() {
                             size="sm"
                             variant="destructive"
                             disabled={!canCancel || cancelMutation.isPending}
-                            onClick={() => cancelMutation.mutate(order.id)}
+                            onClick={() => {
+                              setCancelingOrderId(order.id);
+                              cancelMutation.mutate(order.id, {
+                                onSettled: () => setCancelingOrderId(null),
+                              });
+                            }}
                           >
-                            Cancelar
+                            {cancelMutation.isPending && cancelingOrderId === order.id ? (
+                              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelando...</>
+                            ) : "Cancelar"}
                           </Button>
                         </div>
 
@@ -387,7 +397,12 @@ export default function PurchaseOrders() {
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 disabled={!canCancel || cancelMutation.isPending}
-                                onSelect={() => cancelMutation.mutate(order.id)}
+                                onSelect={() => {
+                                  setCancelingOrderId(order.id);
+                                  cancelMutation.mutate(order.id, {
+                                    onSettled: () => setCancelingOrderId(null),
+                                  });
+                                }}
                               >
                                 Cancelar
                               </DropdownMenuItem>
@@ -411,7 +426,7 @@ export default function PurchaseOrders() {
             <CardDescription>Crie itens por material ou texto livre e registre recebimentos parciais.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={openCreateDialog} disabled={!canWrite}>
+            <Button onClick={openCreateDialog} disabled={!canWrite || isSavingOrder}>
               <Plus className="w-4 h-4 mr-2" /> Nova Ordem
             </Button>
           </CardContent>
@@ -480,8 +495,10 @@ export default function PurchaseOrders() {
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={!canWrite || createMutation.isPending || updateMutation.isPending}>
-                {editingOrder ? "Salvar" : "Criar"}
+              <Button type="submit" disabled={!canWrite || isSavingOrder}>
+                {isSavingOrder ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {editingOrder ? "Salvando..." : "Criando..."}</>
+                ) : (editingOrder ? "Salvar" : "Criar")}
               </Button>
             </ResponsiveDialogFooter>
           </form>
@@ -577,7 +594,9 @@ export default function PurchaseOrders() {
                 Fechar
               </Button>
               <Button type="button" onClick={submitReceive} disabled={!canWrite || receiveMutation.isPending}>
-                Confirmar recebimento
+                {receiveMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirmando...</>
+                ) : "Confirmar recebimento"}
               </Button>
             </ResponsiveDialogFooter>
           </div>
@@ -594,7 +613,11 @@ export default function PurchaseOrders() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Voltar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmReceiveWithoutStock}>Continuar</AlertDialogAction>
+            <AlertDialogAction onClick={confirmReceiveWithoutStock} disabled={receiveMutation.isPending}>
+              {receiveMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...</>
+              ) : "Continuar"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

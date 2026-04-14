@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { AtSign, Camera, Link2, Save, UploadCloud, User, UserRound, X } from "lucide-react";
 import { hasSupabaseEnv, supabase } from "@/lib/supabase";
+import { disablePush, enablePush, getIsSubscribed, isPushSupported } from "@/lib/push";
 
 export default function Profile() {
   const { toast } = useToast();
@@ -33,6 +34,9 @@ export default function Profile() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isDraggingAvatar, setIsDraggingAvatar] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
 
   const initials = useMemo(() => {
     const value = (profile?.displayName ?? profile?.email ?? "").trim();
@@ -48,6 +52,15 @@ export default function Profile() {
     setUsername(initial.username);
     setAvatarUrl(initial.avatarUrl);
   }, [initial.avatarUrl, initial.displayName, initial.username]);
+
+  useEffect(() => {
+    const supported = isPushSupported();
+    setPushSupported(supported);
+    if (!supported) return;
+    getIsSubscribed()
+      .then((value) => setPushEnabled(value))
+      .catch(() => setPushEnabled(false));
+  }, []);
 
   const onCancel = () => {
     setDisplayName(initial.displayName);
@@ -383,6 +396,76 @@ export default function Profile() {
                     </Button>
                   </div>
                 </form>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6 rounded-2xl">
+            <CardHeader className="pb-4">
+              <CardTitle>Notificações</CardTitle>
+              <CardDescription>Receba alertas no celular quando um pedido de compra for criado.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!pushSupported ? (
+                <Alert>
+                  <AlertTitle>Push não disponível</AlertTitle>
+                  <AlertDescription>
+                    Seu navegador/dispositivo não suporta push notifications. No iPhone/iPad, isso só funciona em um app instalado na tela inicial (PWA).
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-foreground">
+                      Status: {pushEnabled ? "Ativado" : "Desativado"}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Se estiver no iOS, instale pelo “Adicionar à Tela de Início” e tente novamente.
+                    </p>
+                  </div>
+                  {pushEnabled ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-xl"
+                      disabled={pushBusy}
+                      onClick={async () => {
+                        setPushBusy(true);
+                        try {
+                          await disablePush();
+                          setPushEnabled(false);
+                          toast({ title: "Ok", description: "Notificações desativadas." });
+                        } catch (err: any) {
+                          toast({ title: "Erro", description: err?.message ?? "Não foi possível desativar.", variant: "destructive" });
+                        } finally {
+                          setPushBusy(false);
+                        }
+                      }}
+                    >
+                      {pushBusy ? "Aguarde…" : "Desativar"}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      className="rounded-xl"
+                      disabled={pushBusy}
+                      onClick={async () => {
+                        setPushBusy(true);
+                        try {
+                          await enablePush();
+                          setPushEnabled(true);
+                          toast({ title: "Pronto", description: "Notificações ativadas." });
+                        } catch (err: any) {
+                          toast({ title: "Erro", description: err?.message ?? "Não foi possível ativar.", variant: "destructive" });
+                        } finally {
+                          setPushBusy(false);
+                        }
+                      }}
+                    >
+                      {pushBusy ? "Ativando…" : "Ativar no dispositivo"}
+                    </Button>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>

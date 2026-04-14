@@ -1,6 +1,8 @@
 import { api, buildUrl } from "@shared/routes";
 import type { DashboardReport } from "@shared/routes";
 import type {
+  AdjustProducedStockInput,
+  CatalogProduct,
   CreateManyMaterialsInput,
   ConcludeProductionOrderInput,
   InsertMaterial,
@@ -10,10 +12,12 @@ import type {
   Material,
   MovementWithDetails,
   ProductWithBom,
+  ProducedProductStockSummary,
   ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
   PurchaseOrderWithItems,
   CreatePurchaseOrderInput,
+  RegisterInitialProducedStockInput,
   UpdatePurchaseOrderInput,
   ReceivePurchaseOrderInput,
   SaleListItem,
@@ -80,9 +84,41 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<ProducedProductStockWithProduct[]>(res, "Falha ao carregar estoque produzido");
   }
 
+  async getProducedProductStockSummary(): Promise<ProducedProductStockSummary[]> {
+    const res = await apiFetch(api.producedProductStocks.summary.path);
+    return parseJsonResponse<ProducedProductStockSummary[]>(res, "Falha ao carregar resumo de estoque de acabados");
+  }
+
+  async registerInitialProducedStock(data: RegisterInitialProducedStockInput): Promise<ProducedProductStockWithProduct> {
+    const res = await apiFetch(api.producedProductStocks.registerInitial.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProducedProductStockWithProduct>(res, "Falha ao registrar entrada inicial");
+  }
+
+  async adjustProducedStock(data: AdjustProducedStockInput): Promise<ProducedProductStockWithProduct> {
+    const res = await apiFetch(api.producedProductStocks.adjust.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProducedProductStockWithProduct>(res, "Falha ao ajustar estoque");
+  }
+
   async getProducts(): Promise<ProductWithBom[]> {
     const res = await apiFetch(api.products.list.path);
     return parseJsonResponse<ProductWithBom[]>(res, "Falha ao carregar produtos");
+  }
+
+  async getCatalogProducts(input: { q?: string; page: number; pageSize: number }): Promise<{ items: CatalogProduct[]; total: number }> {
+    const params = new URLSearchParams();
+    params.set("page", String(input.page));
+    params.set("pageSize", String(input.pageSize));
+    if (input.q?.trim()) params.set("q", input.q.trim());
+    const res = await apiFetch(`${api.products.catalog.path}?${params.toString()}`);
+    return parseJsonResponse<{ items: CatalogProduct[]; total: number }>(res, "Falha ao carregar catálogo");
   }
 
   async createProduct(data: unknown): Promise<ProductWithBom> {

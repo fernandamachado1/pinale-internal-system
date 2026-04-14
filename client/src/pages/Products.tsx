@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ProductAttachment, ProductWithBom } from "@shared/schema";
+import type { CatalogProduct, ProductAttachment } from "@shared/schema";
 import { Layout } from "@/components/Layout";
-import { useCreateProduct, useDeleteProduct, useMaterials, useProducts, useUpdateProduct, useProducedProductStocks } from "@/hooks/use-erp";
+import { useAdjustProducedStock, useCatalogProducts, useCreateProduct, useDeleteProduct, useMaterials, useUpdateProduct } from "@/hooks/use-erp";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -14,7 +15,7 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription,
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, FileText, MoreVertical, Package, Plus, Trash2, X } from "lucide-react";
+import { ExternalLink, FileText, Loader2, MoreVertical, Package, Plus, Trash2, X } from "lucide-react";
 import { brl } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { Textarea } from "@/components/ui/textarea";
@@ -160,38 +161,70 @@ function normalizeAttachmentUrl(value: string): string {
 
 export default function Products() {
   const { toast } = useToast();
-  const { data: products, isLoading: isProductsLoading, error: productsError, refetch: refetchProducts } = useProducts();
   const { data: materials } = useMaterials();
-  const { data: producedStocks } = useProducedProductStocks();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const deleteMutation = useDeleteProduct();
+  const adjustStockMutation = useAdjustProducedStock();
   const { canWrite } = useAuthz();
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const {
+    data: catalogData,
+    isLoading: isProductsLoading,
+    isFetching: isProductsFetching,
+    error: productsError,
+    refetch: refetchProducts,
+  } = useCatalogProducts(debouncedSearchTerm, page, pageSize);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<ProductWithBom | null>(null);
+  const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null);
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
   const [materialRowIndex, setMaterialRowIndex] = useState<number | null>(null);
   const [createMaterialForNewRow, setCreateMaterialForNewRow] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
+  const [initialStockQty, setInitialStockQty] = useState("0");
+  const [hasTechnicalSpec, setHasTechnicalSpec] = useState(false);
   const [bomItems, setBomItems] = useState<BomFormItem[]>([createEmptyBomItem()]);
   const [attachments, setAttachments] = useState<ProductAttachment[]>([]);
   const [attachmentInput, setAttachmentInput] = useState("");
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [stockDialogOpen, setStockDialogOpen] = useState(false);
+  const [stockDialogProduct, setStockDialogProduct] = useState<CatalogProduct | null>(null);
+  const [stockDialogMode, setStockDialogMode] = useState<"IN" | "OUT">("IN");
+  const [stockDialogQty, setStockDialogQty] = useState("1");
+  const [stockDialogNote, setStockDialogNote] = useState("");
+  const [stockLoadingProductId, setStockLoadingProductId] = useState<number | null>(null);
+  const [stockLoadingMode, setStockLoadingMode] = useState<"IN" | "OUT" | null>(null);
+  const [optimisticStockChanges, setOptimisticStockChanges] = useState<Record<number, number>>({});
 
-  const filteredProducts = useMemo(
-    () => products?.filter((product: ProductWithBom) => product.name.toLowerCase().includes(searchTerm.toLowerCase())) ?? [],
-    [products, searchTerm],
-  );
+  const products = catalogData?.items ?? [];
+  const totalProducts = catalogData?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
 
   const activeMaterials = useMemo(() => materials?.filter((material) => material.isActive === 1) ?? [], [materials]);
-  const producedStockByProductId = useMemo(
-    () => new Map((producedStocks ?? []).map((item) => [item.productId, item.stockQty])),
-    [producedStocks],
-  );
+  const isSavingProduct = createMutation.isPending || updateMutation.isPending;
+  const isMutatingStock = adjustStockMutation.isPending;
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    if (!isProductsFetching) setOptimisticStockChanges({});
+  }, [catalogData, isProductsFetching]);
 
   useEffect(() => {
     if (!productDialogOpen) return;
@@ -200,6 +233,8 @@ export default function Products() {
       setName(editingProduct.name);
       setPrice(editingProduct.price);
       setDescription(editingProduct.description ?? "");
+      setInitialStockQty("0");
+      setHasTechnicalSpec(editingProduct.bomItems.length > 0);
       setBomItems(editingProduct.bomItems.length > 0 ? editingProduct.bomItems.map((item) => ({ materialId: item.materialId, qtyPerUnit: String(item.qtyPerUnit) })) : [createEmptyBomItem()]);
       setAttachments((editingProduct.attachments ?? []).map((attachment) => coerceAttachment(attachment as ProductAttachment | string)));
       setAttachmentInput("");
@@ -210,6 +245,8 @@ export default function Products() {
     setName("");
     setPrice("");
     setDescription("");
+    setInitialStockQty("0");
+    setHasTechnicalSpec(false);
     setBomItems([createEmptyBomItem()]);
     setAttachments([]);
     setAttachmentInput("");
@@ -250,17 +287,19 @@ export default function Products() {
     setProductDialogOpen(true);
   };
 
-  const openEditProductDialog = (product: ProductWithBom) => {
+  const openEditProductDialog = (product: CatalogProduct) => {
     if (!canWrite) return;
     setEditingProduct(product);
     setProductDialogOpen(true);
   };
 
-  const openCreateMaterialDialog = (index: number) => {
+  const openStockDialog = (product: CatalogProduct, mode: "IN" | "OUT") => {
     if (!canWrite) return;
-    setMaterialRowIndex(index);
-    setCreateMaterialForNewRow(false);
-    setMaterialDialogOpen(true);
+    setStockDialogProduct(product);
+    setStockDialogMode(mode);
+    setStockDialogQty("1");
+    setStockDialogNote("");
+    setStockDialogOpen(true);
   };
 
   const handleCreateNewMaterialFromSpec = () => {
@@ -276,16 +315,27 @@ export default function Products() {
       toast({ title: "Sem permissão", description: "Seu usuário não pode criar/editar produtos.", variant: "destructive" });
       return;
     }
+    const normalizedInitialStockQty = Number(initialStockQty || 0);
+    if (!editingProduct && (!Number.isInteger(normalizedInitialStockQty) || normalizedInitialStockQty < 0)) {
+      toast({
+        title: "Quantidade inicial inválida",
+        description: "Informe um número inteiro maior ou igual a zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const payload = {
       product: { name, price, attachments, isActive: 1, description },
       technicalSpec: {
-        bomItems: bomItems
+        bomItems: (hasTechnicalSpec ? bomItems : [])
           .filter((item) => item.materialId)
           .map((item) => ({
             materialId: Number(item.materialId),
             qtyPerUnit: item.qtyPerUnit,
         })),
       },
+      initialStockQty: editingProduct ? 0 : normalizedInitialStockQty,
     };
 
     if (editingProduct) {
@@ -308,15 +358,67 @@ export default function Products() {
     });
   };
 
+  const handleStockSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!stockDialogProduct) return;
+    const qty = Number(stockDialogQty);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      toast({
+        title: "Quantidade inválida",
+        description: "Informe um número inteiro maior que zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const qtyChange = stockDialogMode === "IN" ? qty : -qty;
+    setStockLoadingProductId(stockDialogProduct.id);
+    setStockLoadingMode(stockDialogMode);
+    setOptimisticStockChanges((current) => ({
+      ...current,
+      [stockDialogProduct.id]: (current[stockDialogProduct.id] ?? 0) + qtyChange,
+    }));
+
+    adjustStockMutation.mutate(
+      {
+        productId: stockDialogProduct.id,
+        qtyChange,
+        note: stockDialogNote.trim() || null,
+      },
+      {
+        onSuccess: () => setStockDialogOpen(false),
+        onError: () => {
+          setOptimisticStockChanges((current) => ({
+            ...current,
+            [stockDialogProduct.id]: (current[stockDialogProduct.id] ?? 0) - qtyChange,
+          }));
+        },
+        onSettled: () => {
+          setStockLoadingProductId(null);
+          setStockLoadingMode(null);
+        },
+      },
+    );
+  };
+
+  const getProductStockSnapshot = (item: CatalogProduct) => {
+    const delta = optimisticStockChanges[item.id] ?? 0;
+    return {
+      inQty: item.inQty + (delta > 0 ? delta : 0),
+      outQty: item.outQty + (delta < 0 ? Math.abs(delta) : 0),
+      stockQty: item.stockQty + delta,
+    };
+  };
+
   return (
     <Layout>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold flex items-center gap-3">
-          <Package className="w-8 h-8 text-primary" /> Produtos
+          <Package className="w-8 h-8 text-primary" /> Catálogo de Produtos
         </h1>
 
-        <Button onClick={openCreateProductDialog} disabled={!canWrite}>
-          <Plus className="w-4 h-4 mr-2" /> Novo Produto
+        <Button onClick={openCreateProductDialog} disabled={!canWrite || isSavingProduct}>
+          <Plus className="w-4 h-4 mr-2" /> Novo item
         </Button>
       </div>
 
@@ -334,6 +436,25 @@ export default function Products() {
         </Alert>
       ) : null}
 
+      <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
+        <Input placeholder="Buscar produto" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Itens por página</span>
+          <select
+            value={String(pageSize)}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+      </div>
+
       {isProductsLoading ? (
         <div className="space-y-3">
           <Skeleton className="h-10 w-full" />
@@ -343,107 +464,185 @@ export default function Products() {
             ))}
           </div>
         </div>
-      ) : products?.length ? (
+      ) : totalProducts === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Comece cadastrando seus produtos</CardTitle>
+            <CardDescription>Ficha técnica é opcional no cadastro. Ela só é obrigatória quando for produzir.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={openCreateProductDialog} disabled={!canWrite}>
+              <Plus className="w-4 h-4 mr-2" /> Novo item
+            </Button>
+          </CardContent>
+        </Card>
+      ) : products.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Nenhum produto encontrado</CardTitle>
+            <CardDescription>Tente ajustar o termo de busca.</CardDescription>
+          </CardHeader>
+        </Card>
+      ) : (
         <>
-          <div className="mb-4">
-            <Input placeholder="Buscar produto" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <div className="mb-3 text-sm text-muted-foreground flex items-center justify-between">
+            <span>{totalProducts} item(ns) no catálogo</span>
+            {isProductsFetching ? <span>Atualizando...</span> : null}
           </div>
 
-          {filteredProducts.length ? (
+          <div className="space-y-3 md:hidden">
+            {products.map((item) => {
+              const stock = getProductStockSnapshot(item);
+              return (
+                <Card key={item.id}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">{item.name}</CardTitle>
+                    <CardDescription>#{item.id} • {brl(Number(item.price))}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="rounded-md bg-muted p-2 text-center">
+                        <div className="text-muted-foreground text-xs">Entradas</div>
+                        <div className="font-semibold">{stock.inQty}</div>
+                      </div>
+                      <div className="rounded-md bg-muted p-2 text-center">
+                        <div className="text-muted-foreground text-xs">Saídas</div>
+                        <div className="font-semibold">{stock.outQty}</div>
+                      </div>
+                      <div className="rounded-md bg-muted p-2 text-center">
+                        <div className="text-muted-foreground text-xs">Saldo</div>
+                        <div className="font-semibold">{stock.stockQty}</div>
+                      </div>
+                    </div>
+                    <div>
+                      {item.bomItems.length > 0 ? (
+                        <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
+                      ) : (
+                        <Badge variant="secondary">Sem ficha técnica</Badge>
+                      )}
+                    </div>
+                    {canWrite ? (
+                      <div className="flex justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem disabled={isMutatingStock} onSelect={() => openStockDialog(item, "IN")}>Entrada</DropdownMenuItem>
+                            <DropdownMenuItem disabled={isMutatingStock} onSelect={() => openStockDialog(item, "OUT")}>Saída</DropdownMenuItem>
+                            <DropdownMenuItem disabled={isSavingProduct || isMutatingStock} onSelect={() => openEditProductDialog(item)}>Editar</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={deleteMutation.isPending || isMutatingStock || isSavingProduct}
+                              onSelect={() => deleteMutation.mutate(item.id)}
+                            >
+                              Inativar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="hidden sm:table-cell">ID</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Preço</TableHead>
-                  <TableHead className="hidden md:table-cell">Estoque produzido</TableHead>
-                  <TableHead className="hidden lg:table-cell">Ficha técnica</TableHead>
+                  <TableHead className="text-right">Entradas</TableHead>
+                  <TableHead className="text-right">Saídas</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead className="hidden lg:table-cell">Estrutura de produção</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredProducts.map((item: ProductWithBom) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="hidden sm:table-cell">#{item.id}</TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>{brl(Number(item.price))}</TableCell>
-                    <TableCell className="hidden md:table-cell">{producedStockByProductId.get(item.id) ?? 0}</TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canWrite ? (
-                        <>
+                {products.map((item) => {
+                  const stock = getProductStockSnapshot(item);
+                  return (
+                    <TableRow key={item.id}>
+                      <TableCell className="hidden sm:table-cell">#{item.id}</TableCell>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell>{brl(Number(item.price))}</TableCell>
+                      <TableCell className="text-right">{stock.inQty}</TableCell>
+                      <TableCell className="text-right">{stock.outQty}</TableCell>
+                      <TableCell className="text-right font-semibold">{stock.stockQty}</TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        {item.bomItems.length > 0 ? (
+                          <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
+                        ) : (
+                          <Badge variant="secondary">Sem ficha técnica</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {canWrite ? (
                           <div className="hidden sm:flex justify-end gap-2">
-                            <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)}>
+                            <Button size="sm" variant="outline" onClick={() => openStockDialog(item, "IN")} disabled={isMutatingStock}>
+                              {isMutatingStock && stockLoadingProductId === item.id && stockLoadingMode === "IN" ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Entrando...</>
+                              ) : "Entrada"}
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => openStockDialog(item, "OUT")} disabled={isMutatingStock}>
+                              {isMutatingStock && stockLoadingProductId === item.id && stockLoadingMode === "OUT" ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saindo...</>
+                              ) : "Saída"}
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)} disabled={isSavingProduct || isMutatingStock}>
                               Editar
                             </Button>
                             <Button
                               size="sm"
                               variant="destructive"
-                              disabled={deleteMutation.isPending}
+                              disabled={deleteMutation.isPending || isMutatingStock || isSavingProduct}
                               onClick={() => deleteMutation.mutate(item.id)}
                             >
-                              Inativar
+                              {deleteMutation.isPending ? (
+                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Inativando...</>
+                              ) : "Inativar"}
                             </Button>
                           </div>
-
-                          <div className="flex justify-end sm:hidden">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => openEditProductDialog(item)}>Editar</DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  disabled={deleteMutation.isPending}
-                                  onSelect={() => deleteMutation.mutate(item.id)}
-                                >
-                                  Inativar
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Nenhum produto encontrado</CardTitle>
-                <CardDescription>Tente ajustar o termo de busca.</CardDescription>
-              </CardHeader>
-            </Card>
-          )}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              Página {page} de {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1 || isProductsFetching} onClick={() => setPage((current) => current - 1)}>
+                Anterior
+              </Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages || isProductsFetching} onClick={() => setPage((current) => current + 1)}>
+                Próxima
+              </Button>
+            </div>
+          </div>
         </>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Comece cadastrando seus produtos</CardTitle>
-            <CardDescription>Produtos precisam de ficha técnica para gerar ordens de produção.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={openCreateProductDialog} disabled={!canWrite}>
-              <Plus className="w-4 h-4 mr-2" /> Novo Produto
-            </Button>
-          </CardContent>
-        </Card>
       )}
 
       <ResponsiveDialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>{editingProduct ? "Editar produto" : "Criar produto"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription>Defina o cadastro base do produto e sua ficha técnica.</ResponsiveDialogDescription>
+            <ResponsiveDialogTitle>{editingProduct ? "Editar item do catálogo" : "Criar item do catálogo"}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Cadastre o produto e, se quiser, adicione a ficha técnica agora. Você pode incluir a ficha depois.
+            </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
           <form onSubmit={handleProductSubmit} className="space-y-4">
@@ -463,79 +662,114 @@ export default function Products() {
                 />
               </div>
             </div>
+            {!editingProduct ? (
+              <div className="space-y-2">
+                <Label>Quantidade inicial no estoque de acabados</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={initialStockQty}
+                  onChange={(e) => setInitialStockQty(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label>Descrição</Label>
               <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Informações adicionais sobre o produto" />
             </div>
 
             <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:p-5">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <Label className="text-base">Materiais da ficha técnica</Label>
+                  <Label className="text-base">Estrutura de produção (ficha técnica)</Label>
                   <p className="text-sm text-muted-foreground">
-                    Selecione materiais já cadastrados ou crie um novo sem sair do produto.
+                    Opcional no cadastro. Só é obrigatória para abrir/iniciar ordem de produção.
                   </p>
                 </div>
-                <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleCreateNewMaterialFromSpec}>
-                  <Plus className="h-4 w-4 mr-1" /> Novo material
+                <Button
+                  type="button"
+                  variant={hasTechnicalSpec ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => setHasTechnicalSpec((current) => !current)}
+                >
+                  {hasTechnicalSpec ? "Remover ficha por agora" : "Adicionar ficha agora"}
                 </Button>
               </div>
 
-              <div className="space-y-3">
-                {bomItems.map((item, index) => (
-                  <div key={index} className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-sm font-semibold">Material {index + 1}</h3>
-                        <p className="text-xs text-muted-foreground">Defina o item e o consumo por unidade produzida.</p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        aria-label="Remover material"
-                        onClick={() => removeBomItem(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              {hasTechnicalSpec ? (
+                <div className="space-y-3">
+                  {bomItems.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+                      Nenhum material na ficha técnica ainda.
                     </div>
-
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
-                      <div className="space-y-2">
-                        <Label>Nome do material</Label>
-                        <MaterialSearchCombobox
-                          materials={activeMaterials}
-                          value={item.materialId}
-                          onSelect={(material) => {
-                            setBomItem(index, { materialId: material.id });
-                          }}
-                          placeholder="Pesquisar material cadastrado"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Qtd por unidade</Label>
-                        <Input
-                          inputMode="decimal"
-                          value={toPtBrDecimal(item.qtyPerUnit)}
-                          onChange={(e) => setBomItem(index, { qtyPerUnit: fromPtBrDecimal(e.target.value, 3) })}
-                          placeholder="0,000"
-                          required
-                        />
-                      </div>
-                    </div>
+                  ) : null}
+                  <div className="flex justify-end">
+                    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleCreateNewMaterialFromSpec}>
+                      <Plus className="h-4 w-4 mr-1" /> Novo material
+                    </Button>
                   </div>
-                ))}
 
-                <button
-                  type="button"
-                  onClick={addBomItem}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                  Adicionar material
-                </button>
-              </div>
+                  {bomItems.map((item, index) => (
+                    <div key={index} className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-semibold">Material {index + 1}</h3>
+                          <p className="text-xs text-muted-foreground">Defina o item e o consumo por unidade produzida.</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          aria-label="Remover material"
+                          onClick={() => removeBomItem(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
+                        <div className="space-y-2">
+                          <Label>Nome do material</Label>
+                          <MaterialSearchCombobox
+                            materials={activeMaterials}
+                            value={item.materialId}
+                            onSelect={(material) => {
+                              setBomItem(index, { materialId: material.id });
+                            }}
+                            placeholder="Pesquisar material cadastrado"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Qtd por unidade</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={toPtBrDecimal(item.qtyPerUnit)}
+                            onChange={(e) => setBomItem(index, { qtyPerUnit: fromPtBrDecimal(e.target.value, 3) })}
+                            placeholder="0,000"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addBomItem}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Adicionar material
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+                  Sem ficha técnica por enquanto. Você poderá adicionar depois editando este mesmo produto.
+                </div>
+              )}
             </div>
 
             <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:p-5">
@@ -583,7 +817,54 @@ export default function Products() {
 
             <ResponsiveDialogFooter className="justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={!canWrite || createMutation.isPending || updateMutation.isPending}>Salvar</Button>
+              <Button type="submit" disabled={!canWrite || isSavingProduct}>
+                {isSavingProduct ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+                ) : "Salvar"}
+              </Button>
+            </ResponsiveDialogFooter>
+          </form>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+      <ResponsiveDialog open={stockDialogOpen} onOpenChange={setStockDialogOpen}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>{stockDialogMode === "IN" ? "Registrar entrada" : "Registrar saída"}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              {stockDialogProduct ? `Produto: ${stockDialogProduct.name}` : "Selecione um produto."}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <form onSubmit={handleStockSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Quantidade</Label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={stockDialogQty}
+                onChange={(e) => setStockDialogQty(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Observação (opcional)</Label>
+              <Textarea
+                value={stockDialogNote}
+                onChange={(e) => setStockDialogNote(e.target.value)}
+                placeholder={stockDialogMode === "IN" ? "Ex.: entrada manual de estoque." : "Ex.: perda, troca ou saída manual."}
+                maxLength={280}
+              />
+            </div>
+            <ResponsiveDialogFooter className="justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setStockDialogOpen(false)} disabled={adjustStockMutation.isPending}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={adjustStockMutation.isPending || !stockDialogProduct || Number(stockDialogQty) <= 0}>
+                {adjustStockMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...</>
+                ) : "Confirmar"}
+              </Button>
             </ResponsiveDialogFooter>
           </form>
         </ResponsiveDialogContent>

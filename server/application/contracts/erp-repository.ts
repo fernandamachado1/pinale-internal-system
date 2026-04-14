@@ -9,8 +9,10 @@ import type {
   Material,
   MovementWithDetails,
   Product,
+  CatalogProduct,
   ProductWithBom,
   ProducedProductStock,
+  ProducedProductStockSummary,
   ProducedProductStockWithProduct,
   ProductionOrder,
   ProductionOrderWithProduct,
@@ -33,12 +35,14 @@ export interface IErpRepository extends ISalesRepository {
   updateMaterialStockQty(id: number, stockQty: string): Promise<void>;
 
   getProducts(): Promise<ProductWithBom[]>;
+  getCatalogProducts(input: { q?: string; page: number; pageSize: number }): Promise<{ items: CatalogProduct[]; total: number }>;
   getProduct(id: number): Promise<ProductWithBom | undefined>;
   getProductByName(name: string): Promise<Product | undefined>;
   createProduct(product: InsertProduct): Promise<Product>;
   updateProductBase(id: number, input: UpdateProductInput["product"]): Promise<Product>;
   deactivateProduct(id: number): Promise<void>;
   getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]>;
+  getProducedProductStockSummary(): Promise<ProducedProductStockSummary[]>;
   getProducedProductStockByProductId(productId: number): Promise<ProducedProductStockWithProduct | undefined>;
   createProducedProductStock(productId: number): Promise<ProducedProductStock>;
   updateProducedProductStockQty(productId: number, stockQty: number): Promise<void>;

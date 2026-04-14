@@ -31,6 +31,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete(api.materials.delete.path, withHandler((req, res) => controller.deleteMaterial(req, res)));
 
   app.get(api.products.list.path, withHandler((req, res) => controller.listProducts(req, res)));
+  app.get(api.products.catalog.path, withHandler((req, res) => controller.listCatalogProducts(req, res)));
   app.get(api.products.get.path, withHandler((req, res) => controller.getProduct(req, res)));
   app.post(api.products.create.path, withHandler((req, res) => controller.createProduct(req, res)));
   app.put(api.products.update.path, withHandler((req, res) => controller.updateProduct(req, res)));
@@ -42,6 +43,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post(api.productionOrders.move.path, withHandler((req, res) => controller.moveProductionOrder(req, res)));
   app.post(api.productionOrders.conclude.path, withHandler((req, res) => controller.concludeProductionOrder(req, res)));
   app.get(api.producedProductStocks.list.path, withHandler((req, res) => controller.listProducedProductStocks(req, res)));
+  app.get(api.producedProductStocks.summary.path, withHandler((req, res) => controller.listProducedProductStockSummary(req, res)));
+  app.post(api.producedProductStocks.registerInitial.path, withHandler((req, res) => controller.registerInitialProducedStock(req, res)));
+  app.post(api.producedProductStocks.adjust.path, withHandler((req, res) => controller.adjustProducedStock(req, res)));
 
   app.get(api.sales.list.path, withHandler((req, res) => salesController.listSales(req, res)));
   app.get(api.sales.get.path, withHandler((req, res) => salesController.getSale(req, res)));

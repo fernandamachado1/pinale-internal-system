@@ -17,6 +17,7 @@ import {
   CreateProductUseCase,
   DeleteProductUseCase,
   GetProductUseCase,
+  ListCatalogProductsUseCase,
   ListProductsUseCase,
   UpdateProductUseCase,
 } from "../application/use-cases/product-use-cases";
@@ -26,7 +27,12 @@ import {
   ListProductionOrdersUseCase,
   MoveProductionOrderUseCase,
 } from "../application/use-cases/production-use-cases";
-import { ListProducedProductStocksUseCase } from "../application/use-cases/produced-product-stock-use-cases";
+import {
+  AdjustProducedStockUseCase,
+  ListProducedProductStockSummaryUseCase,
+  ListProducedProductStocksUseCase,
+  RegisterInitialProducedStockUseCase,
+} from "../application/use-cases/produced-product-stock-use-cases";
 import { ListInventoryMovementsUseCase } from "../application/use-cases/inventory-movement-use-cases";
 import { DashboardReportUseCase, LeatherConsumptionReportUseCase, ProductionReportUseCase, SalesReportUseCase } from "../application/use-cases/report-use-cases";
 import {
@@ -48,6 +54,7 @@ export class ErpController {
   private readonly adjustMaterialStockUseCase: AdjustMaterialStockUseCase;
 
   private readonly listProductsUseCase: ListProductsUseCase;
+  private readonly listCatalogProductsUseCase: ListCatalogProductsUseCase;
   private readonly getProductUseCase: GetProductUseCase;
   private readonly createProductUseCase: CreateProductUseCase;
   private readonly updateProductUseCase: UpdateProductUseCase;
@@ -59,6 +66,9 @@ export class ErpController {
   private readonly moveProductionOrderUseCase: MoveProductionOrderUseCase;
   private readonly completeProductionUseCase: CompleteProductionUseCase;
   private readonly listProducedProductStocksUseCase: ListProducedProductStocksUseCase;
+  private readonly listProducedProductStockSummaryUseCase: ListProducedProductStockSummaryUseCase;
+  private readonly registerInitialProducedStockUseCase: RegisterInitialProducedStockUseCase;
+  private readonly adjustProducedStockUseCase: AdjustProducedStockUseCase;
 
   private readonly listInventoryMovementsUseCase: ListInventoryMovementsUseCase;
 
@@ -84,6 +94,7 @@ export class ErpController {
     this.adjustMaterialStockUseCase = new AdjustMaterialStockUseCase(repository);
 
     this.listProductsUseCase = new ListProductsUseCase(repository);
+    this.listCatalogProductsUseCase = new ListCatalogProductsUseCase(repository);
     this.getProductUseCase = new GetProductUseCase(repository);
     this.createProductUseCase = new CreateProductUseCase(repository);
     this.updateProductUseCase = new UpdateProductUseCase(repository);
@@ -95,6 +106,9 @@ export class ErpController {
     this.moveProductionOrderUseCase = new MoveProductionOrderUseCase(repository);
     this.completeProductionUseCase = new CompleteProductionUseCase(repository);
     this.listProducedProductStocksUseCase = new ListProducedProductStocksUseCase(repository);
+    this.listProducedProductStockSummaryUseCase = new ListProducedProductStockSummaryUseCase(repository);
+    this.registerInitialProducedStockUseCase = new RegisterInitialProducedStockUseCase(repository);
+    this.adjustProducedStockUseCase = new AdjustProducedStockUseCase(repository);
 
     this.listInventoryMovementsUseCase = new ListInventoryMovementsUseCase(repository);
 
@@ -155,6 +169,11 @@ export class ErpController {
     res.json(await this.listProductsUseCase.execute());
   }
 
+  async listCatalogProducts(req: Request, res: Response): Promise<void> {
+    const query = api.products.catalog.query.parse(req.query);
+    res.json(await this.listCatalogProductsUseCase.execute(query));
+  }
+
   async getProduct(req: Request, res: Response): Promise<void> {
     res.json(await this.getProductUseCase.execute(Number(req.params.id)));
   }
@@ -201,6 +220,20 @@ export class ErpController {
 
   async listProducedProductStocks(_req: Request, res: Response): Promise<void> {
     res.json(await this.listProducedProductStocksUseCase.execute());
+  }
+
+  async listProducedProductStockSummary(_req: Request, res: Response): Promise<void> {
+    res.json(await this.listProducedProductStockSummaryUseCase.execute());
+  }
+
+  async registerInitialProducedStock(req: Request, res: Response): Promise<void> {
+    const input = api.producedProductStocks.registerInitial.input.parse(req.body);
+    res.json(await this.registerInitialProducedStockUseCase.execute(input));
+  }
+
+  async adjustProducedStock(req: Request, res: Response): Promise<void> {
+    const input = api.producedProductStocks.adjust.input.parse(req.body);
+    res.json(await this.adjustProducedStockUseCase.execute(input));
   }
 
   async listInventoryMovements(_req: Request, res: Response): Promise<void> {

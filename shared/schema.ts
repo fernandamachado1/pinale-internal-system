@@ -197,6 +197,23 @@ export const profiles = pgTable(
   }),
 );
 
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    orgId: uuid("org_id").notNull(),
+    profileId: uuid("profile_id").notNull(),
+    endpoint: text("endpoint").notNull(),
+    subscription: jsonb("subscription").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    endpointUniqueIdx: uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+  }),
+);
+
 export const userRoleSchema = z.enum(["ADMIN", "STAFF", "VIEWER"]);
 export type UserRole = z.infer<typeof userRoleSchema>;
 
@@ -270,6 +287,7 @@ const technicalSpecSchema = z.object({ bomItems: z.array(bomItemInputSchema).def
 export const createProductInputSchema = z.object({
   product: insertProductSchema,
   technicalSpec: technicalSpecSchema,
+  initialStockQty: z.number().int().min(0).default(0),
 });
 
 export const updateProductInputSchema = z.object({
@@ -292,6 +310,16 @@ export const moveProductionOrderSchema = z.object({
 });
 
 export const concludeProductionOrderSchema = z.object({});
+export const registerInitialProducedStockSchema = z.object({
+  productId: z.number().int().positive(),
+  qty: z.number().int().positive(),
+  note: z.string().trim().max(280).optional().nullable(),
+});
+export const adjustProducedStockSchema = z.object({
+  productId: z.number().int().positive(),
+  qtyChange: z.number().int().refine((value) => value !== 0, "qtyChange must not be zero"),
+  note: z.string().trim().max(280).optional().nullable(),
+});
 export const createManyMaterialsSchema = z.object({
   items: z.array(insertMaterialSchema).min(1),
 });
@@ -357,6 +385,8 @@ export type BomItemInput = z.input<typeof bomItemInputSchema>;
 export type InsertProductionOrder = z.input<typeof insertProductionOrderSchema>;
 export type MoveProductionOrderInput = z.input<typeof moveProductionOrderSchema>;
 export type ConcludeProductionOrderInput = z.input<typeof concludeProductionOrderSchema>;
+export type RegisterInitialProducedStockInput = z.input<typeof registerInitialProducedStockSchema>;
+export type AdjustProducedStockInput = z.input<typeof adjustProducedStockSchema>;
 
 export type InsertSale = z.input<typeof insertSaleSchema>;
 
@@ -369,6 +399,18 @@ export type ProductWithBom = Product & {
 export type ProductionOrderWithProduct = ProductionOrder & { product: Product };
 export type SaleListItem = SaleItem & { sale: Sale; product: Product };
 export type ProducedProductStockWithProduct = ProducedProductStock & { product: Product };
+export type ProducedProductStockSummary = {
+  productId: number;
+  inQty: number;
+  outQty: number;
+  stockQty: number;
+};
+
+export type CatalogProduct = ProductWithBom & {
+  inQty: number;
+  outQty: number;
+  stockQty: number;
+};
 export type PurchaseOrderWithItems = PurchaseOrder & { items: PurchaseOrderItem[] };
 
 export type MovementWithDetails = InventoryMovement & {

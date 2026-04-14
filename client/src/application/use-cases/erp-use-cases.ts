@@ -1,5 +1,7 @@
 import type { IErpGateway } from "@/application/contracts/erp-gateway";
 import type {
+  AdjustProducedStockInput,
+  CatalogProduct,
   CreateManyMaterialsInput,
   ConcludeProductionOrderInput,
   InsertMaterial,
@@ -9,10 +11,12 @@ import type {
   Material,
   MovementWithDetails,
   ProductWithBom,
+  ProducedProductStockSummary,
   ProducedProductStockWithProduct,
   ProductionOrderWithProduct,
   PurchaseOrderWithItems,
   CreatePurchaseOrderInput,
+  RegisterInitialProducedStockInput,
   UpdatePurchaseOrderInput,
   ReceivePurchaseOrderInput,
   SaleListItem,
@@ -60,10 +64,38 @@ export class GetProductsUseCase {
   }
 }
 
+export class GetCatalogProductsUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(input: { q?: string; page: number; pageSize: number }): Promise<{ items: CatalogProduct[]; total: number }> {
+    return this.gateway.getCatalogProducts(input);
+  }
+}
+
 export class GetProducedProductStocksUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(): Promise<ProducedProductStockWithProduct[]> {
     return this.gateway.getProducedProductStocks();
+  }
+}
+
+export class GetProducedProductStockSummaryUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(): Promise<ProducedProductStockSummary[]> {
+    return this.gateway.getProducedProductStockSummary();
+  }
+}
+
+export class RegisterInitialProducedStockUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: RegisterInitialProducedStockInput): Promise<ProducedProductStockWithProduct> {
+    return this.gateway.registerInitialProducedStock(data);
+  }
+}
+
+export class AdjustProducedStockUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: AdjustProducedStockInput): Promise<ProducedProductStockWithProduct> {
+    return this.gateway.adjustProducedStock(data);
   }
 }
 

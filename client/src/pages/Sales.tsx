@@ -23,7 +23,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ShoppingCart, Plus, Trash2 } from "lucide-react";
+import { Loader2, ShoppingCart, Plus, Trash2 } from "lucide-react";
 import { brl, formatDateTimeBR } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
 
@@ -46,6 +46,7 @@ export default function Sales() {
   const [isOpen, setIsOpen] = useState(false);
   const [items, setItems] = useState<SaleItem[]>([emptyItem()]);
   const [saleToDelete, setSaleToDelete] = useState<SaleListItem | null>(null);
+  const [deletingSaleId, setDeletingSaleId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("PIX");
   const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
 
@@ -121,7 +122,7 @@ export default function Sales() {
 
         <ResponsiveDialog open={isOpen} onOpenChange={(open) => (open ? setIsOpen(true) : handleClose())}>
           <ResponsiveDialogTrigger asChild>
-            <Button disabled={!canWrite}>
+            <Button disabled={!canWrite || createMutation.isPending}>
               <Plus className="w-4 h-4 mr-2" /> Nova Venda
             </Button>
           </ResponsiveDialogTrigger>
@@ -230,7 +231,9 @@ export default function Sales() {
               <ResponsiveDialogFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={handleClose}>Cancelar</Button>
                 <Button type="submit" disabled={!canWrite || createMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
-                  Salvar
+                  {createMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+                  ) : "Salvar"}
                 </Button>
               </ResponsiveDialogFooter>
             </form>
@@ -293,8 +296,11 @@ export default function Sales() {
                       disabled={deleteMutation.isPending}
                       onClick={() => setSaleToDelete(item)}
                     >
-                      <Trash2 className="h-4 w-4" />
-                      Excluir
+                      {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Excluindo...</>
+                      ) : (
+                        <><Trash2 className="h-4 w-4" /> Excluir</>
+                      )}
                     </Button>
                   ) : (
                     <span className="text-muted-foreground">—</span>
@@ -338,13 +344,17 @@ export default function Sales() {
             <AlertDialogAction
               onClick={() => {
                 if (!saleToDelete) return;
+                setDeletingSaleId(saleToDelete.sale.id);
                 deleteMutation.mutate(saleToDelete.sale.id, {
                   onSuccess: () => setSaleToDelete(null),
+                  onSettled: () => setDeletingSaleId(null),
                 });
               }}
               disabled={deleteMutation.isPending}
             >
-              Excluir
+              {deleteMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Excluindo...</>
+              ) : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
