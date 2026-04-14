@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { differenceInCalendarDays, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { closestCorners, DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ProductionOrderWithProduct } from "@shared/schema";
@@ -75,6 +75,10 @@ const columnTheme: Record<ProductionKanbanStatus, { shell: string; accent: strin
     empty: "border-border/60 bg-white/80 text-slate-700",
     card: "border-border/60 bg-white hover:border-border hover:bg-slate-50/70",
   },
+};
+
+const collisionDetection: CollisionDetection = (args) => {
+  return pointerWithin(args);
 };
 
 function createBoardState(orders: ProductionOrderWithProduct[] | undefined): ProductionBoardState {
@@ -232,7 +236,7 @@ function ProductionCard({ order, dragDisabled }: { order: ProductionOrderWithPro
     <article
       ref={setNodeRef}
       style={style}
-      className={`touch-pan-x min-h-[108px] rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-default"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`min-h-[108px] rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-default"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
     >
       <ProductionCardBody
         order={order}
@@ -609,20 +613,20 @@ export default function Production() {
             </Card>
           ) : null}
 
-          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-2 touch-pan-x">
-            {columnOrder.map((status) => {
-              const columnOrders = boardState[status] ?? [];
-              return (
-                <ColumnDropZone key={status} status={status} orders={columnOrders}>
-                  {status === "DONE"
-                    ? null
-                    : columnOrders.map((order) => (
-                        <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />
-                      ))}
-                </ColumnDropZone>
-              );
-            })}
+              {columnOrder.map((status) => {
+                const columnOrders = boardState[status] ?? [];
+                return (
+                  <ColumnDropZone key={status} status={status} orders={columnOrders}>
+                    {status === "DONE"
+                      ? null
+                      : columnOrders.map((order) => (
+                          <ProductionCard key={order.id} order={order} dragDisabled={interactionsDisabled || order.status === "DONE"} />
+                        ))}
+                  </ColumnDropZone>
+                );
+              })}
             </div>
 
             <DragOverlay>
