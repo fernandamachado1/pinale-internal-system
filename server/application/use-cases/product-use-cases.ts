@@ -1,4 +1,4 @@
-import type { BomItemInput, CatalogProduct, CreateProductInput, ProductWithBom, UpdateProductInput } from "@shared/schema.ts";
+import type { BomItemInput, CatalogProduct, CreateProductInput, ProductColorVariant, ProductWithBom, UpdateProductInput } from "@shared/schema.ts";
 import { InventoryMovement } from "../../domain/entities/inventory-movement.ts";
 import { ProducedProductStock } from "../../domain/entities/produced-product-stock.ts";
 import type { IErpRepository } from "../contracts/erp-repository.ts";
@@ -20,6 +20,30 @@ function assertValidTechnicalSpec(input: { bomItems?: BomItemInput[] }): void {
   if (input.bomItems) {
     assertValidBomItems(input.bomItems);
   }
+}
+
+function normalizeColorVariants(items?: ProductColorVariant[]): ProductColorVariant[] {
+  if (!items) return [];
+
+  const seen = new Set<string>();
+  const normalized: ProductColorVariant[] = [];
+
+  for (const item of items) {
+    const name = item.name.trim();
+    if (!name) continue;
+    if (!Number.isInteger(item.qty) || item.qty < 0) {
+      throw new ValidationDomainError("Color quantity must be an integer greater than or equal to zero");
+    }
+
+    const key = name.toLocaleLowerCase("pt-BR");
+    if (seen.has(key)) {
+      throw new ValidationDomainError("Duplicated color in product variants is not allowed");
+    }
+    seen.add(key);
+    normalized.push({ name, qty: item.qty });
+  }
+
+  return normalized;
 }
 
 export class ListProductsUseCase {
@@ -65,9 +89,11 @@ export class CreateProductUseCase {
     const existing = await this.repository.getProductByName(name);
     if (existing) throw new ConflictDomainError("Product name must be unique");
 
-    assertValidTechnicalSpec(input.technicalSpec);
+    assertValidTechnicalSpec(input.technicalSpec ?? {});
+    const colorVariants = normalizeColorVariants(input.product.colorVariants);
 
-    for (const item of input.technicalSpec.bomItems ?? []) {
+    const bomItems = input.technicalSpec?.bomItems ?? [];
+    for (const item of bomItems) {
       const material = await this.repository.getMaterial(item.materialId);
       if (!material) throw new ValidationDomainError(`Material ${item.materialId} not found for BOM item`);
     }
@@ -78,11 +104,12 @@ export class CreateProductUseCase {
         price: input.product.price,
         isActive: input.product.isActive,
         description: input.product.description ?? "",
+        colorVariants,
       });
 
-      await txRepository.replaceActiveBom(created.id, {
-        bomItems: input.technicalSpec.bomItems ?? [],
-      });
+      if (bomItems.length > 0) {
+        await txRepository.replaceActiveBom(created.id, { bomItems });
+      }
       await txRepository.createProducedProductStock(created.id);
 
       if (input.initialStockQty > 0) {
@@ -136,9 +163,14 @@ export class UpdateProductUseCase {
       throw new ValidationDomainError("Product price must be greater than or equal to zero");
     }
 
-    if (input.technicalSpec) {
+    if (input.product.colorVariants !== undefined) {
+      const colorVariants = normalizeColorVariants(input.product.colorVariants);
+      input.product.colorVariants = colorVariants;
+    }
+
+    if (input.technicalSpec?.bomItems !== undefined) {
       assertValidTechnicalSpec(input.technicalSpec);
-      for (const item of input.technicalSpec.bomItems ?? []) {
+      for (const item of input.technicalSpec.bomItems) {
         const material = await this.repository.getMaterial(item.materialId);
         if (!material) throw new ValidationDomainError(`Material ${item.materialId} not found for BOM item`);
       }
@@ -149,12 +181,9 @@ export class UpdateProductUseCase {
         await txRepository.updateProductBase(id, input.product);
       }
 
-      if (input.technicalSpec) {
-        const currentBom = await txRepository.getActiveBomByProductId(id);
-        if (!currentBom) throw new ValidationDomainError("Product must have one active BOM");
-
+      if (input.technicalSpec?.bomItems !== undefined) {
         await txRepository.replaceActiveBom(id, {
-          bomItems: input.technicalSpec.bomItems ?? currentBom.items.map((item) => ({ materialId: item.materialId!, qtyPerUnit: String(item.qtyPerUnit) })),
+          bomItems: input.technicalSpec.bomItems,
         });
       }
 

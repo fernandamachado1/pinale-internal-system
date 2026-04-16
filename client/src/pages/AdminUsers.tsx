@@ -134,8 +134,8 @@ export default function AdminUsers() {
             </ResponsiveDialogTrigger>
             <ResponsiveDialogContent className="max-w-lg">
               <ResponsiveDialogHeader>
-                <ResponsiveDialogTitle>Convidar usuário</ResponsiveDialogTitle>
-                <ResponsiveDialogDescription>O usuário receberá um e-mail para definir a senha.</ResponsiveDialogDescription>
+                <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Convidar usuário</ResponsiveDialogTitle>
+                <ResponsiveDialogDescription className="text-sm text-foreground/75">O usuário receberá um e-mail para definir a senha.</ResponsiveDialogDescription>
               </ResponsiveDialogHeader>
 
               <div className="space-y-5 px-4 md:px-0">
@@ -158,13 +158,14 @@ export default function AdminUsers() {
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="novo@exemplo.com"
+                    className="h-11 rounded-xl border-border bg-card px-4"
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Permissão</Label>
                   <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as UserRole)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>

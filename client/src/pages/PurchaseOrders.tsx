@@ -436,8 +436,8 @@ export default function PurchaseOrders() {
       <ResponsiveDialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>{editingOrder ? `Editar OC #${editingOrder.id}` : "Nova Ordem de Compra"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription>Adicione itens e quantidades. Selecione um material ou informe o nome livre.</ResponsiveDialogDescription>
+            <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{editingOrder ? `Editar OC #${editingOrder.id}` : "Nova Ordem de Compra"}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription className="text-sm text-foreground/75">Adicione itens e quantidades. Selecione um material ou informe o nome livre.</ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
           <form onSubmit={submitOrder} className="flex min-h-[320px] flex-col gap-4">
@@ -468,6 +468,7 @@ export default function PurchaseOrders() {
                         value={toPtBrDecimal(item.qtyOrdered)}
                         onChange={(e) => updateFormItem(index, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
                         placeholder="0,000"
+                        className="h-11 rounded-xl border-border bg-card px-4"
                       />
                     </div>
                   </div>
@@ -508,8 +509,8 @@ export default function PurchaseOrders() {
       <ResponsiveDialog open={receiveOpen} onOpenChange={setReceiveOpen}>
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>{receivingOrder ? `Receber itens da OC #${receivingOrder.id}` : "Receber ordem de compra"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription>Informe “Receber agora”. Para itens sem material, você pode vincular/criar um material antes de confirmar.</ResponsiveDialogDescription>
+            <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{receivingOrder ? `Receber itens da OC #${receivingOrder.id}` : "Receber ordem de compra"}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription className="text-sm text-foreground/75">Informe “Receber agora”. Para itens sem material, você pode vincular/criar um material antes de confirmar.</ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
           <div className="flex min-h-[320px] flex-col gap-4">
@@ -560,6 +561,7 @@ export default function PurchaseOrders() {
                             value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
                             onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
                             placeholder="0,000"
+                            className="h-11 rounded-xl border-border bg-card px-4"
                           />
                         </div>
                       </div>
@@ -572,6 +574,7 @@ export default function PurchaseOrders() {
                             value={toPtBrDecimal(line?.qtyOrdered ?? String(item.qtyOrdered))}
                             onChange={(e) => updateReceiveLine(item.id, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
                             placeholder="0,000"
+                            className="h-11 rounded-xl border-border bg-card px-4"
                           />
                         </div>
                         <div className="space-y-2">
@@ -580,6 +583,7 @@ export default function PurchaseOrders() {
                             value={line?.materialName ?? item.materialName}
                             onChange={(e) => updateReceiveLine(item.id, { materialName: e.target.value })}
                             disabled={Boolean(currentMaterialId)}
+                            className="h-11 rounded-xl border-border bg-card px-4"
                           />
                         </div>
                       </div>

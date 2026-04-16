@@ -1,0 +1,9 @@
+DO $$
+BEGIN
+  CREATE TYPE product_category AS ENUM ('ACCESSORIES', 'STATIONERY', 'WALLETS', 'TRAVEL', 'BAGS');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS category product_category NOT NULL DEFAULT 'ACCESSORIES';

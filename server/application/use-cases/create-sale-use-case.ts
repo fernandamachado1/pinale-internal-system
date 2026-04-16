@@ -57,6 +57,7 @@ export class CreateSaleUseCase {
       const totalAmount = saleAggregate.calculateTotalAmount();
       const createdSale = await txRepository.createSale({
         paymentMethod: input.paymentMethod,
+        description: input.description ?? null,
         totalAmount: totalAmount.toFixed(2),
         salesChannel: input.salesChannel,
       });

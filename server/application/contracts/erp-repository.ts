@@ -51,7 +51,7 @@ export interface IErpRepository extends ISalesRepository {
   replaceActiveBom(
     productId: number,
     technicalSpec: { bomItems: BomItemInput[] },
-  ): Promise<{ id: number; items: BomItem[] }>;
+  ): Promise<{ id: number; items: BomItem[] } | undefined>;
 
   getProductionOrders(): Promise<ProductionOrderWithProduct[]>;
   getProductionOrder(id: number): Promise<ProductionOrderWithProduct | undefined>;

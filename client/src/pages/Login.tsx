@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowRight, KeyRound, Lock, Mail } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Login() {
   const { toast } = useToast();
@@ -52,6 +53,9 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4 py-10 sm:px-6">
+      <div className="fixed right-4 top-4 z-20">
+        <ThemeToggle className="h-9 rounded-lg px-3" />
+      </div>
       <Card className="w-full max-w-[420px] rounded-2xl shadow-sm">
         <CardHeader className="text-center space-y-3 pb-6">
           <div className="mx-auto inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground shadow-sm">

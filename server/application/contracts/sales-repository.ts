@@ -16,7 +16,7 @@ export interface ISalesRepository {
   getProducedProductStockByProductId(productId: number): Promise<ProducedProductStockWithProduct | undefined>;
   updateProducedProductStockQty(productId: number, stockQty: number): Promise<void>;
 
-  createSale(data: { paymentMethod: string; totalAmount: string; salesChannel: "ONLINE" | "PHYSICAL" }): Promise<Sale>;
+  createSale(data: { paymentMethod: string; description?: string | null; totalAmount: string; salesChannel: "ONLINE" | "PHYSICAL" }): Promise<Sale>;
   createSaleItems(
     saleId: number,
     items: Array<{ productId: number; qty: number; unitPrice: string; totalPrice: string }>,

@@ -451,7 +451,7 @@ export class DrizzleErpRepository implements IErpRepository {
   async replaceActiveBom(
     productId: number,
     technicalSpec: { bomItems: BomItemInput[] },
-  ): Promise<{ id: number; items: BomItem[] }> {
+  ): Promise<{ id: number; items: BomItem[] } | undefined> {
     await this.database
       .update(boms)
       .set({ isActive: 0, updatedAt: new Date() })
@@ -463,6 +463,10 @@ export class DrizzleErpRepository implements IErpRepository {
         ),
       );
 
+    if (technicalSpec.bomItems.length === 0) {
+      return undefined;
+    }
+
     const [createdBom] = (await this.database
       .insert(boms)
       .values({
@@ -472,13 +476,6 @@ export class DrizzleErpRepository implements IErpRepository {
         updatedAt: new Date(),
       } as any)
       .returning()) as Array<typeof boms.$inferSelect>;
-
-    if (technicalSpec.bomItems.length === 0) {
-      return {
-        id: createdBom.id,
-        items: [],
-      };
-    }
 
     const values = technicalSpec.bomItems.map((item) => ({
       orgId: this.orgIdValue(),
@@ -548,6 +545,8 @@ export class DrizzleErpRepository implements IErpRepository {
         orgId: this.orgIdValue(),
         productId: data.productId,
         qtyPlanned: data.qtyPlanned,
+        measureCm: data.measureCm ?? null,
+        customizationNotes: data.customizationNotes?.trim() || null,
         status: "BACKLOG",
         salesChannel: data.salesChannel,
         dueAt: data.dueAt ? new Date(data.dueAt) : null,
@@ -591,12 +590,13 @@ export class DrizzleErpRepository implements IErpRepository {
     return updated;
   }
 
-  async createSale(data: { paymentMethod: string; totalAmount: string; salesChannel: "ONLINE" | "PHYSICAL" }): Promise<Sale> {
+  async createSale(data: { paymentMethod: string; description?: string | null; totalAmount: string; salesChannel: "ONLINE" | "PHYSICAL" }): Promise<Sale> {
     const [created] = (await this.database
       .insert(sales)
       .values({
         orgId: this.orgIdValue(),
         paymentMethod: data.paymentMethod,
+        description: data.description ?? null,
         totalAmount: data.totalAmount,
         salesChannel: data.salesChannel,
       } as any)

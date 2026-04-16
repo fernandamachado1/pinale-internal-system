@@ -9,6 +9,7 @@ import { Layout } from "@/components/Layout";
 import { useConcludeProductionOrder, useCreateProductionOrder, useMaterials, useMoveProductionOrder, useProducts, useProductionOrders } from "@/hooks/use-erp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -56,25 +57,25 @@ const columnMeta: Record<ProductionKanbanStatus, { title: string; description: s
 
 const columnTheme: Record<ProductionKanbanStatus, { shell: string; accent: string; badge: string; empty: string; card: string }> = {
   BACKLOG: {
-    shell: "border-border/70 bg-slate-50/80",
-    accent: "bg-slate-300",
-    badge: "border-transparent bg-slate-900 text-white",
-    empty: "border-border/60 bg-white/80 text-slate-700",
-    card: "border-border/60 bg-white hover:border-border hover:bg-slate-50/70",
+    shell: "border-border/70 bg-muted/20",
+    accent: "bg-muted-foreground/25",
+    badge: "border-transparent bg-foreground text-background",
+    empty: "border-border/60 bg-card/60 text-muted-foreground",
+    card: "border-border/60 bg-card hover:border-border hover:bg-accent/30",
   },
   IN_PROGRESS: {
-    shell: "border-border/70 bg-slate-50/80",
-    accent: "bg-slate-300",
-    badge: "border-transparent bg-slate-900 text-white",
-    empty: "border-border/60 bg-white/80 text-slate-700",
-    card: "border-border/60 bg-white hover:border-border hover:bg-slate-50/70",
+    shell: "border-border/70 bg-muted/20",
+    accent: "bg-primary/35",
+    badge: "border-transparent bg-foreground text-background",
+    empty: "border-border/60 bg-card/60 text-muted-foreground",
+    card: "border-border/60 bg-card hover:border-border hover:bg-accent/30",
   },
   DONE: {
-    shell: "border-border/70 bg-slate-50/80",
-    accent: "bg-slate-300",
-    badge: "border-transparent bg-slate-900 text-white",
-    empty: "border-border/60 bg-white/80 text-slate-700",
-    card: "border-border/60 bg-white hover:border-border hover:bg-slate-50/70",
+    shell: "border-border/70 bg-muted/20",
+    accent: "bg-muted-foreground/25",
+    badge: "border-transparent bg-foreground text-background",
+    empty: "border-border/60 bg-card/60 text-muted-foreground",
+    card: "border-border/60 bg-card hover:border-border hover:bg-accent/30",
   },
 };
 
@@ -190,6 +191,9 @@ function ProductionCardBody({
     order.salesChannel === "PHYSICAL"
       ? "border-transparent bg-slate-900 text-white"
       : "border-transparent bg-primary text-primary-foreground";
+  const hasMeasure = order.measureCm !== null && order.measureCm !== undefined && Number.isFinite(Number(order.measureCm));
+  const measureLabel = hasMeasure ? `${Number(order.measureCm).toLocaleString("pt-BR")} cm` : null;
+  const notes = order.customizationNotes?.trim();
 
   return (
     <>
@@ -211,6 +215,16 @@ function ProductionCardBody({
           <Package className="h-4 w-4" />
           <span>{order.qtyPlanned} unidade(s)</span>
         </div>
+        {measureLabel ? (
+          <div className="text-muted-foreground">
+            <strong>Medida:</strong> {measureLabel}
+          </div>
+        ) : null}
+        {notes ? (
+          <div className="text-muted-foreground">
+            <strong>Obs:</strong> {notes}
+          </div>
+        ) : null}
         {statusHint ? <div>{statusHint}</div> : null}
         <div className="text-[11px] text-muted-foreground">
           <span className="sm:hidden">Criada {format(new Date(order.createdAt), "dd/MM", { locale: ptBR })}</span>
@@ -342,6 +356,8 @@ export default function Production() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [productId, setProductId] = useState("");
   const [qtyPlanned, setQtyPlanned] = useState("1");
+  const [measureCm, setMeasureCm] = useState("");
+  const [customizationNotes, setCustomizationNotes] = useState("");
   const [dueAt, setDueAt] = useState<Date | undefined>(undefined);
   const [activeDropTarget, setActiveDropTarget] = useState<ProductionKanbanStatus | null>(null);
   const [activeOverId, setActiveOverId] = useState<string | null>(null);
@@ -378,16 +394,34 @@ export default function Production() {
       });
       return;
     }
+    const parsedMeasure = measureCm.trim() ? Number(measureCm.replace(",", ".")) : null;
+    if (parsedMeasure !== null && (!Number.isFinite(parsedMeasure) || parsedMeasure <= 0)) {
+      toast({
+        title: "Medida inválida",
+        description: "Informe uma medida em cm maior que zero.",
+        variant: "destructive",
+      });
+      return;
+    }
     const dueAtIso = dueAt
       ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 12, 0, 0, 0).toISOString()
       : null;
     createMutation.mutate(
-      { productId: Number(productId), qtyPlanned: Number(qtyPlanned), salesChannel: "ONLINE", dueAt: dueAtIso },
+      {
+        productId: Number(productId),
+        qtyPlanned: Number(qtyPlanned),
+        measureCm: parsedMeasure,
+        customizationNotes: customizationNotes.trim() || null,
+        salesChannel: "ONLINE",
+        dueAt: dueAtIso,
+      },
       {
         onSuccess: () => {
           setIsCreateOpen(false);
           setProductId("");
           setQtyPlanned("1");
+          setMeasureCm("");
+          setCustomizationNotes("");
           setDueAt(undefined);
         },
       },
@@ -587,18 +621,18 @@ export default function Production() {
               <Plus className="mr-2 h-4 w-4" /> Nova OP
             </Button>
           </ResponsiveDialogTrigger>
-          <ResponsiveDialogContent>
-            <ResponsiveDialogHeader>
-              <ResponsiveDialogTitle>Criar Ordem de Produção</ResponsiveDialogTitle>
-              <ResponsiveDialogDescription>A nova OP entra no backlog. Os materiais serão baixados quando ela entrar em produção.</ResponsiveDialogDescription>
+          <ResponsiveDialogContent className="max-w-2xl border-border bg-card text-card-foreground shadow-2xl">
+            <ResponsiveDialogHeader className="border-b border-border px-4 pb-4 pt-5 md:px-6">
+              <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Criar Ordem de Produção</ResponsiveDialogTitle>
+              <ResponsiveDialogDescription className="text-sm text-foreground/75">A nova OP entra no backlog. Os materiais serão baixados quando ela entrar em produção.</ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
 
-            <form onSubmit={handleCreate} className="flex min-h-[320px] flex-col gap-4">
-              <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+            <form onSubmit={handleCreate} className="flex min-h-[320px] flex-col">
+              <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 md:px-6">
                 <div className="space-y-2">
                   <Label>Produto</Label>
                   <Select value={productId} onValueChange={setProductId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
                       {activeProducts.map((product) => (
                         <SelectItem key={product.id} value={String(product.id)}>{product.name}</SelectItem>
@@ -607,9 +641,34 @@ export default function Production() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                <Label>Quantidade planejada</Label>
-                <Input type="number" min="1" value={qtyPlanned} onChange={(e) => setQtyPlanned(e.target.value)} />
-              </div>
+                  <Label>Quantidade planejada</Label>
+                  <Input type="number" min="1" value={qtyPlanned} onChange={(e) => setQtyPlanned(e.target.value)} className="h-11 rounded-xl border-border bg-card px-4" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Medida (cm) (opcional)</Label>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={measureCm}
+                    onChange={(e) => setMeasureCm(e.target.value)}
+                    placeholder="Ex.: 105"
+                    className="h-11 rounded-xl border-border bg-card px-4"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Observações da encomenda (opcional)</Label>
+                  <Textarea
+                    value={customizationNotes}
+                    onChange={(e) => setCustomizationNotes(e.target.value)}
+                    placeholder="Ex.: carteira Cirrus para RG, mescla de cores, troca de ponteira..."
+                    rows={3}
+                    maxLength={500}
+                    className="rounded-xl border-border bg-card px-4 py-3"
+                  />
+                </div>
 
               <div className="space-y-2">
                 <Label>Prazo (opcional)</Label>
@@ -619,7 +678,7 @@ export default function Production() {
                       <Button
                         type="button"
                         variant="outline"
-                        className={`justify-start text-left font-normal ${!dueAt ? "text-muted-foreground" : ""}`}
+                        className={`h-11 justify-start rounded-xl border-border bg-card px-4 text-left font-normal hover:bg-card ${!dueAt ? "text-muted-foreground" : ""}`}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar data"}
@@ -638,7 +697,7 @@ export default function Production() {
               </div>
 
               {selectedProduct ? (
-                <div className="space-y-1 rounded border p-3 text-sm">
+                <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
                   <div><strong>Entrada inicial:</strong> Backlog</div>
                   <div><strong>Baixa de materiais:</strong> ao mover para Em produção</div>
                   <div><strong>Materiais na ficha:</strong> {selectedProductBomCount}</div>
@@ -648,11 +707,13 @@ export default function Production() {
                     </div>
                   ) : null}
                   <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
+                  <div><strong>Medida:</strong> {measureCm.trim() ? `${measureCm} cm` : "-"}</div>
+                  <div><strong>Observações:</strong> {customizationNotes.trim() || "-"}</div>
                   <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
                 </div>
               ) : null}
               </div>
-              <ResponsiveDialogFooter className="justify-end gap-2">
+              <ResponsiveDialogFooter className="justify-end gap-2 border-t border-border px-4 py-4 md:px-6">
                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
                 <Button type="submit" disabled={createMutation.isPending || !productId || selectedProductBomCount === 0}>
                   {createMutation.isPending ? (

@@ -356,8 +356,8 @@ export function MaterialDialog({
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent className="max-w-3xl">
         <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle>{resolvedTitle}</ResponsiveDialogTitle>
-          <ResponsiveDialogDescription>{resolvedDescription}</ResponsiveDialogDescription>
+          <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{resolvedTitle}</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription className="text-sm text-foreground/75">{resolvedDescription}</ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
         {formContent}
       </ResponsiveDialogContent>

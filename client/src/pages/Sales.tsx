@@ -23,6 +23,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ShoppingCart, Plus, Trash2 } from "lucide-react";
 import { brl, formatDateTimeBR } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
@@ -49,6 +50,7 @@ export default function Sales() {
   const [deletingSaleId, setDeletingSaleId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("PIX");
   const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
+  const [description, setDescription] = useState("");
 
   const activeProducts = useMemo(() => products?.filter((p) => p.isActive === 1) ?? [], [products]);
 
@@ -97,6 +99,7 @@ export default function Sales() {
     setIsOpen(false);
     setItems([emptyItem()]);
     setPaymentMethod("PIX");
+    setDescription("");
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -106,6 +109,7 @@ export default function Sales() {
     createMutation.mutate(
       {
         paymentMethod,
+        description: description.trim() || null,
         salesChannel,
         items: items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty) })),
       },
@@ -128,8 +132,8 @@ export default function Sales() {
           </ResponsiveDialogTrigger>
           <ResponsiveDialogContent className="max-w-lg">
             <ResponsiveDialogHeader>
-              <ResponsiveDialogTitle>Registrar Venda</ResponsiveDialogTitle>
-              <ResponsiveDialogDescription>Adicione um ou mais produtos à venda.</ResponsiveDialogDescription>
+              <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Registrar Venda</ResponsiveDialogTitle>
+              <ResponsiveDialogDescription className="text-sm text-foreground/75">Adicione um ou mais produtos à venda.</ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
 
             {(productsError || stocksError) ? (
@@ -143,7 +147,7 @@ export default function Sales() {
               <div className="space-y-2">
                 <Label>Forma de Pagamento</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PAYMENT_METHODS.map((m) => (
                       <SelectItem key={m} value={m}>{m}</SelectItem>
@@ -166,6 +170,18 @@ export default function Sales() {
                 </RadioGroup>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="sale-description">Descrição (opcional)</Label>
+                <Textarea
+                  id="sale-description"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  maxLength={500}
+                  placeholder="Ex.: Cliente pediu embalagem para presente"
+                  className="rounded-xl border-border bg-card px-4 py-3"
+                />
+              </div>
+
               <Separator />
 
               <div className="space-y-3">
@@ -181,7 +197,7 @@ export default function Sales() {
                     <div key={index} className="flex gap-2 items-start">
                       <div className="flex-1 space-y-1">
                         <Select value={item.productId} onValueChange={(v) => updateItem(index, { productId: v, qty: "1" })}>
-                          <SelectTrigger><SelectValue placeholder="Produto" /></SelectTrigger>
+                          <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue placeholder="Produto" /></SelectTrigger>
                           <SelectContent>
                             {activeProducts.map((p) => (
                               <SelectItem
@@ -206,7 +222,7 @@ export default function Sales() {
                         min="1"
                         value={item.qty}
                         onChange={(e) => updateItem(index, { qty: e.target.value })}
-                        className="w-20"
+                        className="h-11 w-20 rounded-xl border-border bg-card px-3"
                       />
                       {items.length > 1 && (
                         <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
@@ -272,6 +288,7 @@ export default function Sales() {
               <TableHead>Unitário</TableHead>
               <TableHead>Total Item</TableHead>
               <TableHead>Pagamento</TableHead>
+              <TableHead>Descrição</TableHead>
               <TableHead>Data</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -286,6 +303,7 @@ export default function Sales() {
                 <TableCell>{brl(Number(item.unitPrice))}</TableCell>
                 <TableCell>{brl(Number(item.totalPrice))}</TableCell>
                 <TableCell>{item.sale.paymentMethod}</TableCell>
+                <TableCell>{item.sale.description || "—"}</TableCell>
                 <TableCell>{formatDateTimeBR(item.sale.createdAt)}</TableCell>
                 <TableCell className="text-right">
                   {canWrite ? (

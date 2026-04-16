@@ -18,6 +18,7 @@ import Login from "@/pages/Login";
 import Profile from "@/pages/Profile";
 import AdminUsers from "@/pages/AdminUsers";
 import { AuthGate } from "@/components/AuthGate";
+import { ThemeProvider } from "@/components/theme-provider";
 
 function Router() {
   return (
@@ -42,14 +43,16 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <AuthGate>
-          <Router />
-        </AuthGate>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <AuthGate>
+            <Router />
+          </AuthGate>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

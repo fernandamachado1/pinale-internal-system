@@ -80,7 +80,13 @@ export function ResponsiveDialogContent(props: ResponsiveDialogContentProps) {
   const { children, className, ...rest } = props as any;
   return (
     <ResponsiveDialogPaddingContext.Provider value={{ padded: true }}>
-      <DialogContent {...rest} className={cn("max-h-[90vh] overflow-y-auto overflow-x-hidden", className)}>
+      <DialogContent
+        {...rest}
+        className={cn(
+          "max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-2xl md:p-6",
+          className,
+        )}
+      >
         {children}
       </DialogContent>
     </ResponsiveDialogPaddingContext.Provider>
@@ -106,24 +112,21 @@ export function ResponsiveDialogHeader(props: React.ComponentPropsWithoutRef<typ
       </DialogHeader>
     );
   }
-  return <DialogHeader {...props} />;
+  return <DialogHeader {...props} className={cn("border-b border-border px-4 pb-4 pt-4 text-left md:px-6 md:pb-5 md:pt-5", props.className)} />;
 }
 
 export function ResponsiveDialogFooter(props: React.ComponentPropsWithoutRef<typeof DialogFooter>) {
-  const { isMobile } = useResponsiveDialogContext();
   const { padded } = useResponsiveDialogPadding();
-  if (isMobile)
-    return (
-      <DialogFooter
-        {...(props as any)}
-        className={cn(
-          "sticky bottom-0 mt-4 border-t bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/80",
-          padded ? "-mx-4" : undefined,
-          props.className,
-        )}
-      />
-    );
-  return <DialogFooter {...props} />;
+  return (
+    <DialogFooter
+      {...(props as any)}
+      className={cn(
+        "sticky bottom-0 z-30 mt-4 w-full border-t border-border bg-card p-4 shadow-[0_-1px_0_hsl(var(--border))]",
+        padded ? "-mx-4" : undefined,
+        props.className,
+      )}
+    />
+  );
 }
 
 export function ResponsiveDialogTitle(props: React.ComponentPropsWithoutRef<typeof DialogTitle>) {

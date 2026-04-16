@@ -23,6 +23,17 @@ export const productAttachmentSchema = z.object({
 });
 export type ProductAttachment = z.infer<typeof productAttachmentSchema>;
 
+export const productColorVariantSchema = z.object({
+  name: z.string().trim().min(1),
+  qty: z.number().int().min(0),
+});
+export type ProductColorVariant = z.infer<typeof productColorVariantSchema>;
+
+export const productCategoryValues = ["ACCESSORIES", "STATIONERY", "WALLETS", "TRAVEL", "BAGS"] as const;
+export const productCategoryEnum = pgEnum("product_category", productCategoryValues);
+export const productCategorySchema = z.enum(productCategoryValues);
+export type ProductCategory = z.infer<typeof productCategorySchema>;
+
 export const materialCategoryEnum = pgEnum("material_category", ["PACKAGING", "NOTIONS", "RAW_MATERIAL"]);
 export const unitOfMeasureEnum = pgEnum("unit_of_measure", ["UNIT", "SQUARE_METER", "METER"]);
 export const productionOrderStatusEnum = pgEnum("production_order_status", ["BACKLOG", "IN_PROGRESS", "DONE"]);
@@ -70,8 +81,10 @@ export const products = pgTable("products", {
   orgId: uuid("org_id").notNull(),
   name: text("name").notNull(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+  category: productCategoryEnum("category").notNull().default("ACCESSORIES"),
   description: text("description").notNull().default(""),
   attachments: jsonb("attachments").$type<ProductAttachment[]>().notNull().default([]),
+  colorVariants: jsonb("color_variants").$type<ProductColorVariant[]>().notNull().default([]),
   isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -115,6 +128,8 @@ export const productionOrders = pgTable("production_orders", {
   orgId: uuid("org_id").notNull(),
   productId: integer("product_id").notNull(),
   qtyPlanned: integer("qty_planned").notNull(),
+  measureCm: numeric("measure_cm", { precision: 8, scale: 2 }),
+  customizationNotes: text("customization_notes"),
   status: productionOrderStatusEnum("status").notNull().default("BACKLOG"),
   salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
   dueAt: timestamp("due_at"),
@@ -127,6 +142,7 @@ export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
   orgId: uuid("org_id").notNull(),
   paymentMethod: text("payment_method").notNull(),
+  description: text("description"),
   salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -273,7 +289,9 @@ export const insertProductSchema = createInsertSchema(products)
   .extend({
     price: z.string(),
     isActive: z.number().int().default(1),
+    category: productCategorySchema,
     attachments: z.array(productAttachmentSchema).default([]),
+    colorVariants: z.array(productColorVariantSchema).default([]),
     description: z.string().default(""),
   });
 
@@ -286,7 +304,7 @@ const technicalSpecSchema = z.object({ bomItems: z.array(bomItemInputSchema).def
 
 export const createProductInputSchema = z.object({
   product: insertProductSchema,
-  technicalSpec: technicalSpecSchema,
+  technicalSpec: technicalSpecSchema.optional(),
   initialStockQty: z.number().int().min(0).default(0),
 });
 
@@ -300,6 +318,8 @@ const saleChannelEnum = z.enum(["ONLINE", "PHYSICAL"]);
 export const insertProductionOrderSchema = z.object({
   productId: z.number().int().positive(),
   qtyPlanned: z.number().int().positive(),
+  measureCm: z.number().positive().max(9999).optional().nullable(),
+  customizationNotes: z.string().trim().max(500).optional().nullable(),
   salesChannel: saleChannelEnum,
   dueAt: z.string().datetime().optional().nullable(),
 });
@@ -326,6 +346,7 @@ export const createManyMaterialsSchema = z.object({
 
 export const insertSaleSchema = z.object({
   paymentMethod: z.string().min(1),
+  description: z.string().trim().max(500).optional().nullable(),
   salesChannel: saleChannelEnum,
   items: z
     .array(

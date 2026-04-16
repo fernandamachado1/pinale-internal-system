@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CatalogProduct, ProductAttachment } from "@shared/schema";
+import type { CatalogProduct, ProductAttachment, ProductCategory, ProductColorVariant } from "@shared/schema";
 import { Layout } from "@/components/Layout";
-import { useAdjustProducedStock, useCatalogProducts, useCreateProduct, useDeleteProduct, useMaterials, useUpdateProduct } from "@/hooks/use-erp";
+import { useCatalogProducts, useCreateProduct, useMaterials, useUpdateProduct } from "@/hooks/use-erp";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,18 +10,30 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, FileText, Loader2, MoreVertical, Package, Plus, Trash2, X } from "lucide-react";
+import { ExternalLink, FileText, Loader2, Package, PencilLine, Plus, Trash2, X } from "lucide-react";
 import { brl } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthz } from "@/hooks/use-authz";
 
 type BomFormItem = { materialId?: number; qtyPerUnit: string };
+type ColorFormItem = { name: string; qty: string };
+
+const productCategoryLabels: Record<ProductCategory, string> = {
+  ACCESSORIES: "Acessórios",
+  STATIONERY: "Papelaria",
+  WALLETS: "Carteiras",
+  TRAVEL: "Viagem",
+  BAGS: "Bolsas",
+};
+
+function getProductCategoryLabel(category?: string | null): string {
+  return category && category in productCategoryLabels ? productCategoryLabels[category as ProductCategory] : "Sem categoria";
+}
 
 type ParsedDriveAttachment = {
   fileId: string | null;
@@ -145,6 +157,40 @@ function createEmptyBomItem(): BomFormItem {
   return { materialId: undefined, qtyPerUnit: "1" };
 }
 
+function createEmptyColorItem(): ColorFormItem {
+  return { name: "", qty: "1" };
+}
+
+function sumColorQuantity(items: ColorFormItem[]): number {
+  return items.reduce((total, item) => {
+    const qty = Number(item.qty);
+    return Number.isInteger(qty) && qty > 0 ? total + qty : total;
+  }, 0);
+}
+
+function normalizeColorVariants(items: ColorFormItem[]): ProductColorVariant[] {
+  const normalized = items
+    .map((item) => ({
+      name: item.name.trim(),
+      qty: Number(item.qty),
+    }))
+    .filter((item) => item.name.length > 0 && Number.isInteger(item.qty) && item.qty >= 0);
+
+  const seen = new Set<string>();
+  const uniqueItems: ProductColorVariant[] = [];
+
+  for (const item of normalized) {
+    const key = item.name.toLocaleLowerCase("pt-BR");
+    if (seen.has(key)) {
+      throw new Error("Duplicated color in product variants is not allowed");
+    }
+    seen.add(key);
+    uniqueItems.push(item);
+  }
+
+  return uniqueItems;
+}
+
 function normalizeAttachmentUrl(value: string): string {
   const trimmedValue = value.trim();
   if (!trimmedValue) return "";
@@ -164,8 +210,6 @@ export default function Products() {
   const { data: materials } = useMaterials();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
-  const deleteMutation = useDeleteProduct();
-  const adjustStockMutation = useAdjustProducedStock();
   const { canWrite } = useAuthz();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -186,21 +230,16 @@ export default function Products() {
   const [createMaterialForNewRow, setCreateMaterialForNewRow] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [category, setCategory] = useState<ProductCategory>("ACCESSORIES");
   const [description, setDescription] = useState("");
+  const [colorVariants, setColorVariants] = useState<ColorFormItem[]>([]);
+  const [productMode, setProductMode] = useState<"QUANTITY" | "COLORS">("QUANTITY");
   const [initialStockQty, setInitialStockQty] = useState("0");
   const [hasTechnicalSpec, setHasTechnicalSpec] = useState(false);
   const [bomItems, setBomItems] = useState<BomFormItem[]>([createEmptyBomItem()]);
   const [attachments, setAttachments] = useState<ProductAttachment[]>([]);
   const [attachmentInput, setAttachmentInput] = useState("");
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const [stockDialogOpen, setStockDialogOpen] = useState(false);
-  const [stockDialogProduct, setStockDialogProduct] = useState<CatalogProduct | null>(null);
-  const [stockDialogMode, setStockDialogMode] = useState<"IN" | "OUT">("IN");
-  const [stockDialogQty, setStockDialogQty] = useState("1");
-  const [stockDialogNote, setStockDialogNote] = useState("");
-  const [stockLoadingProductId, setStockLoadingProductId] = useState<number | null>(null);
-  const [stockLoadingMode, setStockLoadingMode] = useState<"IN" | "OUT" | null>(null);
-  const [optimisticStockChanges, setOptimisticStockChanges] = useState<Record<number, number>>({});
 
   const products = catalogData?.items ?? [];
   const totalProducts = catalogData?.total ?? 0;
@@ -208,7 +247,6 @@ export default function Products() {
 
   const activeMaterials = useMemo(() => materials?.filter((material) => material.isActive === 1) ?? [], [materials]);
   const isSavingProduct = createMutation.isPending || updateMutation.isPending;
-  const isMutatingStock = adjustStockMutation.isPending;
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -223,17 +261,16 @@ export default function Products() {
   }, [page, totalPages]);
 
   useEffect(() => {
-    if (!isProductsFetching) setOptimisticStockChanges({});
-  }, [catalogData, isProductsFetching]);
-
-  useEffect(() => {
     if (!productDialogOpen) return;
 
     if (editingProduct) {
       setName(editingProduct.name);
       setPrice(editingProduct.price);
+      setCategory(editingProduct.category as ProductCategory);
       setDescription(editingProduct.description ?? "");
-      setInitialStockQty("0");
+      setColorVariants((editingProduct.colorVariants ?? []).map((variant) => ({ name: variant.name, qty: String(variant.qty) })));
+      setProductMode((editingProduct.colorVariants ?? []).length > 0 ? "COLORS" : "QUANTITY");
+      setInitialStockQty(String(editingProduct.stockQty ?? 0));
       setHasTechnicalSpec(editingProduct.bomItems.length > 0);
       setBomItems(editingProduct.bomItems.length > 0 ? editingProduct.bomItems.map((item) => ({ materialId: item.materialId, qtyPerUnit: String(item.qtyPerUnit) })) : [createEmptyBomItem()]);
       setAttachments((editingProduct.attachments ?? []).map((attachment) => coerceAttachment(attachment as ProductAttachment | string)));
@@ -244,7 +281,10 @@ export default function Products() {
 
     setName("");
     setPrice("");
+    setCategory("ACCESSORIES");
     setDescription("");
+    setColorVariants([]);
+    setProductMode("QUANTITY");
     setInitialStockQty("0");
     setHasTechnicalSpec(false);
     setBomItems([createEmptyBomItem()]);
@@ -260,6 +300,20 @@ export default function Products() {
   const addBomItem = () => setBomItems((current) => [...current, createEmptyBomItem()]);
   const removeBomItem = (index: number) => {
     setBomItems((current) => (current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index)));
+  };
+  const setColorVariant = (index: number, patch: Partial<ColorFormItem>) => {
+    setColorVariants((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  };
+  const addColorVariant = () => setColorVariants((current) => [...current, createEmptyColorItem()]);
+  const removeColorVariant = (index: number) => {
+    setColorVariants((current) => (current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index)));
+  };
+  const enableColorMode = () => {
+    setProductMode("COLORS");
+    setColorVariants((current) => (current.length > 0 ? current : [createEmptyColorItem()]));
+  };
+  const enableQuantityMode = () => {
+    setProductMode("QUANTITY");
   };
   const addAttachment = () => {
     const nextAttachment = normalizeAttachmentUrl(attachmentInput);
@@ -293,15 +347,6 @@ export default function Products() {
     setProductDialogOpen(true);
   };
 
-  const openStockDialog = (product: CatalogProduct, mode: "IN" | "OUT") => {
-    if (!canWrite) return;
-    setStockDialogProduct(product);
-    setStockDialogMode(mode);
-    setStockDialogQty("1");
-    setStockDialogNote("");
-    setStockDialogOpen(true);
-  };
-
   const handleCreateNewMaterialFromSpec = () => {
     if (!canWrite) return;
     setMaterialRowIndex(null);
@@ -315,25 +360,50 @@ export default function Products() {
       toast({ title: "Sem permissão", description: "Seu usuário não pode criar/editar produtos.", variant: "destructive" });
       return;
     }
-    const normalizedInitialStockQty = Number(initialStockQty || 0);
-    if (!editingProduct && (!Number.isInteger(normalizedInitialStockQty) || normalizedInitialStockQty < 0)) {
+    let normalizedColorVariants: ProductColorVariant[] = [];
+    try {
+      normalizedColorVariants = productMode === "COLORS" ? normalizeColorVariants(colorVariants) : [];
+    } catch {
+      toast({
+        title: "Cores duplicadas",
+        description: "Cada cor deve aparecer apenas uma vez no mesmo cadastro.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (productMode === "COLORS" && normalizedColorVariants.length === 0) {
+      toast({
+        title: "Cores obrigatórias",
+        description: "Adicione ao menos uma cor válida ou volte para o modo quantidade.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const normalizedInitialStockQty =
+      productMode === "COLORS"
+        ? sumColorQuantity(colorVariants)
+        : Number(initialStockQty);
+    if (!Number.isInteger(normalizedInitialStockQty) || normalizedInitialStockQty < 0) {
       toast({
         title: "Quantidade inicial inválida",
-        description: "Informe um número inteiro maior ou igual a zero.",
+        description: productMode === "COLORS"
+          ? "A soma das cores precisa ser um número inteiro maior ou igual a zero."
+          : "Informe uma quantidade inteira maior ou igual a zero.",
         variant: "destructive",
       });
       return;
     }
 
     const payload = {
-      product: { name, price, attachments, isActive: 1, description },
+      product: { name, price, category, attachments, colorVariants: normalizedColorVariants, isActive: 1, description },
       technicalSpec: {
         bomItems: (hasTechnicalSpec ? bomItems : [])
           .filter((item) => item.materialId)
           .map((item) => ({
             materialId: Number(item.materialId),
             qtyPerUnit: item.qtyPerUnit,
-        })),
+          })),
       },
       initialStockQty: editingProduct ? 0 : normalizedInitialStockQty,
     };
@@ -356,58 +426,6 @@ export default function Products() {
         setProductDialogOpen(false);
       },
     });
-  };
-
-  const handleStockSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!stockDialogProduct) return;
-    const qty = Number(stockDialogQty);
-    if (!Number.isInteger(qty) || qty <= 0) {
-      toast({
-        title: "Quantidade inválida",
-        description: "Informe um número inteiro maior que zero.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const qtyChange = stockDialogMode === "IN" ? qty : -qty;
-    setStockLoadingProductId(stockDialogProduct.id);
-    setStockLoadingMode(stockDialogMode);
-    setOptimisticStockChanges((current) => ({
-      ...current,
-      [stockDialogProduct.id]: (current[stockDialogProduct.id] ?? 0) + qtyChange,
-    }));
-
-    adjustStockMutation.mutate(
-      {
-        productId: stockDialogProduct.id,
-        qtyChange,
-        note: stockDialogNote.trim() || null,
-      },
-      {
-        onSuccess: () => setStockDialogOpen(false),
-        onError: () => {
-          setOptimisticStockChanges((current) => ({
-            ...current,
-            [stockDialogProduct.id]: (current[stockDialogProduct.id] ?? 0) - qtyChange,
-          }));
-        },
-        onSettled: () => {
-          setStockLoadingProductId(null);
-          setStockLoadingMode(null);
-        },
-      },
-    );
-  };
-
-  const getProductStockSnapshot = (item: CatalogProduct) => {
-    const delta = optimisticStockChanges[item.id] ?? 0;
-    return {
-      inQty: item.inQty + (delta > 0 ? delta : 0),
-      outQty: item.outQty + (delta < 0 ? Math.abs(delta) : 0),
-      stockQty: item.stockQty + delta,
-    };
   };
 
   return (
@@ -490,75 +508,14 @@ export default function Products() {
             {isProductsFetching ? <span>Atualizando...</span> : null}
           </div>
 
-          <div className="space-y-3 md:hidden">
-            {products.map((item) => {
-              const stock = getProductStockSnapshot(item);
-              return (
-                <Card key={item.id}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">{item.name}</CardTitle>
-                    <CardDescription>#{item.id} • {brl(Number(item.price))}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div className="rounded-md bg-muted p-2 text-center">
-                        <div className="text-muted-foreground text-xs">Entradas</div>
-                        <div className="font-semibold">{stock.inQty}</div>
-                      </div>
-                      <div className="rounded-md bg-muted p-2 text-center">
-                        <div className="text-muted-foreground text-xs">Saídas</div>
-                        <div className="font-semibold">{stock.outQty}</div>
-                      </div>
-                      <div className="rounded-md bg-muted p-2 text-center">
-                        <div className="text-muted-foreground text-xs">Saldo</div>
-                        <div className="font-semibold">{stock.stockQty}</div>
-                      </div>
-                    </div>
-                    <div>
-                      {item.bomItems.length > 0 ? (
-                        <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
-                      ) : (
-                        <Badge variant="secondary">Sem ficha técnica</Badge>
-                      )}
-                    </div>
-                    {canWrite ? (
-                      <div className="flex justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem disabled={isMutatingStock} onSelect={() => openStockDialog(item, "IN")}>Entrada</DropdownMenuItem>
-                            <DropdownMenuItem disabled={isMutatingStock} onSelect={() => openStockDialog(item, "OUT")}>Saída</DropdownMenuItem>
-                            <DropdownMenuItem disabled={isSavingProduct || isMutatingStock} onSelect={() => openEditProductDialog(item)}>Editar</DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              disabled={deleteMutation.isPending || isMutatingStock || isSavingProduct}
-                              onSelect={() => deleteMutation.mutate(item.id)}
-                            >
-                              Inativar
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          <div className="hidden md:block">
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="hidden sm:table-cell">ID</TableHead>
                   <TableHead>Nome</TableHead>
+                  <TableHead>Categoria</TableHead>
                   <TableHead>Preço</TableHead>
-                  <TableHead className="text-right">Entradas</TableHead>
-                  <TableHead className="text-right">Saídas</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
                   <TableHead className="hidden lg:table-cell">Estrutura de produção</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -566,15 +523,21 @@ export default function Products() {
               </TableHeader>
               <TableBody>
                 {products.map((item) => {
-                  const stock = getProductStockSnapshot(item);
                   return (
                     <TableRow key={item.id}>
                       <TableCell className="hidden sm:table-cell">#{item.id}</TableCell>
-                      <TableCell>{item.name}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div>{item.name}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="w-fit text-[11px]">
+                          {getProductCategoryLabel(item.category)}
+                        </Badge>
+                      </TableCell>
                       <TableCell>{brl(Number(item.price))}</TableCell>
-                      <TableCell className="text-right">{stock.inQty}</TableCell>
-                      <TableCell className="text-right">{stock.outQty}</TableCell>
-                      <TableCell className="text-right font-semibold">{stock.stockQty}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.stockQty}</TableCell>
                       <TableCell className="hidden lg:table-cell">
                         {item.bomItems.length > 0 ? (
                           <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>
@@ -584,29 +547,18 @@ export default function Products() {
                       </TableCell>
                       <TableCell className="text-right">
                         {canWrite ? (
-                          <div className="hidden sm:flex justify-end gap-2">
-                            <Button size="sm" variant="outline" onClick={() => openStockDialog(item, "IN")} disabled={isMutatingStock}>
-                              {isMutatingStock && stockLoadingProductId === item.id && stockLoadingMode === "IN" ? (
-                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Entrando...</>
-                              ) : "Entrada"}
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => openStockDialog(item, "OUT")} disabled={isMutatingStock}>
-                              {isMutatingStock && stockLoadingProductId === item.id && stockLoadingMode === "OUT" ? (
-                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saindo...</>
-                              ) : "Saída"}
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => openEditProductDialog(item)} disabled={isSavingProduct || isMutatingStock}>
-                              Editar
-                            </Button>
+                          <div className="flex justify-end">
                             <Button
-                              size="sm"
-                              variant="destructive"
-                              disabled={deleteMutation.isPending || isMutatingStock || isSavingProduct}
-                              onClick={() => deleteMutation.mutate(item.id)}
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-9 w-9"
+                              onClick={() => openEditProductDialog(item)}
+                              disabled={isSavingProduct}
+                              aria-label={`Editar ${item.name}`}
+                              title="Editar"
                             >
-                              {deleteMutation.isPending ? (
-                                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Inativando...</>
-                              ) : "Inativar"}
+                              <PencilLine className="h-4 w-4" />
                             </Button>
                           </div>
                         ) : (
@@ -637,236 +589,349 @@ export default function Products() {
       )}
 
       <ResponsiveDialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
-        <ResponsiveDialogContent className="max-w-3xl">
-          <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>{editingProduct ? "Editar item do catálogo" : "Criar item do catálogo"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription>
-              Cadastre o produto e, se quiser, adicione a ficha técnica agora. Você pode incluir a ficha depois.
-            </ResponsiveDialogDescription>
-          </ResponsiveDialogHeader>
+        <ResponsiveDialogContent className="h-[100dvh] max-w-none overflow-hidden rounded-none border-border bg-card p-0 text-card-foreground shadow-2xl md:h-[90vh] md:max-w-4xl md:rounded-2xl md:p-0">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden">
+            <ResponsiveDialogHeader className="border-b border-border px-4 pb-4 pt-4 text-left md:px-8 md:pb-5 md:pt-7">
+              <div className="space-y-1">
+                <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">
+                  {editingProduct ? "Editar item do catálogo" : "Criar item do catálogo"}
+                </ResponsiveDialogTitle>
+                <ResponsiveDialogDescription className="max-w-2xl text-sm text-foreground/75">
+                  Cadastre o produto com quantidade simples ou por cores. A ficha técnica continua opcional no cadastro.
+                </ResponsiveDialogDescription>
+              </div>
+            </ResponsiveDialogHeader>
 
-          <form onSubmit={handleProductSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Nome</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label>Preço</Label>
-                <Input
-                  inputMode="decimal"
-                  value={toPtBrDecimal(price)}
-                  onChange={(e) => setPrice(fromPtBrDecimal(e.target.value, 2))}
-                  placeholder="0,00"
-                  required
-                />
-              </div>
-            </div>
-            {!editingProduct ? (
-              <div className="space-y-2">
-                <Label>Quantidade inicial no estoque produzido</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={initialStockQty}
-                  onChange={(e) => setInitialStockQty(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-            ) : null}
-            <div className="space-y-2">
-              <Label>Descrição</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Informações adicionais sobre o produto" />
-            </div>
-
-            <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <Label className="text-base">Estrutura de produção (ficha técnica)</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Opcional no cadastro. Só é obrigatória para abrir/iniciar ordem de produção.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant={hasTechnicalSpec ? "outline" : "default"}
-                  size="sm"
-                  onClick={() => setHasTechnicalSpec((current) => !current)}
-                >
-                  {hasTechnicalSpec ? "Remover ficha por agora" : "Adicionar ficha agora"}
-                </Button>
-              </div>
-
-              {hasTechnicalSpec ? (
-                <div className="space-y-3">
-                  {bomItems.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-                      Nenhum material na ficha técnica ainda.
+            <form onSubmit={handleProductSubmit} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 md:space-y-8 md:px-8 md:py-8">
+                <section className="space-y-5">
+                  <h3 className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Informações básicas</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+                    <div className="space-y-2 md:col-span-6">
+                      <Label className="ml-1 text-sm font-bold text-foreground">Nome</Label>
+                      <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Bolsa Executiva de Couro" className="h-11 rounded-xl border-border bg-card px-4" />
                     </div>
-                  ) : null}
-                  <div className="flex justify-end">
-                    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" onClick={handleCreateNewMaterialFromSpec}>
-                      <Plus className="h-4 w-4 mr-1" /> Novo material
+                    <div className="space-y-2 md:col-span-3">
+                      <Label className="ml-1 text-sm font-bold text-foreground">Preço</Label>
+                      <Input
+                        inputMode="decimal"
+                        value={toPtBrDecimal(price)}
+                        onChange={(e) => setPrice(fromPtBrDecimal(e.target.value, 2))}
+                        placeholder="0,00"
+                        required
+                        className="h-11 rounded-xl border-border bg-card px-4 font-semibold"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-3">
+                      <Label className="ml-1 text-sm font-bold text-foreground">Categoria</Label>
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value as ProductCategory)}
+                        className="h-11 w-full rounded-xl border border-input bg-card px-4 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/10"
+                        required
+                      >
+                        {Object.entries(productCategoryLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </section>
+
+                <hr className="border-border" />
+
+                <section className="space-y-5 rounded-2xl border border-border bg-card p-4 shadow-sm md:space-y-6 md:p-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-1">
+                      <h4 className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Estoque inicial</h4>
+                      <p className="text-sm text-foreground/75">Por padrão, cadastre somente a quantidade. Se precisar, mude para o modo por cores.</p>
+                    </div>
+                    <div className="inline-flex w-full rounded-xl border border-border bg-muted/40 p-1 md:w-auto">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={productMode === "QUANTITY" ? "default" : "ghost"}
+                        className="h-9 flex-1 rounded-lg px-4 md:flex-none"
+                        onClick={enableQuantityMode}
+                      >
+                        Quantidade
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={productMode === "COLORS" ? "default" : "ghost"}
+                        className="h-9 flex-1 rounded-lg px-4 md:flex-none"
+                        onClick={enableColorMode}
+                      >
+                        Por cores
+                      </Button>
+                    </div>
+                  </div>
+
+                  {productMode === "QUANTITY" ? (
+                    <div className="space-y-2">
+                      <Label className="ml-1 text-sm font-semibold text-foreground">Quantidade</Label>
+                      {editingProduct ? (
+                        <div className="rounded-xl border border-dashed border-border bg-card px-4 py-3 text-sm text-foreground/75">
+                          Estoque atual: <span className="font-semibold text-foreground">{editingProduct.stockQty ?? 0}</span>. A quantidade inicial só é definida na criação.
+                        </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={initialStockQty}
+                          onChange={(e) => setInitialStockQty(e.target.value)}
+                          placeholder="0"
+                          required
+                          className="h-11 rounded-xl border-border bg-card px-4"
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-bold text-foreground">Cores</span>
+                        <Badge variant="secondary" className="text-[11px]">{sumColorQuantity(colorVariants)} un</Badge>
+                        <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={addColorVariant}>
+                          <Plus className="mr-2 h-4 w-4" /> Cor
+                        </Button>
+                      </div>
+                      <p className="text-xs text-foreground/70">Ex.: carteira Tani 4 unidades, sendo 2 pretas, 1 marrom e 1 caramelo.</p>
+
+                      <div className="space-y-3">
+                        {colorVariants.map((item, index) => (
+                          <div
+                            key={index}
+                            className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[minmax(0,1fr),120px,44px] md:items-end"
+                          >
+                            <div className="space-y-2">
+                              <Label className="text-sm">Nome da cor</Label>
+                              <Input value={item.name} onChange={(e) => setColorVariant(index, { name: e.target.value })} placeholder="Preta" required className="h-11 rounded-xl border-border bg-card px-4" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-sm">Qtd</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={item.qty}
+                                onChange={(e) => setColorVariant(index, { qty: e.target.value })}
+                                placeholder="1"
+                                required
+                                className="h-11 rounded-xl border-border bg-card px-4"
+                              />
+                            </div>
+                            <div className="flex justify-end">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-10 w-10 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeColorVariant(index)}
+                                aria-label="Remover cor"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-foreground/75 md:flex-row md:items-center md:justify-between">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-foreground">Resumo:</span>
+                          {colorVariants.some((item) => item.name.trim()) ? (
+                            colorVariants
+                              .filter((item) => item.name.trim())
+                              .map((item, index) => (
+                                <Badge key={`${item.name}-${index}`} variant="secondary" className="text-[11px]">
+                                  {item.name || "Cor"} {item.qty || "0"}
+                                </Badge>
+                              ))
+                          ) : (
+                            <span>Adicione uma ou mais cores para continuar.</span>
+                          )}
+                        </div>
+                        <div className="shrink-0">
+                          <span className="font-medium text-foreground">Total: </span>
+                          {sumColorQuantity(colorVariants)} un
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <hr className="border-border" />
+
+                <section className="space-y-4">
+                  <div className="space-y-1">
+                    <h4 className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Descrição do produto</h4>
+                    <p className="text-sm text-foreground/75">Contexto livre sobre o produto, acabamento ou uso.</p>
+                  </div>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Informações adicionais sobre o produto"
+                    className="min-h-[140px] rounded-xl border-border bg-card px-4 py-3"
+                  />
+                </section>
+
+                <hr className="border-border" />
+
+                <section className="space-y-5 rounded-2xl border border-border bg-card p-4 shadow-sm md:space-y-6 md:p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <h4 className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Ficha técnica</h4>
+                      <p className="text-sm text-foreground/75">Opcional no cadastro. Obrigatória só para iniciar produção.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={hasTechnicalSpec ? "outline" : "default"}
+                      size="sm"
+                      onClick={() => setHasTechnicalSpec((current) => !current)}
+                    >
+                      {hasTechnicalSpec ? "Desativar" : "Adicionar"}
                     </Button>
                   </div>
 
-                  {bomItems.map((item, index) => (
-                    <div key={index} className="space-y-4 rounded-xl border bg-background p-4 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-sm font-semibold">Material {index + 1}</h3>
-                          <p className="text-xs text-muted-foreground">Defina o item e o consumo por unidade produzida.</p>
+                  {hasTechnicalSpec ? (
+                    <div className="space-y-3">
+                      {bomItems.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-4 text-sm text-foreground/70">
+                          Nenhum material na ficha técnica ainda.
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          aria-label="Remover material"
-                          onClick={() => removeBomItem(index)}
-                        >
-                          <Trash2 className="h-4 w-4" />
+                      ) : null}
+                      <div className="flex justify-end">
+                        <Button type="button" variant="outline" size="sm" onClick={handleCreateNewMaterialFromSpec}>
+                          <Plus className="h-4 w-4 mr-1" /> Material
                         </Button>
                       </div>
 
-                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
-                        <div className="space-y-2">
-                          <Label>Nome do material</Label>
-                          <MaterialSearchCombobox
-                            materials={activeMaterials}
-                            value={item.materialId}
-                            onSelect={(material) => {
-                              setBomItem(index, { materialId: material.id });
-                            }}
-                            placeholder="Pesquisar material cadastrado"
-                          />
+                      {bomItems.map((item, index) => (
+                        <div key={index} className="space-y-3 rounded-xl border border-border bg-card p-4">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-medium">Material {index + 1}</h3>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              aria-label="Remover material"
+                              onClick={() => removeBomItem(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
+                            <div className="space-y-2">
+                              <Label>Nome do material</Label>
+                              <MaterialSearchCombobox
+                                materials={activeMaterials}
+                                value={item.materialId}
+                                onSelect={(material) => {
+                                  setBomItem(index, { materialId: material.id });
+                                }}
+                                placeholder="Pesquisar material cadastrado"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Qtd por unidade</Label>
+                              <Input
+                                inputMode="decimal"
+                                value={toPtBrDecimal(item.qtyPerUnit)}
+                                onChange={(e) => setBomItem(index, { qtyPerUnit: fromPtBrDecimal(e.target.value, 3) })}
+                                placeholder="0,000"
+                                required
+                                className="h-11 rounded-xl border-border bg-card px-4"
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div className="space-y-2">
-                          <Label>Qtd por unidade</Label>
-                          <Input
-                            inputMode="decimal"
-                            value={toPtBrDecimal(item.qtyPerUnit)}
-                            onChange={(e) => setBomItem(index, { qtyPerUnit: fromPtBrDecimal(e.target.value, 3) })}
-                            placeholder="0,000"
-                            required
-                          />
-                        </div>
-                      </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={addBomItem}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-card py-3 text-sm text-foreground/70 transition-colors hover:border-primary hover:text-primary"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Adicionar material
+                      </button>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-4 text-sm text-foreground/70">
+                      Sem ficha técnica por enquanto. Você poderá adicionar depois editando este mesmo produto.
+                    </div>
+                  )}
+                </section>
 
-                  <button
-                    type="button"
-                    onClick={addBomItem}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Adicionar material
-                  </button>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-                  Sem ficha técnica por enquanto. Você poderá adicionar depois editando este mesmo produto.
-                </div>
-              )}
-            </div>
+                <hr className="border-border" />
 
-            <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4 md:p-5">
-              <div className="space-y-1">
-                <Label className="text-base">Anexos</Label>
-                <p className="text-sm text-muted-foreground">
-                  Cole links públicos do Google Drive para imagens ou arquivos relacionados ao produto.
-                </p>
+                <section className="space-y-5 rounded-2xl border border-border bg-card p-4 shadow-sm md:space-y-6 md:p-6">
+                  <div className="space-y-1">
+                    <h4 className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Anexos</h4>
+                    <p className="text-sm text-foreground/75">Links públicos para imagens ou arquivos do produto.</p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    <Input
+                      value={attachmentInput}
+                      onChange={(e) => {
+                        setAttachmentInput(e.target.value);
+                        if (attachmentError) setAttachmentError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addAttachment();
+                        }
+                      }}
+                      placeholder="https://drive.google.com/file/d/..."
+                      className="h-11 rounded-xl border-border bg-card px-4"
+                    />
+                    <Button type="button" variant="outline" onClick={addAttachment} disabled={!canWrite}>
+                      <Plus className="h-4 w-4 mr-2" /> Adicionar
+                    </Button>
+                  </div>
+
+                  {attachmentError ? <p className="text-sm text-destructive">{attachmentError}</p> : null}
+
+                  {attachments.length > 0 ? (
+                    <div className="flex flex-wrap gap-3">
+                      {attachments.map((attachment) => (
+                        <DriveAttachmentCard key={attachment.url} attachment={attachment} onRemove={() => removeAttachment(attachment.url)} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-foreground/70">
+                      Nenhum anexo adicionado.
+                    </div>
+                  )}
+                </section>
               </div>
 
-              <div className="flex flex-col gap-2 md:flex-row">
-                <Input
-                  value={attachmentInput}
-                  onChange={(e) => {
-                    setAttachmentInput(e.target.value);
-                    if (attachmentError) setAttachmentError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addAttachment();
-                    }
-                  }}
-                  placeholder="https://drive.google.com/file/d/..."
-                />
-                <Button type="button" variant="outline" onClick={addAttachment} disabled={!canWrite}>
-                  <Plus className="h-4 w-4 mr-2" /> Adicionar link
-                </Button>
-              </div>
-
-              {attachmentError ? <p className="text-sm text-destructive">{attachmentError}</p> : null}
-
-              {attachments.length > 0 ? (
-                <div className="flex flex-wrap gap-3">
-                  {attachments.map((attachment) => (
-                    <DriveAttachmentCard key={attachment.url} attachment={attachment} onRemove={() => removeAttachment(attachment.url)} />
-                  ))}
+              <ResponsiveDialogFooter className="shrink-0 border-t border-border bg-card px-4 py-3 md:px-8 md:py-5">
+                <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setProductDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" className="w-full sm:w-auto" disabled={!canWrite || isSavingProduct}>
+                    {isSavingProduct ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
+                      </>
+                    ) : (
+                      "Salvar Produto"
+                    )}
+                  </Button>
                 </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-                  Nenhum anexo adicionado.
-                </div>
-              )}
-            </div>
-
-            <ResponsiveDialogFooter className="justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={!canWrite || isSavingProduct}>
-                {isSavingProduct ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
-                ) : "Salvar"}
-              </Button>
-            </ResponsiveDialogFooter>
-          </form>
-        </ResponsiveDialogContent>
-      </ResponsiveDialog>
-
-      <ResponsiveDialog open={stockDialogOpen} onOpenChange={setStockDialogOpen}>
-        <ResponsiveDialogContent>
-          <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>{stockDialogMode === "IN" ? "Registrar entrada" : "Registrar saída"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription>
-              {stockDialogProduct ? `Produto: ${stockDialogProduct.name}` : "Selecione um produto."}
-            </ResponsiveDialogDescription>
-          </ResponsiveDialogHeader>
-          <form onSubmit={handleStockSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Quantidade</Label>
-              <Input
-                type="number"
-                min="1"
-                step="1"
-                value={stockDialogQty}
-                onChange={(e) => setStockDialogQty(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Observação (opcional)</Label>
-              <Textarea
-                value={stockDialogNote}
-                onChange={(e) => setStockDialogNote(e.target.value)}
-                placeholder={stockDialogMode === "IN" ? "Ex.: entrada manual de estoque." : "Ex.: perda, troca ou saída manual."}
-                maxLength={280}
-              />
-            </div>
-            <ResponsiveDialogFooter className="justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setStockDialogOpen(false)} disabled={adjustStockMutation.isPending}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={adjustStockMutation.isPending || !stockDialogProduct || Number(stockDialogQty) <= 0}>
-                {adjustStockMutation.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...</>
-                ) : "Confirmar"}
-              </Button>
-            </ResponsiveDialogFooter>
-          </form>
+              </ResponsiveDialogFooter>
+            </form>
+          </div>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
 

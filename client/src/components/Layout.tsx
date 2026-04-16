@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/lib/supabase";
 import { useAuthz } from "@/hooks/use-authz";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface LayoutProps {
   children: ReactNode;
@@ -162,6 +163,9 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
       </nav>
 
       <div className="p-4 border-t border-sidebar-border">
+        <div className="mb-3">
+          <ThemeToggle className="h-9 w-full justify-start gap-2 rounded-lg px-3" />
+        </div>
         <Link
           href="/profile"
           className="mb-3 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-sidebar-accent transition-colors"
@@ -193,7 +197,7 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
       {/* Main Content Area */}
       <main className="flex-1 min-w-0">
         {!hideMobileMenu ? (
-          <div className="flex h-16 items-center px-6 md:hidden">
+          <div className="flex h-16 items-center justify-between px-4 md:hidden">
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon">
@@ -204,6 +208,7 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
                 <SidebarContent />
               </SheetContent>
             </Sheet>
+            <ThemeToggle className="h-9 rounded-lg px-3" />
           </div>
         ) : null}
 

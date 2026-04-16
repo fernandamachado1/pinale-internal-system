@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -62,43 +63,45 @@
 }
 
 .dark {
-  --background: 222.2 84% 4.9%;
+  color-scheme: dark;
+  /* Dark theme tuned for readability (less pure-black, clearer surfaces). */
+  --background: 228 18% 10%;
   --foreground: 210 40% 98%;
 
-  --card: 222.2 84% 4.9%;
+  --card: 228 16% 13%;
   --card-foreground: 210 40% 98%;
 
-  --popover: 222.2 84% 4.9%;
+  --popover: 228 16% 13%;
   --popover-foreground: 210 40% 98%;
 
   --primary: 32 93% 60%;
   --primary-foreground: 0 0% 10%;
 
-  --secondary: 217.2 32.6% 17.5%;
+  --secondary: 228 14% 18%;
   --secondary-foreground: 210 40% 98%;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20% 72%;
+  --muted: 228 13% 16%;
+  --muted-foreground: 215 20% 74%;
 
-  --accent: 217.2 32.6% 17.5%;
+  --accent: 228 14% 18%;
   --accent-foreground: 210 40% 98%;
 
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
+  --border: 228 14% 22%;
+  --input: 228 14% 22%;
   --ring: 32 93% 60%;
 
   --badge-outline: hsl(var(--border));
 
-  --sidebar: 222.2 84% 4.9%;
+  --sidebar: 228 18% 9%;
   --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217.2 32.6% 17.5%;
+  --sidebar-border: 228 14% 22%;
   --sidebar-ring: var(--primary);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: 222.2 47.4% 11.2%;
-  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent: 228 14% 16%;
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-primary-border: transparent;
   --sidebar-accent-border: transparent;
