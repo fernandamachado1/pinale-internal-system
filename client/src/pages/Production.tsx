@@ -257,7 +257,7 @@ function ProductionCard({ order, dragDisabled, bomWarning }: { order: Production
     <article
       ref={setNodeRef}
       style={style}
-      className={`min-h-[108px] rounded-xl border p-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-default"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`min-h-[92px] rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-default"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
     >
       <ProductionCardBody
         order={order}
@@ -266,12 +266,12 @@ function ProductionCard({ order, dragDisabled, bomWarning }: { order: Production
           <button
             type="button"
             ref={setActivatorNodeRef}
-            className="touch-none flex h-11 w-11 items-center justify-center rounded-md bg-black/5 p-2 text-muted-foreground hover:bg-black/10 active:bg-black/15 cursor-grab active:cursor-grabbing sm:h-auto sm:w-auto sm:p-1"
+            className="touch-none flex h-9 w-9 items-center justify-center rounded-md bg-black/5 p-1.5 text-muted-foreground hover:bg-black/10 active:bg-black/15 cursor-grab active:cursor-grabbing sm:h-auto sm:w-auto sm:p-1"
             aria-label="Arrastar ordem de produção"
             {...attributes}
             {...listeners}
           >
-            <GripVertical className="h-4 w-4" />
+            <GripVertical className="h-3.5 w-3.5" />
           </button>
         ) : undefined}
       />
@@ -297,7 +297,7 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex min-h-[280px] min-w-[calc(100vw-1rem)] flex-none snap-center flex-col rounded-2xl border p-3 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:snap-start sm:p-4 ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
+      className={`flex min-h-[260px] min-w-[82vw] flex-none snap-center flex-col rounded-2xl border p-2.5 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:snap-start sm:p-4 ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
@@ -364,7 +364,7 @@ export default function Production() {
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
   );
 
   const selectedProduct = useMemo(() => activeProducts.find((product) => String(product.id) === productId), [activeProducts, productId]);
@@ -585,7 +585,7 @@ export default function Production() {
   const renderInsertionMarker = (key: string) => (
     <div
       key={key}
-      className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 px-4 py-6 text-center text-xs font-medium text-primary"
+      className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 px-3 py-4 text-center text-xs font-medium text-primary"
     >
       Solte aqui para inserir
     </div>
