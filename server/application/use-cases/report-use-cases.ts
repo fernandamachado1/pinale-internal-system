@@ -139,15 +139,21 @@ export class DashboardReportUseCase {
   constructor(private readonly repository: IErpRepository) {}
 
   async execute(period: PeriodInput) {
-    const [orders, salesItems, stocks] = await Promise.all([
+    const [orders, salesItems, stocks, movements] = await Promise.all([
       this.repository.getProductionOrders(),
       this.repository.getSales(),
       this.repository.getProducedProductStocks(),
+      this.repository.getInventoryMovements(),
     ]);
 
-    const filteredOrders = orders.filter(
-      (o) => o.status === "DONE" && o.completedAt && inPeriod(new Date(o.completedAt), period),
-    );
+    const productById = new Map(orders.map((order) => [order.productId, order.product]));
+    const producedMovements = movements.filter((movement) => {
+      if (!inPeriod(new Date(movement.createdAt), period)) return false;
+      if (movement.entityType !== "PRODUCT") return false;
+      if (movement.direction !== "IN") return false;
+      if (movement.reason !== "PRODUCTION_OUTPUT" && movement.reason !== "ADJUSTMENT") return false;
+      return true;
+    });
     const filteredSales = salesItems.filter((s) => inPeriod(new Date(s.sale.createdAt), period));
 
     const allOpenOrders = orders.filter((o) => o.status !== "DONE");
@@ -161,16 +167,26 @@ export class DashboardReportUseCase {
         createdAt: new Date(o.createdAt).toISOString(),
       }));
 
-    const producedValue = filteredOrders.reduce((acc, o) => acc + o.qtyPlanned * Number(o.product.price), 0);
+    const producedValue = producedMovements.reduce((acc, movement) => {
+      if (!movement.entityId) return acc;
+      const product = movement.product ?? productById.get(movement.entityId);
+      if (!product) return acc;
+      return acc + Number(movement.qty) * Number(product.price);
+    }, 0);
     const soldValue = filteredSales.reduce((acc, s) => acc + Number(s.totalPrice), 0);
     const distinctSaleCount = new Set(filteredSales.map((s) => s.saleId)).size;
 
     const producedByProductMap = new Map<number, { productId: number; productName: string; qty: number; value: number }>();
-    for (const order of filteredOrders) {
-      const cur = producedByProductMap.get(order.productId) ?? { productId: order.productId, productName: order.product.name, qty: 0, value: 0 };
-      cur.qty += order.qtyPlanned;
-      cur.value += order.qtyPlanned * Number(order.product.price);
-      producedByProductMap.set(order.productId, cur);
+    for (const movement of producedMovements) {
+      if (!movement.entityId) continue;
+      const product = movement.product ?? productById.get(movement.entityId);
+      if (!product) continue;
+      const qty = Number(movement.qty);
+      if (!Number.isFinite(qty)) continue;
+      const cur = producedByProductMap.get(product.id) ?? { productId: product.id, productName: product.name, qty: 0, value: 0 };
+      cur.qty += qty;
+      cur.value += qty * Number(product.price);
+      producedByProductMap.set(product.id, cur);
     }
 
     const soldByProductMap = new Map<number, { productId: number; productName: string; qty: number; revenue: number }>();
@@ -182,11 +198,15 @@ export class DashboardReportUseCase {
     }
 
     const chartMap = new Map<string, { date: string; producedValue: number; soldValue: number }>();
-    for (const order of filteredOrders) {
-      if (!order.completedAt) continue;
-      const date = new Date(order.completedAt).toISOString().slice(0, 10);
+    for (const movement of producedMovements) {
+      if (!movement.entityId) continue;
+      const product = movement.product ?? productById.get(movement.entityId);
+      if (!product) continue;
+      const date = new Date(movement.createdAt).toISOString().slice(0, 10);
+      const qty = Number(movement.qty);
+      if (!Number.isFinite(qty)) continue;
       const cur = chartMap.get(date) ?? { date, producedValue: 0, soldValue: 0 };
-      cur.producedValue += order.qtyPlanned * Number(order.product.price);
+      cur.producedValue += qty * Number(product.price);
       chartMap.set(date, cur);
     }
     for (const item of filteredSales) {

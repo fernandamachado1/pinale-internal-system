@@ -191,9 +191,10 @@ function ProductionCardBody({
     order.salesChannel === "PHYSICAL"
       ? "border-transparent bg-slate-900 text-white"
       : "border-transparent bg-primary text-primary-foreground";
+  const notes = order.customizationNotes?.trim();
   const hasMeasure = order.measureCm !== null && order.measureCm !== undefined && Number.isFinite(Number(order.measureCm));
   const measureLabel = hasMeasure ? `${Number(order.measureCm).toLocaleString("pt-BR")} cm` : null;
-  const notes = order.customizationNotes?.trim();
+  const description = [notes, measureLabel ? `Medida: ${measureLabel}` : null].filter(Boolean).join(" | ");
 
   return (
     <>
@@ -215,14 +216,9 @@ function ProductionCardBody({
           <Package className="h-4 w-4" />
           <span>{order.qtyPlanned} unidade(s)</span>
         </div>
-        {measureLabel ? (
+        {description ? (
           <div className="text-muted-foreground">
-            <strong>Medida:</strong> {measureLabel}
-          </div>
-        ) : null}
-        {notes ? (
-          <div className="text-muted-foreground">
-            <strong>Obs:</strong> {notes}
+            <strong>Descrição:</strong> {description}
           </div>
         ) : null}
         {statusHint ? <div>{statusHint}</div> : null}
@@ -356,7 +352,6 @@ export default function Production() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [productId, setProductId] = useState("");
   const [qtyPlanned, setQtyPlanned] = useState("1");
-  const [measureCm, setMeasureCm] = useState("");
   const [customizationNotes, setCustomizationNotes] = useState("");
   const [dueAt, setDueAt] = useState<Date | undefined>(undefined);
   const [activeDropTarget, setActiveDropTarget] = useState<ProductionKanbanStatus | null>(null);
@@ -394,15 +389,6 @@ export default function Production() {
       });
       return;
     }
-    const parsedMeasure = measureCm.trim() ? Number(measureCm.replace(",", ".")) : null;
-    if (parsedMeasure !== null && (!Number.isFinite(parsedMeasure) || parsedMeasure <= 0)) {
-      toast({
-        title: "Medida inválida",
-        description: "Informe uma medida em cm maior que zero.",
-        variant: "destructive",
-      });
-      return;
-    }
     const dueAtIso = dueAt
       ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 12, 0, 0, 0).toISOString()
       : null;
@@ -410,7 +396,6 @@ export default function Production() {
       {
         productId: Number(productId),
         qtyPlanned: Number(qtyPlanned),
-        measureCm: parsedMeasure,
         customizationNotes: customizationNotes.trim() || null,
         salesChannel: "ONLINE",
         dueAt: dueAtIso,
@@ -420,7 +405,6 @@ export default function Production() {
           setIsCreateOpen(false);
           setProductId("");
           setQtyPlanned("1");
-          setMeasureCm("");
           setCustomizationNotes("");
           setDueAt(undefined);
         },
@@ -646,24 +630,11 @@ export default function Production() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Medida (cm) (opcional)</Label>
-                  <Input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={measureCm}
-                    onChange={(e) => setMeasureCm(e.target.value)}
-                    placeholder="Ex.: 105"
-                    className="h-11 rounded-xl border-border bg-card px-4"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Observações da encomenda (opcional)</Label>
+                  <Label>Descrição (opcional)</Label>
                   <Textarea
                     value={customizationNotes}
                     onChange={(e) => setCustomizationNotes(e.target.value)}
-                    placeholder="Ex.: carteira Cirrus para RG, mescla de cores, troca de ponteira..."
+                    placeholder="Ex.: carteira Cirrus para RG, medida 105 cm, mescla de cores..."
                     rows={3}
                     maxLength={500}
                     className="rounded-xl border-border bg-card px-4 py-3"
@@ -707,8 +678,7 @@ export default function Production() {
                     </div>
                   ) : null}
                   <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
-                  <div><strong>Medida:</strong> {measureCm.trim() ? `${measureCm} cm` : "-"}</div>
-                  <div><strong>Observações:</strong> {customizationNotes.trim() || "-"}</div>
+                  <div><strong>Descrição:</strong> {customizationNotes.trim() || "-"}</div>
                   <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
                 </div>
               ) : null}
