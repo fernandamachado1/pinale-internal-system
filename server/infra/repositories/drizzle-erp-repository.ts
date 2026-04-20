@@ -590,7 +590,13 @@ export class DrizzleErpRepository implements IErpRepository {
     return updated;
   }
 
-  async createSale(data: { paymentMethod: string; description?: string | null; totalAmount: string; salesChannel: "ONLINE" | "PHYSICAL" }): Promise<Sale> {
+  async createSale(data: {
+    paymentMethod: string;
+    description?: string | null;
+    totalAmount: string;
+    salesChannel: "ONLINE" | "PHYSICAL";
+    soldAt?: string | null;
+  }): Promise<Sale> {
     const [created] = (await this.database
       .insert(sales)
       .values({
@@ -599,6 +605,7 @@ export class DrizzleErpRepository implements IErpRepository {
         description: data.description ?? null,
         totalAmount: data.totalAmount,
         salesChannel: data.salesChannel,
+        soldAt: data.soldAt ? new Date(data.soldAt) : new Date(),
       } as any)
       .returning()) as Sale[];
     return created;

@@ -32,6 +32,13 @@ type SaleItem = { productId: string; qty: string };
 
 const PAYMENT_METHODS = ["PIX", "DINHEIRO", "DEBITO", "CREDITO", "BOLETO"] as const;
 
+function localDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function emptyItem(): SaleItem {
   return { productId: "", qty: "1" };
 }
@@ -51,6 +58,7 @@ export default function Sales() {
   const [paymentMethod, setPaymentMethod] = useState("PIX");
   const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
   const [description, setDescription] = useState("");
+  const [saleDate, setSaleDate] = useState(() => localDateInputValue(new Date()));
 
   const activeProducts = useMemo(() => products?.filter((p) => p.isActive === 1) ?? [], [products]);
 
@@ -99,18 +107,27 @@ export default function Sales() {
     setIsOpen(false);
     setItems([emptyItem()]);
     setPaymentMethod("PIX");
+    setSalesChannel("ONLINE");
     setDescription("");
+    setSaleDate(localDateInputValue(new Date()));
   };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!isValid) return;
+    const soldAtIso = saleDate
+      ? (() => {
+          const [year, month, day] = saleDate.split("-").map(Number);
+          return new Date(year, month - 1, day, 12, 0, 0, 0).toISOString();
+        })()
+      : null;
 
     createMutation.mutate(
       {
         paymentMethod,
         description: description.trim() || null,
         salesChannel,
+        soldAt: soldAtIso,
         items: items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty) })),
       },
       { onSuccess: handleClose },
@@ -179,6 +196,17 @@ export default function Sales() {
                   maxLength={500}
                   placeholder="Ex.: Cliente pediu embalagem para presente"
                   className="rounded-xl border-border bg-card px-4 py-3"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sale-date">Data da venda</Label>
+                <Input
+                  id="sale-date"
+                  type="date"
+                  value={saleDate}
+                  onChange={(event) => setSaleDate(event.target.value)}
+                  className="h-11 rounded-xl border-border bg-card px-4"
                 />
               </div>
 
@@ -289,7 +317,7 @@ export default function Sales() {
               <TableHead>Total Item</TableHead>
               <TableHead>Pagamento</TableHead>
               <TableHead>Descrição</TableHead>
-              <TableHead>Data</TableHead>
+              <TableHead>Data da venda</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -304,7 +332,7 @@ export default function Sales() {
                 <TableCell>{brl(Number(item.totalPrice))}</TableCell>
                 <TableCell>{item.sale.paymentMethod}</TableCell>
                 <TableCell>{item.sale.description || "—"}</TableCell>
-                <TableCell>{formatDateTimeBR(item.sale.createdAt)}</TableCell>
+                <TableCell>{formatDateTimeBR(item.sale.soldAt ?? item.sale.createdAt)}</TableCell>
                 <TableCell className="text-right">
                   {canWrite ? (
                     <Button

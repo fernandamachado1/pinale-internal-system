@@ -103,7 +103,7 @@ export class SalesReportUseCase {
   async execute(period: PeriodInput) {
     const salesItems = await this.repository.getSales();
 
-    const filtered = salesItems.filter((item) => inPeriod(new Date(item.sale.createdAt), period));
+    const filtered = salesItems.filter((item) => inPeriod(new Date(item.sale.soldAt ?? item.sale.createdAt), period));
 
     let totalRevenue = 0;
     const soldByProductMap = new Map<number, { productId: number; productName: string; qty: number; revenue: number }>();
@@ -154,7 +154,7 @@ export class DashboardReportUseCase {
       if (movement.reason !== "PRODUCTION_OUTPUT" && movement.reason !== "ADJUSTMENT") return false;
       return true;
     });
-    const filteredSales = salesItems.filter((s) => inPeriod(new Date(s.sale.createdAt), period));
+    const filteredSales = salesItems.filter((s) => inPeriod(new Date(s.sale.soldAt ?? s.sale.createdAt), period));
 
     const allOpenOrders = orders.filter((o) => o.status !== "DONE");
     const openOrders = allOpenOrders
@@ -210,7 +210,7 @@ export class DashboardReportUseCase {
       chartMap.set(date, cur);
     }
     for (const item of filteredSales) {
-      const date = new Date(item.sale.createdAt).toISOString().slice(0, 10);
+      const date = new Date(item.sale.soldAt ?? item.sale.createdAt).toISOString().slice(0, 10);
       const cur = chartMap.get(date) ?? { date, producedValue: 0, soldValue: 0 };
       cur.soldValue += Number(item.totalPrice);
       chartMap.set(date, cur);

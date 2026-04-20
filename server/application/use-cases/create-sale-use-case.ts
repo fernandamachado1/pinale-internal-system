@@ -60,6 +60,7 @@ export class CreateSaleUseCase {
         description: input.description ?? null,
         totalAmount: totalAmount.toFixed(2),
         salesChannel: input.salesChannel,
+        soldAt: input.soldAt ?? null,
       });
 
       const createdItems = await txRepository.createSaleItems(

@@ -144,6 +144,7 @@ export const sales = pgTable("sales", {
   paymentMethod: text("payment_method").notNull(),
   description: text("description"),
   salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
+  soldAt: timestamp("sold_at").notNull().defaultNow(),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -348,6 +349,7 @@ export const insertSaleSchema = z.object({
   paymentMethod: z.string().min(1),
   description: z.string().trim().max(500).optional().nullable(),
   salesChannel: saleChannelEnum,
+  soldAt: z.string().datetime().optional().nullable(),
   items: z
     .array(
       z.object({
