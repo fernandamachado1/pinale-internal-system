@@ -52,8 +52,11 @@ function computeStatus(order: PurchaseOrderWithItems): "OPEN" | "PARTIALLY_RECEI
 
 export class ListPurchaseOrdersUseCase {
   constructor(private readonly repository: IErpRepository) {}
-  execute(): Promise<PurchaseOrderWithItems[]> {
-    return this.repository.getPurchaseOrders();
+  async execute(): Promise<PurchaseOrderWithItems[]> {
+    return await this.repository.withTransaction(async (tx) => {
+      await tx.splitOpenPurchaseOrdersIntoSingleItemOrders();
+      return await tx.getPurchaseOrders();
+    });
   }
 }
 

@@ -798,6 +798,109 @@ export class DrizzleErpRepository implements IErpRepository {
     return orders.map((order) => ({ ...order, items: itemsByOrderId.get(order.id) ?? [] }));
   }
 
+  async splitOpenPurchaseOrdersIntoSingleItemOrders(): Promise<void> {
+    const orderConditions = [eq(purchaseOrders.isActive, 1)];
+    if (this.orgId) orderConditions.push(eq(purchaseOrders.orgId, this.orgId));
+
+    const allOrders = (await this.database
+      .select()
+      .from(purchaseOrders)
+      .where(and(...orderConditions))
+      .orderBy(asc(purchaseOrders.sortOrder), desc(purchaseOrders.id))) as PurchaseOrder[];
+
+    const openOrders = allOrders.filter((order) => order.status === "OPEN");
+    if (openOrders.length === 0) return;
+
+    const openOrderIds = openOrders.map((order) => order.id);
+    const items = (await this.database
+      .select()
+      .from(purchaseOrderItems)
+      .where(
+        and(
+          inArray(purchaseOrderItems.purchaseOrderId, openOrderIds),
+          ...(this.orgId ? [eq(purchaseOrderItems.orgId, this.orgId)] : []),
+        ),
+      )
+      .orderBy(asc(purchaseOrderItems.sortOrder), asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
+
+    const itemsByOrderId = new Map<number, PurchaseOrderItem[]>();
+    for (const item of items) {
+      const current = itemsByOrderId.get(item.purchaseOrderId) ?? [];
+      current.push(item);
+      itemsByOrderId.set(item.purchaseOrderId, current);
+    }
+
+    const createdByOriginalOrderId = new Map<number, number[]>();
+
+    for (const order of openOrders) {
+      const orderItems = itemsByOrderId.get(order.id) ?? [];
+      if (orderItems.length <= 1) continue;
+
+      const [first, ...rest] = orderItems;
+      if (!first) continue;
+
+      // Keep the first item in the original order.
+      await this.database
+        .update(purchaseOrderItems)
+        .set({ sortOrder: 0 })
+        .where(
+          and(
+            eq(purchaseOrderItems.id, first.id),
+            ...(this.orgId ? [eq(purchaseOrderItems.orgId, this.orgId)] : []),
+          ),
+        );
+
+      const createdIds: number[] = [];
+      for (const item of rest) {
+        const [created] = (await this.database
+          .insert(purchaseOrders)
+          .values({
+            orgId: this.orgIdValue(),
+            status: "OPEN",
+            isActive: 1,
+            sortOrder: 0,
+            receivedAt: null,
+            createdAt: order.createdAt,
+            updatedAt: new Date(),
+          } as any)
+          .returning()) as PurchaseOrder[];
+
+        const newOrderId = created?.id;
+        if (!newOrderId) continue;
+
+        await this.database
+          .update(purchaseOrderItems)
+          .set({ purchaseOrderId: newOrderId, sortOrder: 0 })
+          .where(
+            and(
+              eq(purchaseOrderItems.id, item.id),
+              ...(this.orgId ? [eq(purchaseOrderItems.orgId, this.orgId)] : []),
+            ),
+          );
+
+        createdIds.push(newOrderId);
+      }
+
+      if (createdIds.length > 0) createdByOriginalOrderId.set(order.id, createdIds);
+    }
+
+    if (createdByOriginalOrderId.size === 0) return;
+
+    const finalOrderIds: number[] = [];
+    for (const order of allOrders) {
+      finalOrderIds.push(order.id);
+      const createdIds = createdByOriginalOrderId.get(order.id);
+      if (createdIds?.length) finalOrderIds.push(...createdIds);
+    }
+
+    for (let index = 0; index < finalOrderIds.length; index += 1) {
+      const orderId = finalOrderIds[index];
+      const conditions = [eq(purchaseOrders.id, orderId)];
+      if (this.orgId) conditions.push(eq(purchaseOrders.orgId, this.orgId));
+      await this.database.update(purchaseOrders).set({ sortOrder: index }).where(and(...conditions));
+    }
+  }
+
   async reorderPurchaseOrders(input: ReorderPurchaseOrdersInput): Promise<void> {
     for (let index = 0; index < input.orderedIds.length; index += 1) {
       const orderId = input.orderedIds[index];

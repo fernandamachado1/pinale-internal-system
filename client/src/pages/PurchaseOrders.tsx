@@ -49,11 +49,19 @@ const statusLabels: Record<PurchaseOrderStatus, string> = {
   CANCELED: "Cancelada",
 };
 
-function summarizeOrderItems(items: PurchaseOrderWithItems["items"]): { primary: string; secondary?: string } {
+function renderOrderItemsCell(items: PurchaseOrderWithItems["items"]) {
   const names = (items ?? []).map((item) => item.materialName).filter(Boolean);
-  if (names.length === 0) return { primary: "-" };
-  if (names.length === 1) return { primary: names[0] };
-  return { primary: names[0], secondary: `+${names.length - 1}` };
+  if (names.length === 0) return <span className="text-muted-foreground">-</span>;
+
+  return (
+    <ul className="space-y-1">
+      {names.map((name, index) => (
+        <li key={`${name}-${index}`} className="whitespace-normal break-words leading-snug" title={name}>
+          {name}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function formatDate(value: unknown): string {
@@ -96,8 +104,8 @@ function SortablePurchaseOrderRow({
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    ...(transform ? { transform: CSS.Transform.toString(transform) } : {}),
+    ...(transition ? { transition } : {}),
   };
 
   return (
@@ -119,22 +127,8 @@ function SortablePurchaseOrderRow({
         </button>
       </TableCell>
 
-      <TableCell>
-        {(() => {
-          const summary = summarizeOrderItems(order.items);
-          return (
-            <div className="flex items-center gap-2">
-              <span className="max-w-[180px] truncate sm:max-w-[260px] md:max-w-[360px]">
-                {summary.primary}
-              </span>
-              {summary.secondary ? (
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                  {summary.secondary}
-                </span>
-              ) : null}
-            </div>
-          );
-        })()}
+      <TableCell className="whitespace-normal">
+        {renderOrderItemsCell(order.items)}
       </TableCell>
       <TableCell>{statusLabels[order.status]}</TableCell>
       <TableCell className="hidden md:table-cell">{formatDate(order.createdAt)}</TableCell>
@@ -303,6 +297,7 @@ export default function PurchaseOrders() {
   const [editingOrder, setEditingOrder] = useState<PurchaseOrderWithItems | null>(null);
   const [formItems, setFormItems] = useState<PurchaseOrderFormItem[]>([createEmptyItem()]);
   const [orderedOrders, setOrderedOrders] = useState<PurchaseOrderWithItems[]>([]);
+  const [bulkCreating, setBulkCreating] = useState(false);
 
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receivingOrder, setReceivingOrder] = useState<PurchaseOrderWithItems | null>(null);
@@ -314,7 +309,7 @@ export default function PurchaseOrders() {
   const [materialDialogHideInitialStockField, setMaterialDialogHideInitialStockField] = useState(false);
   const [cancelingOrderId, setCancelingOrderId] = useState<number | null>(null);
 
-  const isSavingOrder = createMutation.isPending || updateMutation.isPending;
+  const isSavingOrder = bulkCreating || createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
     setOrderedOrders(orders ?? []);
@@ -393,10 +388,35 @@ export default function PurchaseOrders() {
     }));
 
     if (editingOrder) {
+      if (editingOrder.status === "OPEN" && payloadItems.length > 1) {
+        setBulkCreating(true);
+        (async () => {
+          try {
+            const [first, ...rest] = payloadItems;
+            if (!first) return;
+
+            await updateMutation.mutateAsync({ id: editingOrder.id, data: { items: [first] } });
+
+            for (const item of rest) {
+              const { id: _id, ...createItem } = item;
+              await createMutation.mutateAsync({ items: [createItem] });
+            }
+
+            toast({ title: "Sucesso", description: `Itens separados em ${payloadItems.length} ordens de compra.` });
+            setDialogOpen(false);
+            setEditingOrder(null);
+          } finally {
+            setBulkCreating(false);
+          }
+        })().catch(() => {});
+        return;
+      }
+
       updateMutation.mutate(
         { id: editingOrder.id, data: { items: payloadItems } },
         {
           onSuccess: () => {
+            toast({ title: "Sucesso", description: "Ordem de compra atualizada com sucesso." });
             setDialogOpen(false);
             setEditingOrder(null);
           },
@@ -405,12 +425,35 @@ export default function PurchaseOrders() {
       return;
     }
 
-    createMutation.mutate(
-      { items: payloadItems.map(({ id: _id, ...rest }) => rest) },
-      {
-        onSuccess: () => setDialogOpen(false),
-      },
-    );
+    const createItems = payloadItems.map(({ id: _id, ...rest }) => rest);
+
+    if (createItems.length === 0) return;
+
+    if (createItems.length === 1) {
+      createMutation.mutate(
+        { items: createItems },
+        {
+          onSuccess: () => {
+            toast({ title: "Sucesso", description: "Ordem de compra criada com sucesso." });
+            setDialogOpen(false);
+          },
+        },
+      );
+      return;
+    }
+
+    setBulkCreating(true);
+    (async () => {
+      try {
+        for (const item of createItems) {
+          await createMutation.mutateAsync({ items: [item] });
+        }
+        toast({ title: "Sucesso", description: `${createItems.length} ordens de compra criadas com sucesso.` });
+        setDialogOpen(false);
+      } finally {
+        setBulkCreating(false);
+      }
+    })().catch(() => {});
   };
 
   const sensors = useSensors(
@@ -628,7 +671,11 @@ export default function PurchaseOrders() {
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{editingOrder ? `Editar OC #${editingOrder.id}` : "Nova Ordem de Compra"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription className="text-sm text-foreground/75">Adicione itens e quantidades. Selecione um material ou informe o nome livre.</ResponsiveDialogDescription>
+            <ResponsiveDialogDescription className="text-sm text-foreground/75">
+              {editingOrder
+                ? "Edite o item e a quantidade. Selecione um material ou informe o nome livre."
+                : "Adicione um ou mais itens. Ao salvar, cada item vira uma ordem separada na lista para edição individual."}
+            </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
           <form onSubmit={submitOrder} className="flex min-h-[320px] flex-col gap-4">
@@ -652,7 +699,7 @@ export default function PurchaseOrders() {
               <button
                 type="button"
                 onClick={addFormItem}
-                disabled={!canWrite}
+                disabled={!canWrite || isSavingOrder}
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               >
                 <Plus className="h-4 w-4" />

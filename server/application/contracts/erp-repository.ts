@@ -67,6 +67,7 @@ export interface IErpRepository extends ISalesRepository {
 
   getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
   getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined>;
+  splitOpenPurchaseOrdersIntoSingleItemOrders(): Promise<void>;
   reorderPurchaseOrders(input: ReorderPurchaseOrdersInput): Promise<void>;
   createPurchaseOrderBase(): Promise<PurchaseOrder>;
   updatePurchaseOrderBase(

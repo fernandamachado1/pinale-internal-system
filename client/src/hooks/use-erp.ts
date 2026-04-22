@@ -269,7 +269,6 @@ export function useCreatePurchaseOrder() {
     mutationFn: (data: CreatePurchaseOrderInput) => createPurchaseOrderUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
-      message.success("Ordem de compra criada com sucesso.");
     },
     onError: message.error,
   });
