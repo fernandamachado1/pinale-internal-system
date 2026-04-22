@@ -33,6 +33,7 @@ import {
   type PurchaseOrder,
   type PurchaseOrderItem,
   type PurchaseOrderWithItems,
+  type ReorderPurchaseOrdersInput,
   type Sale,
   type SaleItem,
   type SaleListItem,
@@ -65,6 +66,20 @@ export class DrizzleErpRepository implements IErpRepository {
         and(
           eq(productionOrders.status, status),
           ...(this.orgId ? [eq(productionOrders.orgId, this.orgId)] : []),
+        ),
+      )) as Array<{ maxSortOrder: number }>;
+
+    return Number(result?.maxSortOrder ?? -1) + 1;
+  }
+
+  private async getNextPurchaseOrderSortOrder(): Promise<number> {
+    const [result] = (await this.database
+      .select({ maxSortOrder: sql<number>`coalesce(max(${purchaseOrders.sortOrder}), -1)` })
+      .from(purchaseOrders)
+      .where(
+        and(
+          eq(purchaseOrders.isActive, 1),
+          ...(this.orgId ? [eq(purchaseOrders.orgId, this.orgId)] : []),
         ),
       )) as Array<{ maxSortOrder: number }>;
 
@@ -421,6 +436,24 @@ export class DrizzleErpRepository implements IErpRepository {
       .where(and(...conditions));
   }
 
+  async updateMaterialReservedQty(id: number, reservedQty: string): Promise<void> {
+    const conditions = [eq(materials.id, id)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
+    await this.database
+      .update(materials)
+      .set({ reservedQty, updatedAt: new Date() })
+      .where(and(...conditions));
+  }
+
+  async updateMaterialQuantities(id: number, quantities: { stockQty: string; reservedQty: string }): Promise<void> {
+    const conditions = [eq(materials.id, id)];
+    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
+    await this.database
+      .update(materials)
+      .set({ stockQty: quantities.stockQty, reservedQty: quantities.reservedQty, updatedAt: new Date() } as any)
+      .where(and(...conditions));
+  }
+
   async getActiveBomByProductId(productId: number): Promise<{ id: number; items: BomItem[] } | undefined> {
     const [activeBom] = (await this.database
       .select()
@@ -446,6 +479,25 @@ export class DrizzleErpRepository implements IErpRepository {
       )) as BomItem[];
 
     return { id: activeBom.id, items };
+  }
+
+  async getBomById(bomId: number): Promise<{ id: number; items: BomItem[] } | undefined> {
+    const bomConditions = [eq(boms.id, bomId)];
+    if (this.orgId) bomConditions.push(eq(boms.orgId, this.orgId));
+    const [bom] = (await this.database.select().from(boms).where(and(...bomConditions))) as Array<typeof boms.$inferSelect>;
+    if (!bom) return undefined;
+
+    const items = (await this.database
+      .select()
+      .from(bomItems)
+      .where(
+        and(
+          eq(bomItems.bomId, bom.id),
+          ...(this.orgId ? [eq(bomItems.orgId, this.orgId)] : []),
+        ),
+      )) as BomItem[];
+
+    return { id: bom.id, items };
   }
 
   async replaceActiveBom(
@@ -544,6 +596,7 @@ export class DrizzleErpRepository implements IErpRepository {
       .values({
         orgId: this.orgIdValue(),
         productId: data.productId,
+        bomId: (data as any).bomId ?? null,
         qtyPlanned: data.qtyPlanned,
         measureCm: data.measureCm ?? null,
         customizationNotes: data.customizationNotes?.trim() || null,
@@ -715,7 +768,11 @@ export class DrizzleErpRepository implements IErpRepository {
   async getPurchaseOrders(): Promise<PurchaseOrderWithItems[]> {
     const conditions = [eq(purchaseOrders.isActive, 1)];
     if (this.orgId) conditions.push(eq(purchaseOrders.orgId, this.orgId));
-    const orders = (await this.database.select().from(purchaseOrders).where(and(...conditions)).orderBy(desc(purchaseOrders.id))) as PurchaseOrder[];
+    const orders = (await this.database
+      .select()
+      .from(purchaseOrders)
+      .where(and(...conditions))
+      .orderBy(asc(purchaseOrders.sortOrder), desc(purchaseOrders.id))) as PurchaseOrder[];
 
     if (orders.length === 0) return [];
 
@@ -729,7 +786,7 @@ export class DrizzleErpRepository implements IErpRepository {
           ...(this.orgId ? [eq(purchaseOrderItems.orgId, this.orgId)] : []),
         ),
       )
-      .orderBy(asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
+      .orderBy(asc(purchaseOrderItems.sortOrder), asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
 
     const itemsByOrderId = new Map<number, PurchaseOrderItem[]>();
     for (const item of items) {
@@ -739,6 +796,15 @@ export class DrizzleErpRepository implements IErpRepository {
     }
 
     return orders.map((order) => ({ ...order, items: itemsByOrderId.get(order.id) ?? [] }));
+  }
+
+  async reorderPurchaseOrders(input: ReorderPurchaseOrdersInput): Promise<void> {
+    for (let index = 0; index < input.orderedIds.length; index += 1) {
+      const orderId = input.orderedIds[index];
+      const conditions = [eq(purchaseOrders.id, orderId)];
+      if (this.orgId) conditions.push(eq(purchaseOrders.orgId, this.orgId));
+      await this.database.update(purchaseOrders).set({ sortOrder: index }).where(and(...conditions));
+    }
   }
 
   async getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined> {
@@ -756,15 +822,16 @@ export class DrizzleErpRepository implements IErpRepository {
           ...(this.orgId ? [eq(purchaseOrderItems.orgId, this.orgId)] : []),
         ),
       )
-      .orderBy(asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
+      .orderBy(asc(purchaseOrderItems.sortOrder), asc(purchaseOrderItems.id))) as PurchaseOrderItem[];
 
     return { ...order, items };
   }
 
   async createPurchaseOrderBase(): Promise<PurchaseOrder> {
+    const sortOrder = await this.getNextPurchaseOrderSortOrder();
     const [created] = (await this.database
       .insert(purchaseOrders)
-      .values({ orgId: this.orgIdValue() } as any)
+      .values({ orgId: this.orgIdValue(), sortOrder } as any)
       .returning()) as PurchaseOrder[];
     return created;
   }
@@ -785,7 +852,7 @@ export class DrizzleErpRepository implements IErpRepository {
 
   async createPurchaseOrderItems(
     purchaseOrderId: number,
-    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem[]> {
     const payload = items.map((item) => ({
       orgId: this.orgIdValue(),
@@ -794,13 +861,14 @@ export class DrizzleErpRepository implements IErpRepository {
       materialName: item.materialName,
       qtyOrdered: item.qtyOrdered,
       qtyReceived: item.qtyReceived,
+      sortOrder: item.sortOrder,
     }));
     return (await this.database.insert(purchaseOrderItems).values(payload as any).returning()) as PurchaseOrderItem[];
   }
 
   async updatePurchaseOrderItem(
     id: number,
-    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem> {
     const conditions = [eq(purchaseOrderItems.id, id)];
     if (this.orgId) conditions.push(eq(purchaseOrderItems.orgId, this.orgId));

@@ -9,7 +9,7 @@ export class DeleteSaleUseCase {
   execute(saleId: number): Promise<void> {
     return this.repository.withTransaction(async (txRepository) => {
       const saleWithItems = await txRepository.getSaleWithItems(saleId);
-      if (!saleWithItems) throw new NotFoundDomainError("Sale not found");
+      if (!saleWithItems) return;
 
       for (const item of saleWithItems.items) {
         const producedStockRecord = await txRepository.getProducedProductStockByProductId(item.productId);

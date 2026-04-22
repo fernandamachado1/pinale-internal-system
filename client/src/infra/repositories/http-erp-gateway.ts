@@ -17,6 +17,7 @@ import type {
   ProductionOrderWithProduct,
   PurchaseOrderWithItems,
   CreatePurchaseOrderInput,
+  ReorderPurchaseOrdersInput,
   RegisterInitialProducedStockInput,
   UpdatePurchaseOrderInput,
   ReceivePurchaseOrderInput,
@@ -203,6 +204,15 @@ export class HttpErpGateway implements IErpGateway {
   async getPurchaseOrders(): Promise<PurchaseOrderWithItems[]> {
     const res = await apiFetch(api.purchaseOrders.list.path);
     return parseJsonResponse<PurchaseOrderWithItems[]>(res, "Falha ao carregar ordens de compra");
+  }
+
+  async reorderPurchaseOrders(data: ReorderPurchaseOrdersInput): Promise<void> {
+    const res = await apiFetch(api.purchaseOrders.reorder.path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    await throwIfNotOk(res, "Falha ao salvar ordenação das ordens de compra");
   }
 
   async createPurchaseOrder(data: CreatePurchaseOrderInput): Promise<PurchaseOrderWithItems> {

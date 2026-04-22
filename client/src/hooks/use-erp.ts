@@ -6,6 +6,7 @@ import type {
   CreatePurchaseOrderInput,
   InsertMaterial,
   InsertProductionOrder,
+  ReorderPurchaseOrdersInput,
   ReceivePurchaseOrderInput,
   InsertSale,
   UpdatePurchaseOrderInput,
@@ -29,6 +30,7 @@ import {
   GetInventoryMovementsUseCase,
   GetMaterialsUseCase,
   GetPurchaseOrdersUseCase,
+  ReorderPurchaseOrdersUseCase,
   GetProductionOrdersUseCase,
   GetCatalogProductsUseCase,
   GetProducedProductStockSummaryUseCase,
@@ -75,6 +77,7 @@ const getInventoryMovementsUseCase = new GetInventoryMovementsUseCase(gateway);
 const getDashboardReportUseCase = new GetDashboardReportUseCase(gateway);
 
 const getPurchaseOrdersUseCase = new GetPurchaseOrdersUseCase(gateway);
+const reorderPurchaseOrdersUseCase = new ReorderPurchaseOrdersUseCase(gateway);
 const createPurchaseOrderUseCase = new CreatePurchaseOrderUseCase(gateway);
 const updatePurchaseOrderUseCase = new UpdatePurchaseOrderUseCase(gateway);
 const receivePurchaseOrderUseCase = new ReceivePurchaseOrderUseCase(gateway);
@@ -242,6 +245,19 @@ export function usePurchaseOrders() {
   return useQuery({
     queryKey: [api.purchaseOrders.list.path],
     queryFn: () => getPurchaseOrdersUseCase.execute(),
+  });
+}
+
+export function useReorderPurchaseOrders() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (data: ReorderPurchaseOrdersInput) => reorderPurchaseOrdersUseCase.execute(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+    },
+    onError: message.error,
   });
 }
 

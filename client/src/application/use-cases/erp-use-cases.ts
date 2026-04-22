@@ -16,6 +16,7 @@ import type {
   ProductionOrderWithProduct,
   PurchaseOrderWithItems,
   CreatePurchaseOrderInput,
+  ReorderPurchaseOrdersInput,
   RegisterInitialProducedStockInput,
   UpdatePurchaseOrderInput,
   ReceivePurchaseOrderInput,
@@ -173,6 +174,13 @@ export class GetPurchaseOrdersUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(): Promise<PurchaseOrderWithItems[]> {
     return this.gateway.getPurchaseOrders();
+  }
+}
+
+export class ReorderPurchaseOrdersUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(data: ReorderPurchaseOrdersInput): Promise<void> {
+    return this.gateway.reorderPurchaseOrders(data);
   }
 }
 

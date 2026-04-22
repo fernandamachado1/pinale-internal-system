@@ -15,6 +15,7 @@ import type {
   ProductionOrderWithProduct,
   PurchaseOrderWithItems,
   CreatePurchaseOrderInput,
+  ReorderPurchaseOrdersInput,
   UpdatePurchaseOrderInput,
   ReceivePurchaseOrderInput,
   RegisterInitialProducedStockInput,
@@ -52,6 +53,7 @@ export interface IErpGateway {
   getInventoryMovements(): Promise<MovementWithDetails[]>;
 
   getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
+  reorderPurchaseOrders(data: ReorderPurchaseOrdersInput): Promise<void>;
   createPurchaseOrder(data: CreatePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
   updatePurchaseOrder(id: number, data: UpdatePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
   receivePurchaseOrder(id: number, data: ReceivePurchaseOrderInput): Promise<PurchaseOrderWithItems>;

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import type { PurchaseOrderWithItems, Material } from "@shared/schema";
+import { nanoid } from "nanoid";
 import { Layout } from "@/components/Layout";
-import { useCancelPurchaseOrder, useCreatePurchaseOrder, useMaterials, usePurchaseOrders, useReceivePurchaseOrder, useUpdatePurchaseOrder } from "@/hooks/use-erp";
+import { useCancelPurchaseOrder, useCreatePurchaseOrder, useMaterials, usePurchaseOrders, useReceivePurchaseOrder, useReorderPurchaseOrders, useUpdatePurchaseOrder } from "@/hooks/use-erp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,14 +16,18 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSelectField } from "@/components/materials/MaterialSelectField";
-import { ClipboardList, Loader2, MoreVertical, Plus, Truck, X } from "lucide-react";
+import { ClipboardList, GripVertical, Loader2, MoreVertical, Plus, Truck, X } from "lucide-react";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthz } from "@/hooks/use-authz";
+import { closestCenter, DndContext, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type PurchaseOrderStatus = PurchaseOrderWithItems["status"];
 
 type PurchaseOrderFormItem = {
+  clientId: string;
   id?: number;
   materialId?: number | null;
   materialName: string;
@@ -61,7 +66,224 @@ function formatDate(value: unknown): string {
 }
 
 function createEmptyItem(): PurchaseOrderFormItem {
-  return { materialId: null, materialName: "", qtyOrdered: "1" };
+  return { clientId: nanoid(), materialId: null, materialName: "", qtyOrdered: "1" };
+}
+
+function SortablePurchaseOrderRow({
+  order,
+  canWrite,
+  cancelMutation,
+  cancelingOrderId,
+  setCancelingOrderId,
+  openEditDialog,
+  openReceiveDialog,
+}: {
+  order: PurchaseOrderWithItems;
+  canWrite: boolean;
+  cancelMutation: ReturnType<typeof useCancelPurchaseOrder>;
+  cancelingOrderId: number | null;
+  setCancelingOrderId: (id: number | null) => void;
+  openEditDialog: (order: PurchaseOrderWithItems) => void;
+  openReceiveDialog: (order: PurchaseOrderWithItems) => void;
+}) {
+  const canEdit = order.status !== "RECEIVED" && order.status !== "CANCELED";
+  const canReceive = order.status !== "RECEIVED" && order.status !== "CANCELED";
+  const canCancel = order.status !== "RECEIVED" && order.status !== "CANCELED";
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: String(order.id),
+    disabled: !canWrite,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className={isDragging ? "bg-muted/40 shadow-sm ring-2 ring-primary/20" : undefined}
+    >
+      <TableCell className="w-10 px-0 sm:px-2">
+        <button
+          type="button"
+          className={`touch-none inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 ${canWrite ? "cursor-grab active:cursor-grabbing" : "cursor-not-allowed opacity-50"}`}
+          aria-label="Reordenar ordem de compra"
+          {...attributes}
+          {...listeners}
+          disabled={!canWrite}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      </TableCell>
+
+      <TableCell>
+        {(() => {
+          const summary = summarizeOrderItems(order.items);
+          return (
+            <div className="flex items-center gap-2">
+              <span className="max-w-[180px] truncate sm:max-w-[260px] md:max-w-[360px]">
+                {summary.primary}
+              </span>
+              {summary.secondary ? (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                  {summary.secondary}
+                </span>
+              ) : null}
+            </div>
+          );
+        })()}
+      </TableCell>
+      <TableCell>{statusLabels[order.status]}</TableCell>
+      <TableCell className="hidden md:table-cell">{formatDate(order.createdAt)}</TableCell>
+      <TableCell className="hidden md:table-cell">{formatDate(order.receivedAt)}</TableCell>
+      <TableCell className="text-right">
+        {canWrite ? (
+          <>
+            <div className="hidden sm:flex justify-end gap-2">
+              <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
+                Editar
+              </Button>
+              <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
+                <Truck className="w-4 h-4 mr-2" /> Receber
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={!canCancel || cancelMutation.isPending}
+                onClick={() => {
+                  setCancelingOrderId(order.id);
+                  cancelMutation.mutate(order.id, {
+                    onSettled: () => setCancelingOrderId(null),
+                  });
+                }}
+              >
+                {cancelMutation.isPending && cancelingOrderId === order.id ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelando...</>
+                ) : "Cancelar"}
+              </Button>
+            </div>
+
+            <div className="flex justify-end sm:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem disabled={!canEdit} onSelect={() => openEditDialog(order)}>
+                    Editar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={!canReceive} onSelect={() => openReceiveDialog(order)}>
+                    Receber
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    disabled={!canCancel || cancelMutation.isPending}
+                    onSelect={() => {
+                      setCancelingOrderId(order.id);
+                      cancelMutation.mutate(order.id, {
+                        onSettled: () => setCancelingOrderId(null),
+                      });
+                    }}
+                  >
+                    Cancelar
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function SortableFormItem({
+  item,
+  index,
+  canWrite,
+  activeMaterials,
+  onPatch,
+  onRemove,
+}: {
+  item: PurchaseOrderFormItem;
+  index: number;
+  canWrite: boolean;
+  activeMaterials: Material[];
+  onPatch: (patch: Partial<PurchaseOrderFormItem>) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.clientId,
+    disabled: !canWrite,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`space-y-3 rounded-lg border p-4 ${isDragging ? "bg-muted/40 shadow-lg ring-2 ring-primary/20" : ""}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={`touch-none inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 ${canWrite ? "cursor-grab active:cursor-grabbing" : "cursor-not-allowed opacity-50"}`}
+            aria-label="Reordenar item"
+            {...attributes}
+            {...listeners}
+            disabled={!canWrite}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <h3 className="text-sm font-semibold">Item {index + 1}</h3>
+        </div>
+
+        <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={onRemove} disabled={!canWrite}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
+        <div className="space-y-2">
+          <Label>Material</Label>
+          <MaterialSelectField
+            materials={activeMaterials}
+            value={{ materialId: item.materialId ?? null, materialName: item.materialName }}
+            onChange={(next) => onPatch({ materialId: next.materialId, materialName: next.materialName })}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Qtd pedida (opcional)</Label>
+          <Input
+            inputMode="decimal"
+            value={toPtBrDecimal(item.qtyOrdered)}
+            onChange={(e) => onPatch({ qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
+            placeholder="0,000"
+            className="h-11 rounded-xl border-border bg-card px-4"
+          />
+        </div>
+      </div>
+
+      {!item.materialId ? (
+        <p className="text-xs text-muted-foreground">
+          Dica: digite no campo acima e selecione “Usar …” para texto livre.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export default function PurchaseOrders() {
@@ -71,6 +293,7 @@ export default function PurchaseOrders() {
   const updateMutation = useUpdatePurchaseOrder();
   const receiveMutation = useReceivePurchaseOrder();
   const cancelMutation = useCancelPurchaseOrder();
+  const reorderMutation = useReorderPurchaseOrders();
   const { toast } = useToast();
   const { canWrite } = useAuthz();
 
@@ -79,6 +302,7 @@ export default function PurchaseOrders() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrderWithItems | null>(null);
   const [formItems, setFormItems] = useState<PurchaseOrderFormItem[]>([createEmptyItem()]);
+  const [orderedOrders, setOrderedOrders] = useState<PurchaseOrderWithItems[]>([]);
 
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receivingOrder, setReceivingOrder] = useState<PurchaseOrderWithItems | null>(null);
@@ -93,6 +317,10 @@ export default function PurchaseOrders() {
   const isSavingOrder = createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
+    setOrderedOrders(orders ?? []);
+  }, [orders]);
+
+  useEffect(() => {
     if (!dialogOpen) return;
     if (!editingOrder) {
       setFormItems([createEmptyItem()]);
@@ -101,6 +329,7 @@ export default function PurchaseOrders() {
 
     setFormItems(
       editingOrder.items.map((item) => ({
+        clientId: String(item.id),
         id: item.id,
         materialId: item.materialId ?? null,
         materialName: item.materialName,
@@ -182,6 +411,43 @@ export default function PurchaseOrders() {
         onSuccess: () => setDialogOpen(false),
       },
     );
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 5 } }),
+  );
+
+  const handleItemsDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setFormItems((current) => {
+      const oldIndex = current.findIndex((i) => i.clientId === active.id);
+      const newIndex = current.findIndex((i) => i.clientId === over.id);
+      if (oldIndex === -1 || newIndex === -1) return current;
+      return arrayMove(current, oldIndex, newIndex);
+    });
+  };
+
+  const handleOrdersDragEnd = (event: DragEndEvent) => {
+    if (!canWrite) return;
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setOrderedOrders((current) => {
+      const oldIndex = current.findIndex((o) => String(o.id) === active.id);
+      const newIndex = current.findIndex((o) => String(o.id) === over.id);
+      if (oldIndex === -1 || newIndex === -1) return current;
+
+      const next = arrayMove(current, oldIndex, newIndex);
+      reorderMutation.mutate(
+        { orderedIds: next.map((o) => o.id) },
+        {
+          onError: () => setOrderedOrders(current),
+        },
+      );
+      return next;
+    });
   };
 
   const updateReceiveLine = (itemId: number, patch: Partial<ReceiveLine>) => {
@@ -313,11 +579,11 @@ export default function PurchaseOrders() {
             ))}
           </div>
         </div>
-      ) : orders?.length ? (
+      ) : orderedOrders.length ? (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
+              <TableHead className="w-10" aria-label="Ordenação" />
               <TableHead>Itens</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden md:table-cell">Criada em</TableHead>
@@ -325,99 +591,24 @@ export default function PurchaseOrders() {
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {orders.map((order) => {
-              const canEdit = order.status !== "RECEIVED" && order.status !== "CANCELED";
-              const canReceive = order.status !== "RECEIVED" && order.status !== "CANCELED";
-              const canCancel = order.status !== "RECEIVED" && order.status !== "CANCELED";
-              return (
-                <TableRow key={order.id}>
-                  <TableCell>#{order.id}</TableCell>
-                  <TableCell>
-                    {(() => {
-                      const summary = summarizeOrderItems(order.items);
-                      return (
-                        <div className="flex items-center gap-2">
-                          <span className="max-w-[180px] truncate sm:max-w-[260px] md:max-w-[360px]">
-                            {summary.primary}
-                          </span>
-                          {summary.secondary ? (
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                              {summary.secondary}
-                            </span>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell>{statusLabels[order.status]}</TableCell>
-                  <TableCell className="hidden md:table-cell">{formatDate(order.createdAt)}</TableCell>
-                  <TableCell className="hidden md:table-cell">{formatDate(order.receivedAt)}</TableCell>
-                  <TableCell className="text-right">
-                    {canWrite ? (
-                      <>
-                        <div className="hidden sm:flex justify-end gap-2">
-                          <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
-                            Editar
-                          </Button>
-                          <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
-                            <Truck className="w-4 h-4 mr-2" /> Receber
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            disabled={!canCancel || cancelMutation.isPending}
-                            onClick={() => {
-                              setCancelingOrderId(order.id);
-                              cancelMutation.mutate(order.id, {
-                                onSettled: () => setCancelingOrderId(null),
-                              });
-                            }}
-                          >
-                            {cancelMutation.isPending && cancelingOrderId === order.id ? (
-                              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelando...</>
-                            ) : "Cancelar"}
-                          </Button>
-                        </div>
-
-                        <div className="flex justify-end sm:hidden">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button size="icon" variant="outline" className="h-8 w-8" aria-label="Ações">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem disabled={!canEdit} onSelect={() => openEditDialog(order)}>
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem disabled={!canReceive} onSelect={() => openReceiveDialog(order)}>
-                                Receber
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                disabled={!canCancel || cancelMutation.isPending}
-                                onSelect={() => {
-                                  setCancelingOrderId(order.id);
-                                  cancelMutation.mutate(order.id, {
-                                    onSettled: () => setCancelingOrderId(null),
-                                  });
-                                }}
-                              >
-                                Cancelar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOrdersDragEnd}>
+            <SortableContext items={orderedOrders.map((o) => String(o.id))} strategy={verticalListSortingStrategy}>
+              <TableBody>
+                {orderedOrders.map((order) => (
+                  <SortablePurchaseOrderRow
+                    key={order.id}
+                    order={order}
+                    canWrite={canWrite && !reorderMutation.isPending}
+                    cancelMutation={cancelMutation}
+                    cancelingOrderId={cancelingOrderId}
+                    setCancelingOrderId={setCancelingOrderId}
+                    openEditDialog={openEditDialog}
+                    openReceiveDialog={openReceiveDialog}
+                  />
+                ))}
+              </TableBody>
+            </SortableContext>
+          </DndContext>
         </Table>
       ) : (
         <Card>
@@ -442,44 +633,21 @@ export default function PurchaseOrders() {
 
           <form onSubmit={submitOrder} className="flex min-h-[320px] flex-col gap-4">
             <div className="flex-1 space-y-4 overflow-y-auto pr-1">
-              {formItems.map((item, index) => (
-                <div key={item.id ?? index} className="space-y-3 rounded-lg border p-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Item {index + 1}</h3>
-                    <Button type="button" variant="ghost" size="icon" aria-label="Remover item" onClick={() => removeFormItem(index)} disabled={!canWrite}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
-                    <div className="space-y-2">
-                      <Label>Material</Label>
-                      <MaterialSelectField
-                        materials={activeMaterials}
-                        value={{ materialId: item.materialId ?? null, materialName: item.materialName }}
-                        onChange={(next) => updateFormItem(index, { materialId: next.materialId, materialName: next.materialName })}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Qtd pedida (opcional)</Label>
-                      <Input
-                        inputMode="decimal"
-                        value={toPtBrDecimal(item.qtyOrdered)}
-                        onChange={(e) => updateFormItem(index, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
-                        placeholder="0,000"
-                        className="h-11 rounded-xl border-border bg-card px-4"
-                      />
-                    </div>
-                  </div>
-
-                  {!item.materialId ? (
-                    <p className="text-xs text-muted-foreground">
-                      Dica: digite no campo acima e selecione “Usar …” para texto livre.
-                    </p>
-                  ) : null}
-                </div>
-              ))}
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleItemsDragEnd}>
+                <SortableContext items={formItems.map((i) => i.clientId)} strategy={verticalListSortingStrategy}>
+                  {formItems.map((item, index) => (
+                    <SortableFormItem
+                      key={item.clientId}
+                      item={item}
+                      index={index}
+                      canWrite={canWrite}
+                      activeMaterials={activeMaterials}
+                      onPatch={(patch) => updateFormItem(index, patch)}
+                      onRemove={() => removeFormItem(index)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
 
               <button
                 type="button"

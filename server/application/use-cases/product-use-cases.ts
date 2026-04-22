@@ -82,7 +82,8 @@ export class CreateProductUseCase {
     if (Number(input.product.price) < 0) {
       throw new ValidationDomainError("Product price must be greater than or equal to zero");
     }
-    if (!Number.isInteger(input.initialStockQty) || input.initialStockQty < 0) {
+    const initialStockQty = input.initialStockQty ?? 0;
+    if (!Number.isInteger(initialStockQty) || initialStockQty < 0) {
       throw new ValidationDomainError("initialStockQty must be an integer greater than or equal to zero");
     }
 
@@ -101,9 +102,11 @@ export class CreateProductUseCase {
     return this.repository.withTransaction(async (txRepository) => {
       const created = await txRepository.createProduct({
         name,
+        category: input.product.category,
         price: input.product.price,
         isActive: input.product.isActive,
         description: input.product.description ?? "",
+        attachments: input.product.attachments ?? [],
         colorVariants,
       });
 
@@ -112,19 +115,19 @@ export class CreateProductUseCase {
       }
       await txRepository.createProducedProductStock(created.id);
 
-      if (input.initialStockQty > 0) {
+      if (initialStockQty > 0) {
         const producedStock = new ProducedProductStock({
           productId: created.id,
           stockQty: 0,
         });
-        producedStock.increase(input.initialStockQty);
+        producedStock.increase(initialStockQty);
         await txRepository.updateProducedProductStockQty(created.id, producedStock.toPersistence().stockQty);
         await txRepository.createInventoryMovement(
           InventoryMovement.create({
             entityType: "PRODUCT",
             entityId: created.id,
             direction: "IN",
-            qty: input.initialStockQty,
+            qty: initialStockQty,
             reason: "ADJUSTMENT",
             referenceType: "MANUAL",
             metadata: {

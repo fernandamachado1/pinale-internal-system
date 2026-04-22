@@ -49,15 +49,15 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
       label: "Cadastros",
       items: [
         { icon: Layers, label: "Materiais", href: "/materials" },
-        { icon: Package, label: "Catálogo de Produtos", href: "/products" },
+        { icon: Package, label: "Produtos", href: "/products" },
       ],
     },
     {
       label: "Operação",
       items: [
-        { icon: Factory, label: "Ordens de Produção", href: "/production" },
-        { icon: Boxes, label: "Estoque produzido", href: "/produced-stock" },
-        { icon: ClipboardList, label: "Ordens de Compra", href: "/purchase-orders" },
+        { icon: ClipboardList, label: "Compras", href: "/purchase-orders" },
+        { icon: Factory, label: "Produção", href: "/production" },
+        { icon: Boxes, label: "Estoque", href: "/produced-stock" },
         { icon: ShoppingCart, label: "Vendas", href: "/sales" },
       ],
     },

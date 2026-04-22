@@ -4,6 +4,7 @@ import { Layout } from "@/components/Layout";
 import { useCatalogProducts, useCreateProduct, useMaterials, useUpdateProduct } from "@/hooks/use-erp";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
+import { AdjustProducedStockDialog } from "@/components/produced-stock/AdjustProducedStockDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,7 @@ import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription,
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, FileText, Loader2, Package, PencilLine, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpDown, ExternalLink, FileText, Loader2, Package, PencilLine, Plus, Trash2, X } from "lucide-react";
 import { brl } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { Textarea } from "@/components/ui/textarea";
@@ -225,6 +226,8 @@ export default function Products() {
   } = useCatalogProducts(debouncedSearchTerm, page, pageSize);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null);
+  const [adjustStockDialogOpen, setAdjustStockDialogOpen] = useState(false);
+  const [adjustStockProduct, setAdjustStockProduct] = useState<CatalogProduct | null>(null);
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
   const [materialRowIndex, setMaterialRowIndex] = useState<number | null>(null);
   const [createMaterialForNewRow, setCreateMaterialForNewRow] = useState(false);
@@ -247,6 +250,11 @@ export default function Products() {
 
   const activeMaterials = useMemo(() => materials?.filter((material) => material.isActive === 1) ?? [], [materials]);
   const isSavingProduct = createMutation.isPending || updateMutation.isPending;
+
+  function openAdjustStockDialog(product: CatalogProduct) {
+    setAdjustStockProduct(product);
+    setAdjustStockDialogOpen(true);
+  }
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -548,6 +556,18 @@ export default function Products() {
                       <TableCell className="text-right">
                         {canWrite ? (
                           <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="mr-2 h-9 w-9"
+                              onClick={() => openAdjustStockDialog(item)}
+                              disabled={isSavingProduct}
+                              aria-label={`Ajustar estoque de ${item.name}`}
+                              title="Ajustar estoque"
+                            >
+                              <ArrowUpDown className="h-4 w-4" />
+                            </Button>
                             <Button
                               type="button"
                               size="icon"
@@ -934,6 +954,15 @@ export default function Products() {
           </div>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
+
+      <AdjustProducedStockDialog
+        open={adjustStockDialogOpen}
+        onOpenChange={(open) => {
+          setAdjustStockDialogOpen(open);
+          if (!open) setAdjustStockProduct(null);
+        }}
+        product={adjustStockProduct ? { id: adjustStockProduct.id, name: adjustStockProduct.name, stockQty: Number(adjustStockProduct.stockQty) } : null}
+      />
 
       <MaterialDialog
         open={materialDialogOpen}

@@ -68,6 +68,7 @@ export const materials = pgTable("materials", {
   name: text("name").notNull(),
   unitOfMeasure: unitOfMeasureEnum("unit_of_measure").notNull().default("UNIT"),
   stockQty: numeric("stock_qty", { precision: 12, scale: 3 }).notNull().default("0"),
+  reservedQty: numeric("reserved_qty", { precision: 12, scale: 3 }).notNull().default("0"),
   category: materialCategoryEnum("category").notNull().default("NOTIONS"),
   purchasePrice: numeric("purchase_price", { precision: 12, scale: 2 }).notNull().default("0"),
   pricePerSquareMeter: numeric("price_per_square_meter", { precision: 12, scale: 2 }),
@@ -127,6 +128,7 @@ export const productionOrders = pgTable("production_orders", {
   id: serial("id").primaryKey(),
   orgId: uuid("org_id").notNull(),
   productId: integer("product_id").notNull(),
+  bomId: integer("bom_id"),
   qtyPlanned: integer("qty_planned").notNull(),
   measureCm: numeric("measure_cm", { precision: 8, scale: 2 }),
   customizationNotes: text("customization_notes"),
@@ -179,6 +181,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   orgId: uuid("org_id").notNull(),
   status: purchaseOrderStatusEnum("status").notNull().default("OPEN"),
   isActive: integer("is_active").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
   receivedAt: timestamp("received_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -192,6 +195,7 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
   materialName: text("material_name").notNull(),
   qtyOrdered: numeric("qty_ordered", { precision: 12, scale: 3 }).notNull(),
   qtyReceived: numeric("qty_received", { precision: 12, scale: 3 }).notNull().default("0"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -234,7 +238,13 @@ export const pushSubscriptions = pgTable(
 export const userRoleSchema = z.enum(["ADMIN", "STAFF", "VIEWER"]);
 export type UserRole = z.infer<typeof userRoleSchema>;
 
-const baseInsertMaterialSchema = createInsertSchema(materials).omit({ id: true, orgId: true, createdAt: true, updatedAt: true });
+const baseInsertMaterialSchema = createInsertSchema(materials).omit({
+  id: true,
+  orgId: true,
+  reservedQty: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertMaterialSchema = baseInsertMaterialSchema.extend({
   category: z.enum(["PACKAGING", "NOTIONS", "RAW_MATERIAL"]).default("NOTIONS"),
   stockQty: z.string(),
@@ -318,6 +328,7 @@ const saleChannelEnum = z.enum(["ONLINE", "PHYSICAL"]);
 
 export const insertProductionOrderSchema = z.object({
   productId: z.number().int().positive(),
+  bomId: z.number().int().positive().optional(),
   qtyPlanned: z.number().int().positive(),
   measureCm: z.number().positive().max(9999).optional().nullable(),
   customizationNotes: z.string().trim().max(500).optional().nullable(),
@@ -361,6 +372,10 @@ export const insertSaleSchema = z.object({
 });
 
 export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, orgId: true, createdAt: true });
+
+export const reorderPurchaseOrdersSchema = z.object({
+  orderedIds: z.array(z.number().int().positive()).min(1),
+});
 
 export const updateMyProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(80).optional(),
@@ -483,5 +498,6 @@ export const receivePurchaseOrderSchema = z.object({
 export type CreatePurchaseOrderInput = z.input<typeof createPurchaseOrderSchema>;
 export type UpdatePurchaseOrderInput = z.input<typeof updatePurchaseOrderSchema>;
 export type ReceivePurchaseOrderInput = z.input<typeof receivePurchaseOrderSchema>;
+export type ReorderPurchaseOrdersInput = z.input<typeof reorderPurchaseOrdersSchema>;
 
 export type PaginatedResponse<T> = { items: T[]; total?: number };

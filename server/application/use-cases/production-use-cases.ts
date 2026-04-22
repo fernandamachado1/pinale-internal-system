@@ -1,7 +1,6 @@
 import type { InsertProductionOrder, MoveProductionOrderInput, ProductionOrderWithProduct } from "@shared/schema.ts";
 import type { IErpRepository } from "../contracts/erp-repository.ts";
 import { InvalidOperationDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
-import { InventoryMovement } from "../../domain/entities/inventory-movement.ts";
 import { Material } from "../../domain/entities/material.ts";
 import { TechnicalSpecItem } from "../../domain/entities/technical-spec-item.ts";
 
@@ -36,7 +35,7 @@ export class CreateProductionOrderUseCase {
       const bom = await txRepository.getActiveBomByProductId(input.productId);
       if (!bom) throw new ValidationDomainError("Product must have one active BOM before creating production order");
 
-      const created = await txRepository.createProductionOrder(input);
+      const created = await txRepository.createProductionOrder({ ...input, bomId: bom.id });
 
       const order = await txRepository.getProductionOrder(created.id);
       if (!order) throw new NotFoundDomainError("Production order not found after creation");
@@ -52,9 +51,6 @@ export class MoveProductionOrderUseCase {
     const order = await this.repository.getProductionOrder(id);
     if (!order) throw new NotFoundDomainError("Production order not found");
     if (order.status === "DONE") throw new InvalidOperationDomainError("Done production orders cannot be moved");
-    if (order.status === "IN_PROGRESS" && input.status === "BACKLOG") {
-      throw new InvalidOperationDomainError("Production orders already in progress cannot return to backlog");
-    }
 
     const orders = await this.repository.getProductionOrders();
     const destinationIds = orders
@@ -67,13 +63,13 @@ export class MoveProductionOrderUseCase {
     }
 
     return this.repository.withTransaction(async (txRepository) => {
-      if (order.status === "BACKLOG" && input.status === "IN_PROGRESS") {
+      if (order.status !== input.status) {
         const product = await txRepository.getProduct(order.productId);
         if (!product) throw new NotFoundDomainError("Product not found");
 
-        const bom = await txRepository.getActiveBomByProductId(order.productId);
+        const bom = order.bomId ? await txRepository.getBomById(order.bomId) : await txRepository.getActiveBomByProductId(order.productId);
         if (!bom || bom.items.length === 0) {
-          throw new ValidationDomainError("Product must have one active BOM before starting production");
+          throw new ValidationDomainError("Product must have one active BOM before moving production order");
         }
 
         const specs = bom.items.map(
@@ -97,6 +93,7 @@ export class MoveProductionOrderUseCase {
               name: materialRecord.name,
               unitOfMeasure: materialRecord.unitOfMeasure,
               stockQty: Number(materialRecord.stockQty),
+              reservedQty: Number(materialRecord.reservedQty ?? 0),
               category: materialRecord.category,
               purchasePrice: Number(materialRecord.purchasePrice),
               pricePerSquareMeter: materialRecord.pricePerSquareMeter ? Number(materialRecord.pricePerSquareMeter) : null,
@@ -105,27 +102,28 @@ export class MoveProductionOrderUseCase {
           );
         }
 
-        for (const spec of specs) {
-          const material = materialsMap.get(spec.materialId);
-          if (!material) continue;
-          material.consumeStock(spec.calculateFixedConsumption(order.qtyPlanned));
+        if (order.status === "BACKLOG" && input.status === "IN_PROGRESS") {
+          for (const spec of specs) {
+            const material = materialsMap.get(spec.materialId);
+            if (!material) continue;
+            material.reserve(spec.calculateFixedConsumption(order.qtyPlanned));
+          }
+
+          for (const material of Array.from(materialsMap.values())) {
+            await txRepository.updateMaterialReservedQty(material.id, material.toPersistence().reservedQty);
+          }
         }
 
-        for (const material of Array.from(materialsMap.values())) {
-          await txRepository.updateMaterialStockQty(material.id, material.toPersistence().stockQty);
-        }
+        if (order.status === "IN_PROGRESS" && input.status === "BACKLOG") {
+          for (const spec of specs) {
+            const material = materialsMap.get(spec.materialId);
+            if (!material) continue;
+            material.releaseReservation(spec.calculateFixedConsumption(order.qtyPlanned));
+          }
 
-        for (const spec of specs) {
-          const movement = InventoryMovement.create({
-            entityType: "MATERIAL",
-            entityId: spec.materialId,
-            direction: "OUT",
-            qty: spec.calculateFixedConsumption(order.qtyPlanned),
-            reason: "PRODUCTION_CONSUMPTION",
-            referenceType: "OP",
-            referenceId: id,
-          });
-          await txRepository.createInventoryMovement(movement.toData());
+          for (const material of Array.from(materialsMap.values())) {
+            await txRepository.updateMaterialReservedQty(material.id, material.toPersistence().reservedQty);
+          }
         }
       }
 

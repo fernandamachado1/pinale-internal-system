@@ -8,6 +8,7 @@ export interface MaterialProps {
   name: string;
   unitOfMeasure: UnitOfMeasure;
   stockQty: number;
+  reservedQty: number;
   category: MaterialCategory;
   purchasePrice: number;
   pricePerSquareMeter?: number | null;
@@ -18,6 +19,8 @@ export class Material {
   constructor(private readonly props: MaterialProps) {
     if (!props.name.trim()) throw new ValidationDomainError("Material name is required");
     if (props.stockQty < 0) throw new ValidationDomainError("Material stock quantity cannot be negative");
+    if (props.reservedQty < 0) throw new ValidationDomainError("Material reserved quantity cannot be negative");
+    if (props.reservedQty > props.stockQty) throw new ValidationDomainError("Material reserved quantity cannot exceed stock");
     if (props.purchasePrice < 0) throw new ValidationDomainError("Material purchase price cannot be negative");
     if (props.category === "RAW_MATERIAL" && (props.pricePerSquareMeter === undefined || props.pricePerSquareMeter === null || props.pricePerSquareMeter < 0)) {
       throw new ValidationDomainError("Raw material must define price per square meter");
@@ -30,6 +33,36 @@ export class Material {
 
   get category(): MaterialCategory {
     return this.props.category;
+  }
+
+  reserve(quantity: number): void {
+    if (quantity <= 0) throw new ValidationDomainError("Reservation quantity must be greater than zero");
+    const available = this.props.stockQty - this.props.reservedQty;
+    if (available - quantity < 0) {
+      throw new InvalidOperationDomainError(`Insufficient available stock for material ${this.props.name}`);
+    }
+    this.props.reservedQty += quantity;
+  }
+
+  releaseReservation(quantity: number): void {
+    if (quantity <= 0) throw new ValidationDomainError("Release quantity must be greater than zero");
+    if (this.props.reservedQty - quantity < 0) {
+      throw new InvalidOperationDomainError(`Insufficient reserved stock for material ${this.props.name}`);
+    }
+    this.props.reservedQty -= quantity;
+  }
+
+  consumeReserved(quantity: number): void {
+    if (quantity <= 0) throw new ValidationDomainError("Consumption quantity must be greater than zero");
+    if (this.props.reservedQty - quantity < 0) {
+      throw new InvalidOperationDomainError(`Insufficient reserved stock for material ${this.props.name}`);
+    }
+    const nextStock = this.props.stockQty - quantity;
+    if (nextStock < 0) {
+      throw new InvalidOperationDomainError(`Insufficient stock for material ${this.props.name}`);
+    }
+    this.props.reservedQty -= quantity;
+    this.props.stockQty = nextStock;
   }
 
   consumeStock(quantity: number): void {
@@ -52,12 +85,16 @@ export class Material {
     if (next < 0) {
       throw new InvalidOperationDomainError(`Insufficient stock for material ${this.props.name}`);
     }
+    if (next < this.props.reservedQty) {
+      throw new InvalidOperationDomainError(`Cannot reduce stock below reserved quantity for material ${this.props.name}`);
+    }
     this.props.stockQty = next;
   }
 
-  toPersistence(): { stockQty: string } {
+  toPersistence(): { stockQty: string; reservedQty: string } {
     return {
       stockQty: this.props.stockQty.toFixed(3),
+      reservedQty: this.props.reservedQty.toFixed(3),
     };
   }
 }

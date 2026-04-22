@@ -13,6 +13,7 @@ import {
   moveProductionOrderSchema,
   insertProductionOrderSchema,
   insertSaleSchema,
+  reorderPurchaseOrdersSchema,
   updatePurchaseOrderSchema,
   updateMaterialSchema,
   updateProductInputSchema,
@@ -300,6 +301,12 @@ export const api = {
       method: "GET" as const,
       path: "/api/purchase-orders/:id" as const,
       responses: { 200: purchaseOrderWithItemsSchema, 404: errorSchemas.notFound },
+    },
+    reorder: {
+      method: "POST" as const,
+      path: "/api/purchase-orders/reorder" as const,
+      input: reorderPurchaseOrdersSchema,
+      responses: { 204: z.void(), 400: errorSchemas.validation },
     },
     create: {
       method: "POST" as const,

@@ -292,7 +292,7 @@ function ColumnDropZone({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const theme = columnTheme[status];
-  const visibleOrders = status === "DONE" ? [] : orders;
+  const visibleOrders = orders;
 
   return (
     <section
@@ -521,14 +521,6 @@ export default function Production() {
     const destinationStatus = resolveDropTargetStatus(boardState, String(over.id));
     if (!destinationStatus) return;
 
-    if (sourceStatus === "IN_PROGRESS" && destinationStatus === "BACKLOG") {
-      toast({
-        title: "Movimento não permitido",
-        description: "Ordens que já iniciaram produção não podem voltar para o backlog porque os materiais já foram baixados.",
-        variant: "destructive",
-      });
-      return;
-    }
     moveOrderWithConfirmation(activeId, destinationStatus === "DONE" ? "DONE" : destinationStatus);
   };
 
@@ -608,7 +600,7 @@ export default function Production() {
           <ResponsiveDialogContent className="max-w-2xl border-border bg-card text-card-foreground shadow-2xl">
             <ResponsiveDialogHeader className="border-b border-border px-4 pb-4 pt-5 md:px-6">
               <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Criar Ordem de Produção</ResponsiveDialogTitle>
-              <ResponsiveDialogDescription className="text-sm text-foreground/75">A nova OP entra no backlog. Os materiais serão baixados quando ela entrar em produção.</ResponsiveDialogDescription>
+              <ResponsiveDialogDescription className="text-sm text-foreground/75">A nova OP entra no backlog. Os materiais serão reservados ao mover para Em produção e consumidos ao concluir.</ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
 
             <form onSubmit={handleCreate} className="flex min-h-[320px] flex-col">
@@ -670,7 +662,7 @@ export default function Production() {
               {selectedProduct ? (
                 <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
                   <div><strong>Entrada inicial:</strong> Backlog</div>
-                  <div><strong>Baixa de materiais:</strong> ao mover para Em produção</div>
+                  <div><strong>Reserva de materiais:</strong> ao mover para Em produção</div>
                   <div><strong>Materiais na ficha:</strong> {selectedProductBomCount}</div>
                   {selectedProductBomCount === 0 ? (
                     <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
@@ -816,7 +808,7 @@ export default function Production() {
                   return (
                     <div className="space-y-2">
                       <div>
-                        Ao mover para <strong>Em produção</strong>, os materiais serão baixados do estoque.
+                        Ao mover para <strong>Em produção</strong>, os materiais serão reservados do estoque (o consumo acontece ao concluir).
                       </div>
                       <div className="text-sm">
                         <strong>{order.product.name}</strong> — {qty} unidade(s)

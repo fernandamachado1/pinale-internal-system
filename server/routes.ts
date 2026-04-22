@@ -56,6 +56,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get(api.purchaseOrders.list.path, withHandler((req, res) => controller.listPurchaseOrders(req, res)));
   app.get(api.purchaseOrders.get.path, withHandler((req, res) => controller.getPurchaseOrder(req, res)));
+  app.post(api.purchaseOrders.reorder.path, withHandler((req, res) => controller.reorderPurchaseOrders(req, res)));
   app.post(api.purchaseOrders.create.path, withHandler((req, res) => controller.createPurchaseOrder(req, res)));
   app.put(api.purchaseOrders.update.path, withHandler((req, res) => controller.updatePurchaseOrder(req, res)));
   app.post(api.purchaseOrders.receive.path, withHandler((req, res) => controller.receivePurchaseOrder(req, res)));

@@ -19,6 +19,7 @@ import type {
   PurchaseOrderWithItems,
   PurchaseOrder,
   PurchaseOrderItem,
+  ReorderPurchaseOrdersInput,
   UpdateMaterialRequest,
   UpdateProductInput,
 } from "@shared/schema.ts";
@@ -33,6 +34,8 @@ export interface IErpRepository extends ISalesRepository {
   updateMaterial(id: number, updates: UpdateMaterialRequest): Promise<Material>;
   deactivateMaterial(id: number): Promise<void>;
   updateMaterialStockQty(id: number, stockQty: string): Promise<void>;
+  updateMaterialReservedQty(id: number, reservedQty: string): Promise<void>;
+  updateMaterialQuantities(id: number, quantities: { stockQty: string; reservedQty: string }): Promise<void>;
 
   getProducts(): Promise<ProductWithBom[]>;
   getCatalogProducts(input: { q?: string; page: number; pageSize: number }): Promise<{ items: CatalogProduct[]; total: number }>;
@@ -48,6 +51,7 @@ export interface IErpRepository extends ISalesRepository {
   updateProducedProductStockQty(productId: number, stockQty: number): Promise<void>;
 
   getActiveBomByProductId(productId: number): Promise<{ id: number; items: BomItem[] } | undefined>;
+  getBomById(bomId: number): Promise<{ id: number; items: BomItem[] } | undefined>;
   replaceActiveBom(
     productId: number,
     technicalSpec: { bomItems: BomItemInput[] },
@@ -63,6 +67,7 @@ export interface IErpRepository extends ISalesRepository {
 
   getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
   getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined>;
+  reorderPurchaseOrders(input: ReorderPurchaseOrdersInput): Promise<void>;
   createPurchaseOrderBase(): Promise<PurchaseOrder>;
   updatePurchaseOrderBase(
     id: number,
@@ -70,11 +75,11 @@ export interface IErpRepository extends ISalesRepository {
   ): Promise<PurchaseOrder>;
   createPurchaseOrderItems(
     purchaseOrderId: number,
-    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem[]>;
   updatePurchaseOrderItem(
     id: number,
-    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">>,
+    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem>;
   deletePurchaseOrderItem(id: number): Promise<void>;
 

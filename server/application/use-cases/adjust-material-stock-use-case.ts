@@ -26,6 +26,7 @@ export class AdjustMaterialStockUseCase {
         name: materialRecord.name,
         unitOfMeasure: materialRecord.unitOfMeasure,
         stockQty: Number(materialRecord.stockQty),
+        reservedQty: Number(materialRecord.reservedQty ?? 0),
         category: materialRecord.category,
         purchasePrice: Number(materialRecord.purchasePrice),
         pricePerSquareMeter: materialRecord.pricePerSquareMeter ? Number(materialRecord.pricePerSquareMeter) : null,

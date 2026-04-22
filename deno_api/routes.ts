@@ -46,6 +46,7 @@ import {
   CreatePurchaseOrderUseCase,
   GetPurchaseOrderUseCase,
   ListPurchaseOrdersUseCase,
+  ReorderPurchaseOrdersUseCase,
   ReceivePurchaseOrderUseCase,
   UpdatePurchaseOrderUseCase,
 } from "../server/application/use-cases/purchase-order-use-cases.ts";
@@ -737,6 +738,18 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     try {
       const useCase = new GetPurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id"))), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.purchaseOrders.reorder.path, async (c) => {
+    try {
+      const input = api.purchaseOrders.reorder.input.parse(await c.req.json());
+      const useCase = new ReorderPurchaseOrdersUseCase(await repositoryForOrg(c.get("profile").orgId));
+      await useCase.execute(input);
+      return c.body(null, 204);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);

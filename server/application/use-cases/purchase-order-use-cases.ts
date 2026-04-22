@@ -3,6 +3,7 @@ import type {
   ReceivePurchaseOrderInput,
   PurchaseOrderItem,
   PurchaseOrderWithItems,
+  ReorderPurchaseOrdersInput,
   UpdatePurchaseOrderInput,
 } from "@shared/schema.ts";
 import type { IErpRepository } from "../contracts/erp-repository.ts";
@@ -56,6 +57,16 @@ export class ListPurchaseOrdersUseCase {
   }
 }
 
+export class ReorderPurchaseOrdersUseCase {
+  constructor(private readonly repository: IErpRepository) {}
+
+  async execute(input: ReorderPurchaseOrdersInput): Promise<void> {
+    await this.repository.withTransaction(async (tx) => {
+      await tx.reorderPurchaseOrders(input);
+    });
+  }
+}
+
 export class GetPurchaseOrderUseCase {
   constructor(private readonly repository: IErpRepository) {}
   async execute(id: number): Promise<PurchaseOrderWithItems> {
@@ -73,7 +84,7 @@ export class CreatePurchaseOrderUseCase {
       const order = await tx.createPurchaseOrderBase();
 
       const items = await Promise.all(
-        input.items.map(async (item) => {
+        input.items.map(async (item, index) => {
           const qtyOrdered = parseOptionalNonNegativeQty("qtyOrdered", item.qtyOrdered);
           const materialName = item.materialId
             ? await resolveMaterialName(tx, item.materialId)
@@ -85,7 +96,8 @@ export class CreatePurchaseOrderUseCase {
             materialName,
             qtyOrdered: toQty3(qtyOrdered),
             qtyReceived: "0.000",
-          } satisfies Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived">;
+            sortOrder: index,
+          } satisfies Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">;
         }),
       );
 
@@ -111,7 +123,8 @@ export class UpdatePurchaseOrderUseCase {
       const existingById = new Map(current.items.map((item) => [item.id, item]));
       const seenIds = new Set<number>();
 
-      for (const item of input.items) {
+      for (let index = 0; index < input.items.length; index += 1) {
+        const item = input.items[index];
         const qtyOrdered = parseOptionalNonNegativeQty("qtyOrdered", item.qtyOrdered);
         const nextQtyOrdered = toQty3(qtyOrdered);
 
@@ -133,6 +146,7 @@ export class UpdatePurchaseOrderUseCase {
             materialId: item.materialId ?? null,
             materialName,
             qtyOrdered: nextQtyOrdered,
+            sortOrder: index,
           });
           continue;
         }
@@ -143,6 +157,7 @@ export class UpdatePurchaseOrderUseCase {
             materialName,
             qtyOrdered: nextQtyOrdered,
             qtyReceived: "0.000",
+            sortOrder: index,
           },
         ]);
       }
@@ -218,6 +233,7 @@ export class ReceivePurchaseOrderUseCase {
             name: materialRecord.name,
             unitOfMeasure: materialRecord.unitOfMeasure,
             stockQty: Number(materialRecord.stockQty),
+            reservedQty: Number(materialRecord.reservedQty ?? 0),
             category: materialRecord.category,
             purchasePrice: Number(materialRecord.purchasePrice),
             pricePerSquareMeter: materialRecord.pricePerSquareMeter ? Number(materialRecord.pricePerSquareMeter) : null,

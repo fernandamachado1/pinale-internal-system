@@ -40,6 +40,7 @@ import {
   CreatePurchaseOrderUseCase,
   GetPurchaseOrderUseCase as GetPurchaseOrderEntityUseCase,
   ListPurchaseOrdersUseCase,
+  ReorderPurchaseOrdersUseCase,
   ReceivePurchaseOrderUseCase,
   UpdatePurchaseOrderUseCase,
 } from "../application/use-cases/purchase-order-use-cases";
@@ -74,6 +75,7 @@ export class ErpController {
 
   private readonly listPurchaseOrdersUseCase: ListPurchaseOrdersUseCase;
   private readonly getPurchaseOrderUseCase: GetPurchaseOrderEntityUseCase;
+  private readonly reorderPurchaseOrdersUseCase: ReorderPurchaseOrdersUseCase;
   private readonly createPurchaseOrderUseCase: CreatePurchaseOrderUseCase;
   private readonly updatePurchaseOrderUseCase: UpdatePurchaseOrderUseCase;
   private readonly receivePurchaseOrderUseCase: ReceivePurchaseOrderUseCase;
@@ -114,6 +116,7 @@ export class ErpController {
 
     this.listPurchaseOrdersUseCase = new ListPurchaseOrdersUseCase(repository);
     this.getPurchaseOrderUseCase = new GetPurchaseOrderEntityUseCase(repository);
+    this.reorderPurchaseOrdersUseCase = new ReorderPurchaseOrdersUseCase(repository);
     this.createPurchaseOrderUseCase = new CreatePurchaseOrderUseCase(repository);
     this.updatePurchaseOrderUseCase = new UpdatePurchaseOrderUseCase(repository);
     this.receivePurchaseOrderUseCase = new ReceivePurchaseOrderUseCase(repository);
@@ -246,6 +249,12 @@ export class ErpController {
 
   async getPurchaseOrder(req: Request, res: Response): Promise<void> {
     res.json(await this.getPurchaseOrderUseCase.execute(Number(req.params.id)));
+  }
+
+  async reorderPurchaseOrders(req: Request, res: Response): Promise<void> {
+    const input = api.purchaseOrders.reorder.input.parse(req.body);
+    await this.reorderPurchaseOrdersUseCase.execute(input);
+    res.status(204).send();
   }
 
   async createPurchaseOrder(req: Request, res: Response): Promise<void> {
