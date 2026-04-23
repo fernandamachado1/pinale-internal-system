@@ -303,7 +303,7 @@ function ColumnDropZone({
       ref={setNodeRef}
       className={`flex flex-col rounded-2xl border p-2.5 transition-colors sm:p-4 ${
         isMobile
-          ? "min-h-[260px] w-[82vw] max-w-[420px] flex-none snap-center sm:min-h-[360px]"
+          ? "min-h-[260px] w-[82vw] max-w-[420px] flex-none snap-start sm:min-h-[360px]"
           : "min-h-[360px] w-[360px] max-w-[420px] min-w-[320px] flex-none"
       } ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
     >
@@ -753,7 +753,7 @@ export default function Production() {
           <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
             <div
               ref={boardScrollRef}
-              className={isMobile ? "-mx-2 flex snap-x snap-mandatory gap-2 overflow-x-auto px-2 pb-2 touch-pan-x" : "-mx-2 flex gap-4 overflow-x-auto px-2 pb-2"}
+              className={isMobile ? "-mx-2 flex snap-x snap-proximity gap-2 overflow-x-auto px-2 pb-2 touch-auto" : "-mx-2 flex gap-4 overflow-x-auto px-2 pb-2"}
             >
               {columnOrder.map((status) => {
                 const columnOrders = boardState[status] ?? [];
@@ -815,7 +815,7 @@ export default function Production() {
                             <ProductionCard
                               key={order.id}
                               order={order}
-                              dragDisabled={interactionsDisabled || order.status === "DONE"}
+                              dragDisabled={interactionsDisabled || order.status === "DONE" || isMobile}
                               moveControls={arrowControls}
                               statusHint={statusHint}
                             />,
