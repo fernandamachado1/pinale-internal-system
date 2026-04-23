@@ -92,7 +92,7 @@ function useCrudToast() {
         NOT_FOUND: "Registro não encontrado.",
         CONFLICT: "Já existe um registro com esses dados.",
         VALIDATION_ERROR: "Dados inválidos. Verifique os campos e tente novamente.",
-        INVALID_OPERATION: "Operação não permitida para este item.",
+        INVALID_OPERATION: err.message || "Operação não permitida para este item.",
         BAD_REQUEST: "Requisição inválida. Verifique os dados e tente novamente.",
       };
 

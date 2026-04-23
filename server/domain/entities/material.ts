@@ -39,7 +39,9 @@ export class Material {
     if (quantity <= 0) throw new ValidationDomainError("Reservation quantity must be greater than zero");
     const available = this.props.stockQty - this.props.reservedQty;
     if (available - quantity < 0) {
-      throw new InvalidOperationDomainError(`Insufficient available stock for material ${this.props.name}`);
+      throw new InvalidOperationDomainError(
+        `Insufficient available stock for material ${this.props.name} (needed ${quantity.toFixed(3)}, available ${available.toFixed(3)})`,
+      );
     }
     this.props.reservedQty += quantity;
   }

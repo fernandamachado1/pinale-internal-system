@@ -173,6 +173,51 @@ function moveOrderOnBoard(
   };
 }
 
+function normalizeDestinationOrderedIds(
+  currentOrders: ProductionOrderWithProduct[] | undefined,
+  destinationStatus: ActiveProductionKanbanStatus,
+  movingOrderId: number,
+  desiredOrderedIds: number[],
+): number[] {
+  if (!currentOrders) return desiredOrderedIds;
+
+  const destinationIds = currentOrders
+    .filter((entry) => entry.status === destinationStatus && entry.id !== movingOrderId)
+    .map((entry) => entry.id);
+
+  const expectedIds = new Set<number>([...destinationIds, movingOrderId]);
+
+  const normalized = desiredOrderedIds.filter((id) => expectedIds.has(id));
+  for (const id of expectedIds) {
+    if (!normalized.includes(id)) normalized.push(id);
+  }
+  return normalized;
+}
+
+function computeStartStockShortages(
+  input: {
+    productBomItems: Array<{ materialId: number; qtyPerUnit: unknown }>;
+    qtyPlanned: number;
+    materialById: Map<number, { name: string; stockQty: unknown; reservedQty?: unknown | null }>;
+  },
+): Array<{ name: string; needed: number; available: number }> {
+  const shortages: Array<{ name: string; needed: number; available: number }> = [];
+  for (const bomItem of input.productBomItems) {
+    const material = input.materialById.get(bomItem.materialId);
+    if (!material) continue;
+    const perUnit = Number(bomItem.qtyPerUnit);
+    if (!Number.isFinite(perUnit) || perUnit <= 0) continue;
+    const needed = perUnit * input.qtyPlanned;
+    const stockQty = Number(material.stockQty);
+    const reservedQty = Number(material.reservedQty ?? 0);
+    const available = (Number.isFinite(stockQty) ? stockQty : 0) - (Number.isFinite(reservedQty) ? reservedQty : 0);
+    if (needed - available > 1e-9) {
+      shortages.push({ name: material.name, needed, available: Math.max(0, available) });
+    }
+  }
+  return shortages;
+}
+
 function ProductionCardBody({
   order,
   moveControls,
@@ -361,6 +406,9 @@ export default function Production() {
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const dragStartRectRef = useRef<{ left: number; width: number } | null>(null);
   useEffect(() => {
+    if (pendingCompletion !== null) return;
+    if (pendingStart !== null) return;
+    if (activeOrderId !== null) return;
     setBoardState(createBoardState(orders));
   }, [orders]);
 
@@ -383,6 +431,11 @@ export default function Production() {
       toast({ title: "Sem permissão", description: "Seu usuário não pode criar ordens de produção.", variant: "destructive" });
       return;
     }
+    const qtyValue = Number(qtyPlanned);
+    if (!Number.isFinite(qtyValue) || qtyValue <= 0) {
+      toast({ title: "Dados inválidos", description: "Informe uma quantidade planejada maior que zero.", variant: "destructive" });
+      return;
+    }
     if (selectedProductBomCount === 0) {
       toast({
         title: "Produto sem ficha técnica",
@@ -391,13 +444,32 @@ export default function Production() {
       });
       return;
     }
+
+    const shortages = computeStartStockShortages({
+      productBomItems: selectedProduct?.bomItems ?? [],
+      qtyPlanned: qtyValue,
+      materialById,
+    });
+    if (shortages.length > 0) {
+      const head = shortages.slice(0, 3)
+        .map((s) => `${s.name}: precisa ${formatQty(s.needed)}, disponível ${formatQty(s.available)}`)
+        .join(" · ");
+      const tail = shortages.length > 3 ? ` · +${shortages.length - 3} material(is)` : "";
+      toast({
+        title: "Estoque insuficiente",
+        description: `${head}${tail}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const dueAtIso = dueAt
       ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 12, 0, 0, 0).toISOString()
       : null;
     createMutation.mutate(
       {
         productId: Number(productId),
-        qtyPlanned: Number(qtyPlanned),
+        qtyPlanned: qtyValue,
         customizationNotes: customizationNotes.trim() || null,
         salesChannel: "ONLINE",
         dueAt: dueAtIso,
@@ -488,7 +560,12 @@ export default function Production() {
         orderId,
         previousBoard,
         nextBoard,
-        orderedIds: nextBoard[destinationStatus].map((order) => order.id),
+        orderedIds: normalizeDestinationOrderedIds(
+          orders,
+          destinationStatus,
+          orderId,
+          nextBoard[destinationStatus].map((order) => order.id),
+        ),
       });
       return;
     }
@@ -498,7 +575,12 @@ export default function Production() {
         id: orderId,
         data: {
           status: destinationStatus,
-          orderedIds: nextBoard[destinationStatus].map((order) => order.id),
+          orderedIds: normalizeDestinationOrderedIds(
+            orders,
+            destinationStatus,
+            orderId,
+            nextBoard[destinationStatus].map((order) => order.id),
+          ),
         },
       },
       {
@@ -563,12 +645,41 @@ export default function Production() {
     if (!pendingStart) return;
     const orderId = pendingStart.orderId;
 
+    const movingOrder = findOrder(pendingStart.nextBoard, orderId);
+    if (movingOrder) {
+      const product = productById.get(movingOrder.productId);
+      const bomItems = product?.bomItems ?? [];
+      const shortages = computeStartStockShortages({
+        productBomItems: bomItems,
+        qtyPlanned: movingOrder.qtyPlanned,
+        materialById,
+      });
+
+      if (shortages.length > 0) {
+        toast({
+          title: "Estoque insuficiente",
+          description: shortages
+            .slice(0, 3)
+            .map((s) => `${s.name}: precisa ${formatQty(s.needed)}, disponível ${formatQty(s.available)}`)
+            .join(" · "),
+          variant: "destructive",
+        });
+        handleStartCancel();
+        return;
+      }
+    }
+
     moveMutation.mutate(
       {
         id: orderId,
         data: {
           status: "IN_PROGRESS",
-          orderedIds: pendingStart.orderedIds,
+          orderedIds: normalizeDestinationOrderedIds(
+            orders,
+            "IN_PROGRESS",
+            orderId,
+            pendingStart.orderedIds,
+          ),
         },
       },
       {
