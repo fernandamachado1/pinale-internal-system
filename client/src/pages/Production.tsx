@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, Factory, GripVertical, Loader2, Package, Plus } from "lucide-react";
+import { CalendarIcon, ChevronLeft, ChevronRight, Factory, Loader2, Package, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatQty } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
@@ -175,11 +175,11 @@ function moveOrderOnBoard(
 
 function ProductionCardBody({
   order,
-  dragHandle,
+  moveControls,
   statusHint,
 }: {
   order: ProductionOrderWithProduct;
-  dragHandle?: ReactNode;
+  moveControls?: ReactNode;
   statusHint?: ReactNode;
 }) {
   const dueDate = order.dueAt ? new Date(order.dueAt as any) : null;
@@ -207,7 +207,7 @@ function ProductionCardBody({
           <Badge className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${channelClass}`}>{channelLabel}</Badge>
           {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
           {isOverdue ? <Badge className="border-transparent bg-red-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">Vencida</Badge> : null}
-          {dragHandle}
+          {moveControls}
         </div>
       </div>
 
@@ -236,17 +236,18 @@ function ProductionCardBody({
 function ProductionCard({
   order,
   dragDisabled,
+  moveControls,
   statusHint,
 }: {
   order: ProductionOrderWithProduct;
   dragDisabled: boolean;
+  moveControls?: ReactNode;
   statusHint?: ReactNode;
 }) {
   const theme = columnTheme[order.status];
   const {
     attributes,
     listeners,
-    setActivatorNodeRef,
     setNodeRef,
     transform,
     transition,
@@ -261,27 +262,20 @@ function ProductionCard({
     transition,
   };
 
+  const dragProps = dragDisabled ? {} : { ...attributes, ...listeners };
+
   return (
     <article
       ref={setNodeRef}
       style={style}
-      className={`min-h-[92px] rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-default"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`min-h-[92px] rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      aria-label={`OP ${order.id}`}
+      {...dragProps}
     >
       <ProductionCardBody
         order={order}
+        moveControls={moveControls}
         statusHint={statusHint}
-        dragHandle={!dragDisabled ? (
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            className="touch-none flex h-9 w-9 items-center justify-center rounded-md bg-black/5 p-1.5 text-muted-foreground hover:bg-black/10 active:bg-black/15 cursor-grab active:cursor-grabbing sm:h-auto sm:w-auto sm:p-1"
-            aria-label="Arrastar ordem de produção"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="h-3.5 w-3.5" />
-          </button>
-        ) : undefined}
       />
     </article>
   );
@@ -309,8 +303,8 @@ function ColumnDropZone({
       ref={setNodeRef}
       className={`flex flex-col rounded-2xl border p-2.5 transition-colors sm:p-4 ${
         isMobile
-          ? "w-full"
-          : "min-h-[360px] w-full min-w-0"
+          ? "min-h-[260px] w-[82vw] max-w-[420px] flex-none snap-center sm:min-h-[360px]"
+          : "min-h-[360px] w-[360px] max-w-[420px] min-w-[320px] flex-none"
       } ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -372,7 +366,6 @@ export default function Production() {
   const [activeOverId, setActiveOverId] = useState<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const dragStartRectRef = useRef<{ left: number; width: number } | null>(null);
-  const [mobileColumn, setMobileColumn] = useState<ProductionKanbanStatus>("BACKLOG");
   useEffect(() => {
     setBoardState(createBoardState(orders));
   }, [orders]);
@@ -720,9 +713,9 @@ export default function Production() {
       ) : null}
 
       {isOrdersLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
           {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="rounded-2xl">
+            <Card key={index} className="min-w-[240px] flex-none rounded-2xl sm:min-w-[320px]">
               <CardHeader>
                 <CardTitle><Skeleton className="h-4 w-24" /></CardTitle>
                 <UiCardDescription><Skeleton className="h-3 w-48" /></UiCardDescription>
@@ -752,32 +745,17 @@ export default function Production() {
           ) : null}
 
           {isMobile ? (
-            <div className="mb-3 space-y-2 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              <div>Arraste para reordenar dentro da etapa. Para mudar de etapa, use “Mover para” dentro do card.</div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-medium text-foreground/80">Etapa</span>
-                <Select value={mobileColumn} onValueChange={(value) => setMobileColumn(value as ProductionKanbanStatus)}>
-                  <SelectTrigger className="h-9 w-[220px] rounded-xl border-border bg-card px-3 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {columnOrder.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {columnMeta[status].title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="mb-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Arraste para reordenar. Role horizontalmente para navegar entre colunas. Use as setas do card para mover entre etapas.
             </div>
           ) : null}
 
           <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
             <div
               ref={boardScrollRef}
-              className={isMobile ? "flex flex-col gap-3" : "grid gap-4 md:grid-cols-2 lg:grid-cols-3"}
+              className={isMobile ? "-mx-2 flex snap-x snap-mandatory gap-2 overflow-x-auto px-2 pb-2 touch-pan-x" : "-mx-2 flex gap-4 overflow-x-auto px-2 pb-2"}
             >
-              {(isMobile ? [mobileColumn] : columnOrder).map((status) => {
+              {columnOrder.map((status) => {
                 const columnOrders = boardState[status] ?? [];
                 const activeOverIsColumn = activeOverId === status;
                 const activeOverOrderId = activeOverId && activeOverId !== status ? Number(activeOverId) : Number.NaN;
@@ -790,24 +768,6 @@ export default function Production() {
                             items.push(renderInsertionMarker(`${status}-before-${order.id}`));
                           }
                           const bomWarning = (productById.get(order.productId)?.bomItems?.length ?? 0) === 0;
-                          const moveControl =
-                            isMobile && canWrite && order.status !== "DONE" ? (
-                              <div className="mt-2 rounded-lg border border-border/60 bg-muted/20 p-2 text-[11px]">
-                                <div className="mb-1 font-medium text-foreground/80">Mover para</div>
-                                <Select value={order.status} onValueChange={(value) => moveOrderWithConfirmation(order.id, value as any)}>
-                                  <SelectTrigger className="h-9 rounded-xl border-border bg-card px-3 text-xs">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {columnOrder.map((statusOption) => (
-                                      <SelectItem key={statusOption} value={statusOption}>
-                                        {columnMeta[statusOption].title}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            ) : null;
 
                           const hintBlocks: ReactNode[] = [];
                           if (bomWarning) {
@@ -817,14 +777,46 @@ export default function Production() {
                               </span>,
                             );
                           }
-                          if (moveControl) hintBlocks.push(<div key="move-control">{moveControl}</div>);
                           const statusHint = hintBlocks.length ? <div className="space-y-2">{hintBlocks}</div> : undefined;
+
+                          const previousStatus = order.status === "IN_PROGRESS" ? "BACKLOG" : null;
+                          const nextStatus = order.status === "BACKLOG" ? "IN_PROGRESS" : order.status === "IN_PROGRESS" ? "DONE" : null;
+                          const arrowControls =
+                            canWrite && order.status !== "DONE" ? (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8 sm:w-8"
+                                  aria-label="Mover para etapa anterior"
+                                  disabled={!previousStatus || interactionsDisabled}
+                                  onClick={() => {
+                                    if (!previousStatus) return;
+                                    moveOrderWithConfirmation(order.id, previousStatus);
+                                  }}
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8 sm:w-8"
+                                  aria-label="Mover para próxima etapa"
+                                  disabled={!nextStatus || interactionsDisabled}
+                                  onClick={() => {
+                                    if (!nextStatus) return;
+                                    moveOrderWithConfirmation(order.id, nextStatus as any);
+                                  }}
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : null;
 
                           items.push(
                             <ProductionCard
                               key={order.id}
                               order={order}
                               dragDisabled={interactionsDisabled || order.status === "DONE"}
+                              moveControls={arrowControls}
                               statusHint={statusHint}
                             />,
                           );
