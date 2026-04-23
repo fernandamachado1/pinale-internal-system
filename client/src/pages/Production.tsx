@@ -186,11 +186,6 @@ function ProductionCardBody({
   const daysToDue = dueDate ? differenceInCalendarDays(startOfDay(dueDate), startOfDay(new Date())) : null;
   const isOverdue = order.status !== "DONE" && daysToDue !== null && daysToDue < 0;
   const isDueSoon = order.status !== "DONE" && daysToDue !== null && daysToDue >= 0 && daysToDue <= 3;
-  const channelLabel = order.salesChannel === "PHYSICAL" ? "Físico" : "Online";
-  const channelClass =
-    order.salesChannel === "PHYSICAL"
-      ? "border-transparent bg-slate-900 text-white"
-      : "border-transparent bg-primary text-primary-foreground";
   const notes = order.customizationNotes?.trim();
   const hasMeasure = order.measureCm !== null && order.measureCm !== undefined && Number.isFinite(Number(order.measureCm));
   const measureLabel = hasMeasure ? `${Number(order.measureCm).toLocaleString("pt-BR")} cm` : null;
@@ -204,7 +199,6 @@ function ProductionCardBody({
           <div className="text-xs text-muted-foreground sm:text-sm">{order.product.name}</div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
-          <Badge className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${channelClass}`}>{channelLabel}</Badge>
           {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
           {isOverdue ? <Badge className="border-transparent bg-red-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">Vencida</Badge> : null}
           {moveControls}
