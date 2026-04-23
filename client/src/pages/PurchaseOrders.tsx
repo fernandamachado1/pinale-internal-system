@@ -31,6 +31,7 @@ type PurchaseOrderFormItem = {
   id?: number;
   materialId?: number | null;
   materialName: string;
+  description?: string;
   qtyOrdered: string;
 };
 
@@ -74,7 +75,7 @@ function formatDate(value: unknown): string {
 }
 
 function createEmptyItem(): PurchaseOrderFormItem {
-  return { clientId: nanoid(), materialId: null, materialName: "", qtyOrdered: "1" };
+  return { clientId: nanoid(), materialId: null, materialName: "", description: "", qtyOrdered: "1" };
 }
 
 function SortablePurchaseOrderRow({
@@ -257,6 +258,16 @@ function SortableFormItem({
             value={{ materialId: item.materialId ?? null, materialName: item.materialName }}
             onChange={(next) => onPatch({ materialId: next.materialId, materialName: next.materialName })}
           />
+          <div className="space-y-2">
+            <Label>Descrição (opcional)</Label>
+            <Input
+              value={item.description ?? ""}
+              onChange={(e) => onPatch({ description: e.target.value })}
+              placeholder="Ex.: link do fornecedor, WhatsApp, loja..."
+              className="h-11 rounded-xl border-border bg-card px-4"
+              disabled={!canWrite}
+            />
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -328,6 +339,7 @@ export default function PurchaseOrders() {
         id: item.id,
         materialId: item.materialId ?? null,
         materialName: item.materialName,
+        description: (item as any).description ?? "",
         qtyOrdered: String(item.qtyOrdered),
       })),
     );
@@ -384,6 +396,7 @@ export default function PurchaseOrders() {
       ...(item.id ? { id: item.id } : {}),
       materialId: item.materialId ?? null,
       materialName: item.materialName,
+      description: item.description?.trim() ? item.description.trim() : null,
       qtyOrdered: item.qtyOrdered?.trim() ? item.qtyOrdered : undefined,
     }));
 

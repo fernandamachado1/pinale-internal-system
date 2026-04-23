@@ -97,10 +97,11 @@ export class CreatePurchaseOrderUseCase {
           return {
             materialId: item.materialId ?? null,
             materialName,
+            description: item.description?.trim() ? item.description.trim() : null,
             qtyOrdered: toQty3(qtyOrdered),
             qtyReceived: "0.000",
             sortOrder: index,
-          } satisfies Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">;
+          } satisfies Pick<PurchaseOrderItem, "materialId" | "materialName" | "description" | "qtyOrdered" | "qtyReceived" | "sortOrder">;
         }),
       );
 
@@ -148,6 +149,7 @@ export class UpdatePurchaseOrderUseCase {
           await tx.updatePurchaseOrderItem(item.id, {
             materialId: item.materialId ?? null,
             materialName,
+            description: item.description?.trim() ? item.description.trim() : null,
             qtyOrdered: nextQtyOrdered,
             sortOrder: index,
           });
@@ -158,6 +160,7 @@ export class UpdatePurchaseOrderUseCase {
           {
             materialId: item.materialId ?? null,
             materialName,
+            description: item.description?.trim() ? item.description.trim() : null,
             qtyOrdered: nextQtyOrdered,
             qtyReceived: "0.000",
             sortOrder: index,
@@ -287,7 +290,7 @@ export class CancelPurchaseOrderUseCase {
       if (!current) throw new NotFoundDomainError("Purchase order not found");
       if (current.status === "RECEIVED") throw new InvalidOperationDomainError("Cannot cancel a received purchase order");
 
-      await tx.updatePurchaseOrderBase(id, { status: "CANCELED" });
+      await tx.updatePurchaseOrderBase(id, { status: "CANCELED", isActive: 0 });
     });
   }
 }

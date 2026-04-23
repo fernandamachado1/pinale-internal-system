@@ -955,13 +955,14 @@ export class DrizzleErpRepository implements IErpRepository {
 
   async createPurchaseOrderItems(
     purchaseOrderId: number,
-    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
+    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "description" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem[]> {
     const payload = items.map((item) => ({
       orgId: this.orgIdValue(),
       purchaseOrderId,
       materialId: item.materialId ?? null,
       materialName: item.materialName,
+      description: item.description?.trim() ? item.description.trim() : null,
       qtyOrdered: item.qtyOrdered,
       qtyReceived: item.qtyReceived,
       sortOrder: item.sortOrder,
@@ -971,13 +972,18 @@ export class DrizzleErpRepository implements IErpRepository {
 
   async updatePurchaseOrderItem(
     id: number,
-    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
+    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "description" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem> {
     const conditions = [eq(purchaseOrderItems.id, id)];
     if (this.orgId) conditions.push(eq(purchaseOrderItems.orgId, this.orgId));
     const [updated] = (await this.database
       .update(purchaseOrderItems)
-      .set({ ...input })
+      .set({
+        ...input,
+        ...(Object.prototype.hasOwnProperty.call(input, "description")
+          ? { description: input.description?.trim() ? input.description.trim() : null }
+          : {}),
+      })
       .where(and(...conditions))
       .returning()) as PurchaseOrderItem[];
     return updated;

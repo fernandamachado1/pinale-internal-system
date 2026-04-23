@@ -233,7 +233,15 @@ function ProductionCardBody({
   );
 }
 
-function ProductionCard({ order, dragDisabled, bomWarning }: { order: ProductionOrderWithProduct; dragDisabled: boolean; bomWarning: boolean }) {
+function ProductionCard({
+  order,
+  dragDisabled,
+  statusHint,
+}: {
+  order: ProductionOrderWithProduct;
+  dragDisabled: boolean;
+  statusHint?: ReactNode;
+}) {
   const theme = columnTheme[order.status];
   const {
     attributes,
@@ -261,7 +269,7 @@ function ProductionCard({ order, dragDisabled, bomWarning }: { order: Production
     >
       <ProductionCardBody
         order={order}
-        statusHint={bomWarning ? <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">Sem ficha técnica</span> : null}
+        statusHint={statusHint}
         dragHandle={!dragDisabled ? (
           <button
             type="button"
@@ -284,11 +292,13 @@ function ColumnDropZone({
   orders,
   children,
   isActiveTarget,
+  isMobile,
 }: {
   status: ProductionKanbanStatus;
   orders: ProductionOrderWithProduct[];
   children: ReactNode;
   isActiveTarget?: boolean;
+  isMobile?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const theme = columnTheme[status];
@@ -297,7 +307,11 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex min-h-[260px] min-w-[82vw] flex-none snap-center flex-col rounded-2xl border p-2.5 transition-colors sm:min-h-[360px] sm:min-w-[320px] sm:snap-start sm:p-4 ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
+      className={`flex flex-col rounded-2xl border p-2.5 transition-colors sm:p-4 ${
+        isMobile
+          ? "w-full"
+          : "min-h-[360px] w-full min-w-0"
+      } ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
@@ -358,6 +372,7 @@ export default function Production() {
   const [activeOverId, setActiveOverId] = useState<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const dragStartRectRef = useRef<{ left: number; width: number } | null>(null);
+  const [mobileColumn, setMobileColumn] = useState<ProductionKanbanStatus>("BACKLOG");
   useEffect(() => {
     setBoardState(createBoardState(orders));
   }, [orders]);
@@ -427,8 +442,10 @@ export default function Production() {
   };
 
   const handleDragMove = (event: DragMoveEvent) => {
+    if (isMobile) return;
     const board = boardScrollRef.current;
     if (!board || !dragStartRectRef.current) return;
+    if (board.scrollWidth <= board.clientWidth) return;
 
     const { left, width } = dragStartRectRef.current;
     const cardCenter = left + event.delta.x + width / 2;
@@ -703,9 +720,9 @@ export default function Production() {
       ) : null}
 
       {isOrdersLoading ? (
-        <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="min-w-[240px] flex-none rounded-2xl sm:min-w-[320px]">
+            <Card key={index} className="rounded-2xl">
               <CardHeader>
                 <CardTitle><Skeleton className="h-4 w-24" /></CardTitle>
                 <UiCardDescription><Skeleton className="h-3 w-48" /></UiCardDescription>
@@ -735,34 +752,80 @@ export default function Production() {
           ) : null}
 
           {isMobile ? (
-            <div className="mb-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-              Segure o ícone do card por um instante para arrastar. Arraste para a coluna desejada e solte.
+            <div className="mb-3 space-y-2 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              <div>Arraste para reordenar dentro da etapa. Para mudar de etapa, use “Mover para” dentro do card.</div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-foreground/80">Etapa</span>
+                <Select value={mobileColumn} onValueChange={(value) => setMobileColumn(value as ProductionKanbanStatus)}>
+                  <SelectTrigger className="h-9 w-[220px] rounded-xl border-border bg-card px-3 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {columnOrder.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {columnMeta[status].title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           ) : null}
 
           <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragMove={handleDragMove} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-            <div ref={boardScrollRef} className="-mx-2 flex snap-x snap-mandatory gap-2 overflow-x-auto px-2 pb-2 touch-pan-x sm:gap-4">
-              {columnOrder.map((status) => {
+            <div
+              ref={boardScrollRef}
+              className={isMobile ? "flex flex-col gap-3" : "grid gap-4 md:grid-cols-2 lg:grid-cols-3"}
+            >
+              {(isMobile ? [mobileColumn] : columnOrder).map((status) => {
                 const columnOrders = boardState[status] ?? [];
                 const activeOverIsColumn = activeOverId === status;
                 const activeOverOrderId = activeOverId && activeOverId !== status ? Number(activeOverId) : Number.NaN;
                 return (
-                  <ColumnDropZone key={status} status={status} orders={columnOrders} isActiveTarget={activeDropTarget === status}>
-                    {status === "DONE"
-                      ? null
-                      : columnOrders.flatMap((order, index) => {
+                  <ColumnDropZone key={status} status={status} orders={columnOrders} isActiveTarget={activeDropTarget === status} isMobile={isMobile}>
+                    {columnOrders.flatMap((order, index) => {
                           const items: ReactNode[] = [];
                           const shouldInsertBefore = !Number.isNaN(activeOverOrderId) && order.id === activeOverOrderId;
                           if (shouldInsertBefore) {
                             items.push(renderInsertionMarker(`${status}-before-${order.id}`));
                           }
                           const bomWarning = (productById.get(order.productId)?.bomItems?.length ?? 0) === 0;
+                          const moveControl =
+                            isMobile && canWrite && order.status !== "DONE" ? (
+                              <div className="mt-2 rounded-lg border border-border/60 bg-muted/20 p-2 text-[11px]">
+                                <div className="mb-1 font-medium text-foreground/80">Mover para</div>
+                                <Select value={order.status} onValueChange={(value) => moveOrderWithConfirmation(order.id, value as any)}>
+                                  <SelectTrigger className="h-9 rounded-xl border-border bg-card px-3 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {columnOrder.map((statusOption) => (
+                                      <SelectItem key={statusOption} value={statusOption}>
+                                        {columnMeta[statusOption].title}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            ) : null;
+
+                          const hintBlocks: ReactNode[] = [];
+                          if (bomWarning) {
+                            hintBlocks.push(
+                              <span key="bom-warning" className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                Sem ficha técnica
+                              </span>,
+                            );
+                          }
+                          if (moveControl) hintBlocks.push(<div key="move-control">{moveControl}</div>);
+                          const statusHint = hintBlocks.length ? <div className="space-y-2">{hintBlocks}</div> : undefined;
+
                           items.push(
                             <ProductionCard
                               key={order.id}
                               order={order}
-                              bomWarning={bomWarning}
                               dragDisabled={interactionsDisabled || order.status === "DONE"}
+                              statusHint={statusHint}
                             />,
                           );
                           if (index === columnOrders.length - 1 && activeOverIsColumn) {

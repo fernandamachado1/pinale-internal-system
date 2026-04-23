@@ -76,11 +76,11 @@ export interface IErpRepository extends ISalesRepository {
   ): Promise<PurchaseOrder>;
   createPurchaseOrderItems(
     purchaseOrderId: number,
-    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
+    items: Array<Pick<PurchaseOrderItem, "materialId" | "materialName" | "description" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem[]>;
   updatePurchaseOrderItem(
     id: number,
-    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
+    input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "description" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem>;
   deletePurchaseOrderItem(id: number): Promise<void>;
 

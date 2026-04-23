@@ -193,6 +193,7 @@ export const purchaseOrderItems = pgTable("purchase_order_items", {
   purchaseOrderId: integer("purchase_order_id").notNull(),
   materialId: integer("material_id"),
   materialName: text("material_name").notNull(),
+  description: text("description"),
   qtyOrdered: numeric("qty_ordered", { precision: 12, scale: 3 }).notNull(),
   qtyReceived: numeric("qty_received", { precision: 12, scale: 3 }).notNull().default("0"),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -462,6 +463,7 @@ export const createPurchaseOrderSchema = z.object({
       z.object({
         materialId: z.number().int().positive().optional().nullable(),
         materialName: z.string().min(1),
+        description: z.string().trim().max(800).optional().nullable(),
         qtyOrdered: z.string().optional(),
       }),
     )
@@ -475,6 +477,7 @@ export const updatePurchaseOrderSchema = z.object({
         id: z.number().int().positive().optional(),
         materialId: z.number().int().positive().optional().nullable(),
         materialName: z.string().min(1),
+        description: z.string().trim().max(800).optional().nullable(),
         qtyOrdered: z.string().optional(),
       }),
     )
