@@ -54,6 +54,7 @@ export class CompleteProductionUseCase {
             id: materialRecord.id,
             name: materialRecord.name,
             unitOfMeasure: materialRecord.unitOfMeasure,
+            stockTracked: materialRecord.stockTracked !== false,
             stockQty: Number(materialRecord.stockQty),
             reservedQty: Number(materialRecord.reservedQty ?? 0),
             category: materialRecord.category,
@@ -67,14 +68,18 @@ export class CompleteProductionUseCase {
       for (const spec of specs) {
         const material = materialsMap.get(spec.materialId);
         if (!material) continue;
+        if (!material.stockTracked) continue;
         material.consumeReserved(spec.calculateFixedConsumption(orderRecord.qtyPlanned));
       }
 
       for (const material of Array.from(materialsMap.values())) {
+        if (!material.stockTracked) continue;
         await txRepository.updateMaterialQuantities(material.id, material.toPersistence());
       }
 
       for (const spec of specs) {
+        const material = materialsMap.get(spec.materialId);
+        if (!material?.stockTracked) continue;
         const movement = InventoryMovement.create({
           entityType: "MATERIAL",
           entityId: spec.materialId,

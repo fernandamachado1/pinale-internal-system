@@ -1,6 +1,6 @@
 import { InventoryMovement } from "../../domain/entities/inventory-movement";
 import { Material } from "../../domain/entities/material";
-import { NotFoundDomainError } from "../../domain/errors/domain-error";
+import { NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error";
 import type { IErpRepository } from "../contracts/erp-repository";
 
 export interface AdjustMaterialStockInput {
@@ -25,6 +25,7 @@ export class AdjustMaterialStockUseCase {
         id: materialRecord.id,
         name: materialRecord.name,
         unitOfMeasure: materialRecord.unitOfMeasure,
+        stockTracked: materialRecord.stockTracked !== false,
         stockQty: Number(materialRecord.stockQty),
         reservedQty: Number(materialRecord.reservedQty ?? 0),
         category: materialRecord.category,
@@ -32,6 +33,10 @@ export class AdjustMaterialStockUseCase {
         pricePerSquareMeter: materialRecord.pricePerSquareMeter ? Number(materialRecord.pricePerSquareMeter) : null,
         isActive: materialRecord.isActive === 1,
       });
+
+      if (!material.stockTracked) {
+        throw new ValidationDomainError(`Material ${materialRecord.name} does not use stock control`);
+      }
 
       material.adjustStock(input.quantityChange);
       await txRepository.updateMaterialStockQty(material.id, material.toPersistence().stockQty);

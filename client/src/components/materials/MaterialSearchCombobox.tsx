@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import type { Material } from "@shared/schema";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { ArrowRight, Check, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,12 @@ export function MaterialSearchCombobox({
                 >
                   <Check className={cn("mr-2 h-4 w-4", value === material.id ? "opacity-100" : "opacity-0")} />
                   <span className="truncate">{material.name}</span>
+                  {material.stockTracked === false ? (
+                    <Badge variant="secondary" className="ml-auto gap-1 text-[10px] font-medium">
+                      <ArrowRight className="h-3 w-3" />
+                      Sem controle
+                    </Badge>
+                  ) : null}
                 </CommandItem>
               ))}
             </CommandGroup>

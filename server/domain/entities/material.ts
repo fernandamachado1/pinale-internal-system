@@ -7,6 +7,7 @@ export interface MaterialProps {
   id: number;
   name: string;
   unitOfMeasure: UnitOfMeasure;
+  stockTracked: boolean;
   stockQty: number;
   reservedQty: number;
   category: MaterialCategory;
@@ -35,7 +36,18 @@ export class Material {
     return this.props.category;
   }
 
+  get stockTracked(): boolean {
+    return this.props.stockTracked;
+  }
+
+  private ensureStockTracked(): void {
+    if (!this.props.stockTracked) {
+      throw new InvalidOperationDomainError(`Material ${this.props.name} does not use stock control`);
+    }
+  }
+
   reserve(quantity: number): void {
+    this.ensureStockTracked();
     if (quantity <= 0) throw new ValidationDomainError("Reservation quantity must be greater than zero");
     const available = this.props.stockQty - this.props.reservedQty;
     if (available - quantity < 0) {
@@ -47,6 +59,7 @@ export class Material {
   }
 
   releaseReservation(quantity: number): void {
+    this.ensureStockTracked();
     if (quantity <= 0) throw new ValidationDomainError("Release quantity must be greater than zero");
     if (this.props.reservedQty - quantity < 0) {
       throw new InvalidOperationDomainError(`Insufficient reserved stock for material ${this.props.name}`);
@@ -55,6 +68,7 @@ export class Material {
   }
 
   consumeReserved(quantity: number): void {
+    this.ensureStockTracked();
     if (quantity <= 0) throw new ValidationDomainError("Consumption quantity must be greater than zero");
     if (this.props.reservedQty - quantity < 0) {
       throw new InvalidOperationDomainError(`Insufficient reserved stock for material ${this.props.name}`);
@@ -68,6 +82,7 @@ export class Material {
   }
 
   consumeStock(quantity: number): void {
+    this.ensureStockTracked();
     if (quantity <= 0) throw new ValidationDomainError("Consumption quantity must be greater than zero");
 
     const next = this.props.stockQty - quantity;
@@ -78,11 +93,13 @@ export class Material {
   }
 
   addStock(quantity: number): void {
+    this.ensureStockTracked();
     if (quantity <= 0) throw new ValidationDomainError("Inbound quantity must be greater than zero");
     this.props.stockQty += quantity;
   }
 
   adjustStock(delta: number): void {
+    this.ensureStockTracked();
     const next = this.props.stockQty + delta;
     if (next < 0) {
       throw new InvalidOperationDomainError(`Insufficient stock for material ${this.props.name}`);

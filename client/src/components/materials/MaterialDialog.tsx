@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { brl } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { ArrowLeft } from "lucide-react";
@@ -25,6 +26,7 @@ export type MaterialFormValues = {
   name: string;
   category: MaterialCategory;
   unitOfMeasure: UnitOfMeasure;
+  stockTracked: boolean;
   stockQty: string;
   purchasePrice: string;
   pricePerSquareMeter: string;
@@ -48,6 +50,7 @@ function createEmptyMaterialForm(): MaterialFormValues {
     name: "",
     category: "NOTIONS",
     unitOfMeasure: "UNIT",
+    stockTracked: true,
     stockQty: "0",
     purchasePrice: "0",
     pricePerSquareMeter: "",
@@ -61,6 +64,7 @@ function toCreatePayload(item: MaterialFormValues): InsertMaterial {
     name: item.name,
     category: item.category,
     unitOfMeasure: item.unitOfMeasure,
+    stockTracked: item.stockTracked,
     stockQty: item.stockQty,
     purchasePrice,
     pricePerSquareMeter: item.category === "RAW_MATERIAL" ? item.pricePerSquareMeter : null,
@@ -73,6 +77,7 @@ function fromMaterial(item: Material): MaterialFormValues {
     name: item.name,
     category: item.category,
     unitOfMeasure: item.unitOfMeasure,
+    stockTracked: item.stockTracked !== false,
     stockQty: item.stockQty,
     purchasePrice: item.purchasePrice,
     pricePerSquareMeter: item.pricePerSquareMeter ?? "",
@@ -256,41 +261,60 @@ export function MaterialDialog({
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              {!hideInitialStockField ? (
-                <div className="space-y-2">
-                  <Label>Estoque inicial</Label>
-                  <Input
-                    inputMode="decimal"
-                    value={toPtBrDecimal(item.stockQty)}
-                    onChange={(e) => {
-                      const decimals = item.unitOfMeasure === "UNIT" ? 0 : 3;
-                      updateItem(index, { stockQty: fromPtBrDecimal(e.target.value, decimals) });
-                    }}
-                    placeholder="0,000"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <Label>Estoque inicial</Label>
-                  <p className="text-xs text-muted-foreground">
-                    O estoque será registrado automaticamente ao receber a ordem de compra.
-                  </p>
-                </div>
-              )}
-              {item.category !== "RAW_MATERIAL" ? (
-                <div className="space-y-2">
-                  <Label>Valor de compra</Label>
-                  <Input
-                    inputMode="decimal"
-                    value={toPtBrDecimal(item.purchasePrice)}
-                    onChange={(e) => updateItem(index, { purchasePrice: fromPtBrDecimal(e.target.value, 2) })}
-                    placeholder="0,00"
-                    required
-                  />
-                </div>
-              ) : null}
+            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Controla estoque</Label>
+                <p className="text-xs text-muted-foreground">
+                  Desligado: o material continua cadastrado, mas não bloqueia produção nem recebe movimentação de quantidade.
+                </p>
+              </div>
+              <Switch
+                checked={item.stockTracked}
+                onCheckedChange={(checked) => updateItem(index, { stockTracked: checked })}
+              />
             </div>
+
+            {item.stockTracked ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {!hideInitialStockField ? (
+                  <div className="space-y-2">
+                    <Label>Estoque inicial</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={toPtBrDecimal(item.stockQty)}
+                      onChange={(e) => {
+                        const decimals = item.unitOfMeasure === "UNIT" ? 0 : 3;
+                        updateItem(index, { stockQty: fromPtBrDecimal(e.target.value, decimals) });
+                      }}
+                      placeholder="0,000"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label>Estoque inicial</Label>
+                    <p className="text-xs text-muted-foreground">
+                      O estoque será registrado automaticamente ao receber a ordem de compra.
+                    </p>
+                  </div>
+                )}
+                {item.category !== "RAW_MATERIAL" ? (
+                  <div className="space-y-2">
+                    <Label>Valor de compra</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={toPtBrDecimal(item.purchasePrice)}
+                      onChange={(e) => updateItem(index, { purchasePrice: fromPtBrDecimal(e.target.value, 2) })}
+                      placeholder="0,00"
+                      required
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                Este material não usa controle de estoque. A quantidade fica apenas cadastral.
+              </div>
+            )}
 
             {item.category === "RAW_MATERIAL" ? (
               <div className="space-y-2">

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { brl, formatDateTimeBR } from "@/lib/format";
+import { brl, formatDateTimeBR, formatQtyByUom } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
 import { ArrowUpDown, Boxes } from "lucide-react";
 
@@ -116,7 +116,7 @@ export default function ProducedStock() {
                 </TableCell>
                 <TableCell className="text-right">{row.inQty}</TableCell>
                 <TableCell className="text-right">{row.outQty}</TableCell>
-                <TableCell className="text-right font-semibold">{row.stockQty}</TableCell>
+                <TableCell className="text-right font-semibold">{formatQtyByUom(row.stockQty, "UNIT")}</TableCell>
                 <TableCell>{row.updatedAt ? formatDateTimeBR(row.updatedAt) : "-"}</TableCell>
                 <TableCell className="text-right">
                   {canWrite ? (

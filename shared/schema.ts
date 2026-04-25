@@ -67,6 +67,7 @@ export const materials = pgTable("materials", {
   orgId: uuid("org_id").notNull(),
   name: text("name").notNull(),
   unitOfMeasure: unitOfMeasureEnum("unit_of_measure").notNull().default("UNIT"),
+  stockTracked: boolean("stock_tracked").notNull().default(true),
   stockQty: numeric("stock_qty", { precision: 12, scale: 3 }).notNull().default("0"),
   reservedQty: numeric("reserved_qty", { precision: 12, scale: 3 }).notNull().default("0"),
   category: materialCategoryEnum("category").notNull().default("NOTIONS"),
@@ -248,13 +249,17 @@ const baseInsertMaterialSchema = createInsertSchema(materials).omit({
 });
 export const insertMaterialSchema = baseInsertMaterialSchema.extend({
   category: z.enum(["PACKAGING", "NOTIONS", "RAW_MATERIAL"]).default("NOTIONS"),
-  stockQty: z.string(),
+  stockTracked: z.boolean().default(true),
+  stockQty: z.string().optional(),
   purchasePrice: z.string(),
   pricePerSquareMeter: z.string().optional().nullable(),
   unitOfMeasure: z.enum(["UNIT", "SQUARE_METER", "METER"]).default("UNIT"),
 }).superRefine((value, ctx) => {
-  if (Number(value.stockQty) < 0) {
+  if (value.stockQty !== undefined && Number(value.stockQty) < 0) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "stockQty cannot be negative", path: ["stockQty"] });
+  }
+  if (value.stockTracked !== false && value.stockQty === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "stockQty is required when stock control is enabled", path: ["stockQty"] });
   }
 
   if (Number(value.purchasePrice) < 0) {
@@ -274,6 +279,7 @@ export const insertMaterialSchema = baseInsertMaterialSchema.extend({
 export const updateMaterialSchema = baseInsertMaterialSchema
   .partial()
   .extend({
+    stockTracked: z.boolean().optional(),
     stockQty: z.string().optional(),
     purchasePrice: z.string().optional(),
     pricePerSquareMeter: z.string().optional().nullable(),
@@ -281,7 +287,7 @@ export const updateMaterialSchema = baseInsertMaterialSchema
     category: z.enum(["PACKAGING", "NOTIONS", "RAW_MATERIAL"]).optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.stockQty !== undefined && Number(value.stockQty) < 0) {
+    if (value.stockTracked !== false && value.stockQty !== undefined && Number(value.stockQty) < 0) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "stockQty cannot be negative", path: ["stockQty"] });
     }
     if (value.purchasePrice !== undefined && Number(value.purchasePrice) < 0) {

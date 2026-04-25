@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowUpDown, ExternalLink, FileText, Loader2, Package, PencilLine, Plus, Trash2, X } from "lucide-react";
-import { brl } from "@/lib/format";
+import { brl, formatQtyByUom } from "@/lib/format";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthz } from "@/hooks/use-authz";
@@ -545,7 +545,7 @@ export default function Products() {
                         </Badge>
                       </TableCell>
                       <TableCell>{brl(Number(item.price))}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.stockQty}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatQtyByUom(item.stockQty, "UNIT")}</TableCell>
                       <TableCell className="hidden lg:table-cell">
                         {item.bomItems.length > 0 ? (
                           <div className="text-sm text-muted-foreground">{`${item.bomItems.length} material(is)`}</div>

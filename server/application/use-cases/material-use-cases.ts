@@ -14,6 +14,10 @@ function normalizeMaterialInput(input: InsertMaterial | UpdateMaterialRequest): 
     throw new ValidationDomainError("purchasePrice cannot be negative");
   }
 
+  if (normalized.stockQty !== undefined && Number(normalized.stockQty) < 0) {
+    throw new ValidationDomainError("stockQty cannot be negative");
+  }
+
   if (normalized.category === "RAW_MATERIAL") {
     if (!normalized.pricePerSquareMeter || Number(normalized.pricePerSquareMeter) < 0) {
       throw new ValidationDomainError("pricePerSquareMeter is required for raw materials");

@@ -92,6 +92,7 @@ export class MoveProductionOrderUseCase {
               id: materialRecord.id,
               name: materialRecord.name,
               unitOfMeasure: materialRecord.unitOfMeasure,
+              stockTracked: materialRecord.stockTracked !== false,
               stockQty: Number(materialRecord.stockQty),
               reservedQty: Number(materialRecord.reservedQty ?? 0),
               category: materialRecord.category,
@@ -106,10 +107,12 @@ export class MoveProductionOrderUseCase {
           for (const spec of specs) {
             const material = materialsMap.get(spec.materialId);
             if (!material) continue;
+            if (!material.stockTracked) continue;
             material.reserve(spec.calculateFixedConsumption(order.qtyPlanned));
           }
 
           for (const material of Array.from(materialsMap.values())) {
+            if (!material.stockTracked) continue;
             await txRepository.updateMaterialReservedQty(material.id, material.toPersistence().reservedQty);
           }
         }
@@ -118,10 +121,12 @@ export class MoveProductionOrderUseCase {
           for (const spec of specs) {
             const material = materialsMap.get(spec.materialId);
             if (!material) continue;
+            if (!material.stockTracked) continue;
             material.releaseReservation(spec.calculateFixedConsumption(order.qtyPlanned));
           }
 
           for (const material of Array.from(materialsMap.values())) {
+            if (!material.stockTracked) continue;
             await txRepository.updateMaterialReservedQty(material.id, material.toPersistence().reservedQty);
           }
         }

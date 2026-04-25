@@ -198,13 +198,14 @@ function computeStartStockShortages(
   input: {
     productBomItems: Array<{ materialId: number; qtyPerUnit: unknown }>;
     qtyPlanned: number;
-    materialById: Map<number, { name: string; stockQty: unknown; reservedQty?: unknown | null }>;
+    materialById: Map<number, { name: string; stockQty: unknown; reservedQty?: unknown | null; stockTracked?: boolean | null }>;
   },
 ): Array<{ name: string; needed: number; available: number }> {
   const shortages: Array<{ name: string; needed: number; available: number }> = [];
   for (const bomItem of input.productBomItems) {
     const material = input.materialById.get(bomItem.materialId);
     if (!material) continue;
+    if (material.stockTracked === false) continue;
     const perUnit = Number(bomItem.qtyPerUnit);
     if (!Number.isFinite(perUnit) || perUnit <= 0) continue;
     const needed = perUnit * input.qtyPlanned;
@@ -777,7 +778,7 @@ export default function Production() {
               {selectedProduct ? (
                 <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
                   <div><strong>Entrada inicial:</strong> Backlog</div>
-                  <div><strong>Reserva de materiais:</strong> ao mover para Em produção</div>
+                  <div><strong>Reserva de materiais:</strong> ao mover para Em produção, exceto itens sem controle</div>
                   <div><strong>Materiais na ficha:</strong> {selectedProductBomCount}</div>
                   {selectedProductBomCount === 0 ? (
                     <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
@@ -979,6 +980,16 @@ export default function Production() {
                           <ul className="space-y-1">
                             {items.map((bomItem) => {
                               const material = materialById.get(bomItem.materialId);
+                              if (material?.stockTracked === false) {
+                                return (
+                                  <li key={bomItem.id} className="flex items-center justify-between gap-3">
+                                    <span className="min-w-0 truncate">
+                                      {material?.name ?? `Material #${bomItem.materialId}`}
+                                    </span>
+                                    <span className="shrink-0 text-xs text-muted-foreground">Sem controle</span>
+                                  </li>
+                                );
+                              }
                               const perUnit = Number(bomItem.qtyPerUnit);
                               const total = perUnit * qty;
                               return (

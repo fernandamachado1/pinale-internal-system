@@ -33,7 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { brl } from "@/lib/format";
+import { brl, formatQtyByUom } from "@/lib/format";
 import { useLocation } from "wouter";
 
 function getDefaultRange(): DateRange {
@@ -351,7 +351,7 @@ export default function Dashboard() {
                           : "bg-slate-100 text-slate-600",
                     )}
                   >
-                    {s.stockQty} un
+                    {formatQtyByUom(s.stockQty, "UNIT")} un
                   </span>
                 </div>
               ))

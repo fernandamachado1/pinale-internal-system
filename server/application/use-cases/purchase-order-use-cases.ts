@@ -238,6 +238,7 @@ export class ReceivePurchaseOrderUseCase {
             id: materialRecord.id,
             name: materialRecord.name,
             unitOfMeasure: materialRecord.unitOfMeasure,
+            stockTracked: materialRecord.stockTracked !== false,
             stockQty: Number(materialRecord.stockQty),
             reservedQty: Number(materialRecord.reservedQty ?? 0),
             category: materialRecord.category,
@@ -246,22 +247,24 @@ export class ReceivePurchaseOrderUseCase {
             isActive: materialRecord.isActive === 1,
           });
 
-          material.addStock(qtyNow);
-          await tx.updateMaterialStockQty(material.id, material.toPersistence().stockQty);
+          if (material.stockTracked) {
+            material.addStock(qtyNow);
+            await tx.updateMaterialStockQty(material.id, material.toPersistence().stockQty);
 
-          const movement = InventoryMovement.create({
-            entityType: "MATERIAL",
-            entityId: material.id,
-            direction: "IN",
-            qty: qtyNow,
-            reason: "PURCHASE",
-            referenceType: "MANUAL",
-            metadata: {
-              purchaseOrderId: id,
-              purchaseOrderItemId: item.id,
-            },
-          });
-          await tx.createInventoryMovement(movement.toData());
+            const movement = InventoryMovement.create({
+              entityType: "MATERIAL",
+              entityId: material.id,
+              direction: "IN",
+              qty: qtyNow,
+              reason: "PURCHASE",
+              referenceType: "MANUAL",
+              metadata: {
+                purchaseOrderId: id,
+                purchaseOrderItemId: item.id,
+              },
+            });
+            await tx.createInventoryMovement(movement.toData());
+          }
         }
       }
 
