@@ -23,9 +23,13 @@ import {
 } from "../application/use-cases/product-use-cases";
 import {
   CreateProductionOrderUseCase,
+  DeleteProductionOrderUseCase,
   GetProductionOrderUseCase,
   ListProductionOrdersUseCase,
   MoveProductionOrderUseCase,
+  MarkProductionOrderDeliveredUseCase,
+  UpdateProductionOrderUseCase,
+  UpdateProductionOrderFinancialsUseCase,
 } from "../application/use-cases/production-use-cases";
 import {
   AdjustProducedStockUseCase,
@@ -64,7 +68,11 @@ export class ErpController {
   private readonly listProductionOrdersUseCase: ListProductionOrdersUseCase;
   private readonly getProductionOrderUseCase: GetProductionOrderUseCase;
   private readonly createProductionOrderUseCase: CreateProductionOrderUseCase;
+  private readonly updateProductionOrderUseCase: UpdateProductionOrderUseCase;
   private readonly moveProductionOrderUseCase: MoveProductionOrderUseCase;
+  private readonly updateProductionOrderFinancialsUseCase: UpdateProductionOrderFinancialsUseCase;
+  private readonly markProductionOrderDeliveredUseCase: MarkProductionOrderDeliveredUseCase;
+  private readonly deleteProductionOrderUseCase: DeleteProductionOrderUseCase;
   private readonly completeProductionUseCase: CompleteProductionUseCase;
   private readonly listProducedProductStocksUseCase: ListProducedProductStocksUseCase;
   private readonly listProducedProductStockSummaryUseCase: ListProducedProductStockSummaryUseCase;
@@ -105,7 +113,11 @@ export class ErpController {
     this.listProductionOrdersUseCase = new ListProductionOrdersUseCase(repository);
     this.getProductionOrderUseCase = new GetProductionOrderUseCase(repository);
     this.createProductionOrderUseCase = new CreateProductionOrderUseCase(repository);
+    this.updateProductionOrderUseCase = new UpdateProductionOrderUseCase(repository);
     this.moveProductionOrderUseCase = new MoveProductionOrderUseCase(repository);
+    this.updateProductionOrderFinancialsUseCase = new UpdateProductionOrderFinancialsUseCase(repository);
+    this.markProductionOrderDeliveredUseCase = new MarkProductionOrderDeliveredUseCase(repository);
+    this.deleteProductionOrderUseCase = new DeleteProductionOrderUseCase(repository);
     this.completeProductionUseCase = new CompleteProductionUseCase(repository);
     this.listProducedProductStocksUseCase = new ListProducedProductStocksUseCase(repository);
     this.listProducedProductStockSummaryUseCase = new ListProducedProductStockSummaryUseCase(repository);
@@ -210,15 +222,36 @@ export class ErpController {
     res.status(201).json(await this.createProductionOrderUseCase.execute(input));
   }
 
+  async updateProductionOrder(req: Request, res: Response): Promise<void> {
+    const input = api.productionOrders.update.input.parse(req.body);
+    res.json(await this.updateProductionOrderUseCase.execute(Number(req.params.id), input));
+  }
+
   async moveProductionOrder(req: Request, res: Response): Promise<void> {
     const input = api.productionOrders.move.input.parse(req.body);
     res.json(await this.moveProductionOrderUseCase.execute(Number(req.params.id), input));
+  }
+
+  async updateProductionOrderFinancials(req: Request, res: Response): Promise<void> {
+    const input = api.productionOrders.updateFinancials.input.parse(req.body);
+    res.json(await this.updateProductionOrderFinancialsUseCase.execute(Number(req.params.id), input));
   }
 
   async concludeProductionOrder(req: Request, res: Response): Promise<void> {
     const input = api.productionOrders.conclude.input.parse(req.body);
     await this.completeProductionUseCase.execute(Number(req.params.id), input);
     res.json(await this.getProductionOrderUseCase.execute(Number(req.params.id)));
+  }
+
+  async deliverProductionOrder(req: Request, res: Response): Promise<void> {
+    const input = api.productionOrders.deliver.input.parse(req.body);
+    const deliveredAt = input.deliveredAt ? new Date(input.deliveredAt) : new Date();
+    res.json(await this.markProductionOrderDeliveredUseCase.execute(Number(req.params.id), deliveredAt));
+  }
+
+  async deleteProductionOrder(req: Request, res: Response): Promise<void> {
+    await this.deleteProductionOrderUseCase.execute(Number(req.params.id));
+    res.status(204).send();
   }
 
   async listProducedProductStocks(_req: Request, res: Response): Promise<void> {

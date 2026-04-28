@@ -37,7 +37,7 @@ type PurchaseOrderFormItem = {
 
 type ReceiveLine = {
   id: number;
-  qtyReceiveNow: string;
+  qtyReceiveNow?: string;
   materialId?: number | null;
   materialName?: string;
   qtyOrdered?: string;
@@ -291,6 +291,11 @@ function SortableFormItem({
   );
 }
 
+function isStockTrackedMaterial(materials: Material[] | undefined, materialId: number | null | undefined): boolean {
+  if (!materialId) return true;
+  return materials?.find((material) => material.id === materialId)?.stockTracked !== false;
+}
+
 export default function PurchaseOrders() {
   const { data: orders, isLoading, error, refetch } = usePurchaseOrders();
   const { data: materials } = useMaterials();
@@ -303,6 +308,7 @@ export default function PurchaseOrders() {
   const { canWrite } = useAuthz();
 
   const activeMaterials = useMemo(() => (materials ?? []).filter((m) => m.isActive === 1), [materials]);
+  const materialById = useMemo(() => new Map((materials ?? []).map((material) => [material.id, material])), [materials]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrderWithItems | null>(null);
@@ -513,14 +519,17 @@ export default function PurchaseOrders() {
   const hasReceiveWithoutStock = useMemo(() => {
     if (!receivingOrder) return false;
     return receiveLines.some((line) => {
-      const qty = Number(line.qtyReceiveNow);
-      if (!qty || qty <= 0) return false;
       const orderItem = receivingOrder.items.find((i) => i.id === line.id);
       if (!orderItem) return false;
       const effectiveMaterialId = orderItem.materialId ?? line.materialId ?? null;
+      const material = materialById.get(effectiveMaterialId ?? -1);
+      const isTracked = material?.stockTracked !== false;
+      const qty = Number(line.qtyReceiveNow);
+      if (!qty || qty <= 0) return false;
+      if (!isTracked) return false;
       return !effectiveMaterialId;
     });
-  }, [receiveLines, receivingOrder]);
+  }, [materialById, receiveLines, receivingOrder]);
 
   const submitReceive = () => {
     if (!canWrite) {
@@ -530,13 +539,20 @@ export default function PurchaseOrders() {
     if (!receivingOrder) return;
 
     const linesToSend = receiveLines
-      .map((line) => ({
-        ...line,
-        qtyReceiveNow: line.qtyReceiveNow.trim(),
-        materialName: line.materialName?.trim() ? line.materialName.trim() : undefined,
-        qtyOrdered: line.qtyOrdered?.trim() ? line.qtyOrdered.trim() : undefined,
-      }))
-      .filter((line) => Number(line.qtyReceiveNow) > 0);
+      .map((line) => {
+        const orderItem = receivingOrder.items.find((item) => item.id === line.id);
+        const effectiveMaterialId = orderItem?.materialId ?? line.materialId ?? null;
+        const isTracked = isStockTrackedMaterial(materials, effectiveMaterialId);
+        const qtyReceiveNow = line.qtyReceiveNow?.trim();
+        return {
+          ...line,
+          qtyReceiveNow: qtyReceiveNow ? qtyReceiveNow : isTracked ? "" : undefined,
+          materialName: line.materialName?.trim() ? line.materialName.trim() : undefined,
+          qtyOrdered: line.qtyOrdered?.trim() ? line.qtyOrdered.trim() : undefined,
+          isTracked,
+        };
+      })
+      .filter((line) => line.isTracked ? Number(line.qtyReceiveNow) > 0 : true);
 
     if (linesToSend.length === 0) return;
 
@@ -546,7 +562,7 @@ export default function PurchaseOrders() {
     }
 
     receiveMutation.mutate(
-      { id: receivingOrder.id, data: { items: linesToSend.map((l) => ({ id: l.id, qtyReceiveNow: l.qtyReceiveNow, materialId: l.materialId ?? null, materialName: l.materialName, qtyOrdered: l.qtyOrdered })) } },
+      { id: receivingOrder.id, data: { items: linesToSend.map((l) => ({ id: l.id, qtyReceiveNow: l.isTracked ? l.qtyReceiveNow : undefined, materialId: l.materialId ?? null, materialName: l.materialName, qtyOrdered: l.qtyOrdered })) } },
       {
         onSuccess: () => {
           setReceiveOpen(false);
@@ -560,16 +576,23 @@ export default function PurchaseOrders() {
     if (!receivingOrder) return;
 
     const linesToSend = receiveLines
-      .map((line) => ({
-        ...line,
-        qtyReceiveNow: line.qtyReceiveNow.trim(),
-        materialName: line.materialName?.trim() ? line.materialName.trim() : undefined,
-        qtyOrdered: line.qtyOrdered?.trim() ? line.qtyOrdered.trim() : undefined,
-      }))
-      .filter((line) => Number(line.qtyReceiveNow) > 0);
+      .map((line) => {
+        const orderItem = receivingOrder.items.find((item) => item.id === line.id);
+        const effectiveMaterialId = orderItem?.materialId ?? line.materialId ?? null;
+        const isTracked = isStockTrackedMaterial(materials, effectiveMaterialId);
+        const qtyReceiveNow = line.qtyReceiveNow?.trim();
+        return {
+          ...line,
+          qtyReceiveNow: qtyReceiveNow ? qtyReceiveNow : isTracked ? "" : undefined,
+          materialName: line.materialName?.trim() ? line.materialName.trim() : undefined,
+          qtyOrdered: line.qtyOrdered?.trim() ? line.qtyOrdered.trim() : undefined,
+          isTracked,
+        };
+      })
+      .filter((line) => line.isTracked ? Number(line.qtyReceiveNow) > 0 : true);
 
     receiveMutation.mutate(
-      { id: receivingOrder.id, data: { items: linesToSend.map((l) => ({ id: l.id, qtyReceiveNow: l.qtyReceiveNow, materialId: l.materialId ?? null, materialName: l.materialName, qtyOrdered: l.qtyOrdered })) } },
+      { id: receivingOrder.id, data: { items: linesToSend.map((l) => ({ id: l.id, qtyReceiveNow: l.isTracked ? l.qtyReceiveNow : undefined, materialId: l.materialId ?? null, materialName: l.materialName, qtyOrdered: l.qtyOrdered })) } },
       {
         onSuccess: () => {
           setConfirmReceiveWithoutStockOpen(false);
@@ -749,6 +772,8 @@ export default function PurchaseOrders() {
                   const remaining = Number(item.qtyOrdered) - Number(item.qtyReceived);
                   const currentMaterialId = item.materialId ?? line?.materialId ?? null;
                   const currentMaterialName = item.materialId ? item.materialName : line?.materialName ?? item.materialName;
+                  const currentMaterial = currentMaterialId ? materialById.get(currentMaterialId) : undefined;
+                  const isTracked = currentMaterial?.stockTracked !== false;
                   return (
                     <div key={item.id} className="space-y-3 rounded-lg border p-4">
                       <div className="flex items-start justify-between gap-4">
@@ -757,6 +782,11 @@ export default function PurchaseOrders() {
                           <div className="text-xs text-muted-foreground">
                             Pedido: {item.qtyOrdered} · Já recebido: {item.qtyReceived} · Restante: {remaining.toFixed(3)}
                           </div>
+                          {!isTracked ? (
+                            <div className="mt-1 text-xs font-medium text-muted-foreground">
+                              Sem controle de estoque: recebimento sem quantidade.
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 
@@ -784,13 +814,19 @@ export default function PurchaseOrders() {
 
                         <div className="space-y-2">
                           <Label>Receber agora</Label>
-                          <Input
-                            inputMode="decimal"
-                            value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
-                            onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
-                            placeholder="0,000"
-                            className="h-11 rounded-xl border-border bg-card px-4"
-                          />
+                          {isTracked ? (
+                            <Input
+                              inputMode="decimal"
+                              value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
+                              onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
+                              placeholder="0,000"
+                              className="h-11 rounded-xl border-border bg-card px-4"
+                            />
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                              Não é necessário informar quantidade.
+                            </div>
+                          )}
                         </div>
                       </div>
 

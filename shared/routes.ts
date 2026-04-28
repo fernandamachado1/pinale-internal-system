@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   concludeProductionOrderSchema,
+  markProductionOrderDeliveredSchema,
   registerInitialProducedStockSchema,
   adjustProducedStockSchema,
   createManyMaterialsSchema,
@@ -12,6 +13,8 @@ import {
   receivePurchaseOrderSchema,
   moveProductionOrderSchema,
   insertProductionOrderSchema,
+  updateProductionOrderSchema,
+  updateProductionOrderFinancialsSchema,
   insertSaleSchema,
   reorderPurchaseOrdersSchema,
   updatePurchaseOrderSchema,
@@ -281,10 +284,22 @@ export const api = {
       input: insertProductionOrderSchema,
       responses: { 201: productionOrderWithProductSchema, 400: errorSchemas.badRequest },
     },
+    update: {
+      method: "PUT" as const,
+      path: "/api/production-orders/:id" as const,
+      input: updateProductionOrderSchema,
+      responses: { 200: productionOrderWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
     move: {
       method: "POST" as const,
       path: "/api/production-orders/:id/move" as const,
       input: moveProductionOrderSchema,
+      responses: { 200: productionOrderWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
+    updateFinancials: {
+      method: "PATCH" as const,
+      path: "/api/production-orders/:id/financials" as const,
+      input: updateProductionOrderFinancialsSchema,
       responses: { 200: productionOrderWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
     },
     conclude: {
@@ -292,6 +307,17 @@ export const api = {
       path: "/api/production-orders/:id/conclude" as const,
       input: concludeProductionOrderSchema,
       responses: { 200: productionOrderWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
+    deliver: {
+      method: "POST" as const,
+      path: "/api/production-orders/:id/deliver" as const,
+      input: markProductionOrderDeliveredSchema,
+      responses: { 200: productionOrderWithProductSchema, 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
+    delete: {
+      method: "DELETE" as const,
+      path: "/api/production-orders/:id" as const,
+      responses: { 204: z.void(), 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
     },
   },
 

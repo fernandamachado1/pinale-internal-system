@@ -6,7 +6,18 @@ import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from "@d
 import { CSS } from "@dnd-kit/utilities";
 import type { ProductionOrderWithProduct } from "@shared/schema";
 import { Layout } from "@/components/Layout";
-import { useConcludeProductionOrder, useCreateProductionOrder, useMaterials, useMoveProductionOrder, useProducts, useProductionOrders } from "@/hooks/use-erp";
+import {
+  useDeleteProductionOrder,
+  useConcludeProductionOrder,
+  useCreateProductionOrder,
+  useDeliverProductionOrder,
+  useMaterials,
+  useMoveProductionOrder,
+  useProducts,
+  useProductionOrders,
+  useUpdateProductionOrder,
+  useUpdateProductionOrderFinancials,
+} from "@/hooks/use-erp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,15 +39,18 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, ChevronLeft, ChevronRight, Factory, Loader2, Package, Plus } from "lucide-react";
+import { CalendarIcon, ChevronLeft, ChevronRight, Factory, Loader2, Package, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatQty } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type ProductionKanbanStatus = ProductionOrderWithProduct["status"];
+type ProductionOrderType = ProductionOrderWithProduct["orderType"];
 type ActiveProductionKanbanStatus = Exclude<ProductionKanbanStatus, "DONE">;
 type ProductionBoardState = Record<ProductionKanbanStatus, ProductionOrderWithProduct[]>;
+type ProductionOrderPaymentStatus = "PENDING" | "PARTIAL" | "PAID";
+type ProductionOrderDeliveryStatus = "PENDING" | "DELIVERED";
 
 const columnOrder: ProductionKanbanStatus[] = ["BACKLOG", "IN_PROGRESS", "DONE"];
 
@@ -83,6 +97,60 @@ const collisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
   return pointerCollisions.length > 0 ? pointerCollisions : closestCorners(args);
 };
+
+const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
+
+function formatCurrency(value: number) {
+  return currencyFormatter.format(value);
+}
+
+function parseCurrencyInput(value: string) {
+  const normalizedValue = value.replace(/[^\d,.-]/g, "").trim();
+  if (!normalizedValue) return NaN;
+
+  if (normalizedValue.includes(",") && normalizedValue.includes(".")) {
+    return Number(normalizedValue.replace(/\./g, "").replace(",", "."));
+  }
+
+  if (normalizedValue.includes(",")) {
+    return Number(normalizedValue.replace(",", "."));
+  }
+
+  return Number(normalizedValue);
+}
+
+function formatCurrencyInputValue(value: string | number) {
+  const numericValue = typeof value === "number" ? value : parseCurrencyInput(value);
+  if (!Number.isFinite(numericValue)) return "";
+  return formatCurrency(numericValue);
+}
+
+function formatCurrencyFromInput(value: string) {
+  const numericValue = parseCurrencyInput(value);
+  return Number.isFinite(numericValue) ? formatCurrency(numericValue) : "-";
+}
+
+function normalizeCurrencyInput(value: string) {
+  const numericValue = parseCurrencyInput(value);
+  return Number.isFinite(numericValue) ? formatCurrency(numericValue) : "";
+}
+
+function getPaymentStatus(order: ProductionOrderWithProduct): ProductionOrderPaymentStatus | null {
+  if (order.orderType !== "ENCOMENDA") return null;
+  const totalDue = Number(order.product.price ?? 0) * Number(order.qtyPlanned ?? 0);
+  const amountPaid = Number(order.amountPaid ?? 0);
+  if (totalDue <= 0) return "PENDING";
+  if (amountPaid <= 0) return "PENDING";
+  if (amountPaid + 1e-9 >= totalDue) return "PAID";
+  return "PARTIAL";
+}
+
+function getDeliveryStatus(order: ProductionOrderWithProduct): ProductionOrderDeliveryStatus {
+  return order.deliveredAt ? "DELIVERED" : "PENDING";
+}
 
 function createBoardState(orders: ProductionOrderWithProduct[] | undefined): ProductionBoardState {
   const emptyBoard: ProductionBoardState = {
@@ -222,10 +290,12 @@ function computeStartStockShortages(
 function ProductionCardBody({
   order,
   moveControls,
+  orderActions,
   statusHint,
 }: {
   order: ProductionOrderWithProduct;
   moveControls?: ReactNode;
+  orderActions?: ReactNode;
   statusHint?: ReactNode;
 }) {
   const dueDate = order.dueAt ? new Date(order.dueAt as any) : null;
@@ -233,9 +303,10 @@ function ProductionCardBody({
   const isOverdue = order.status !== "DONE" && daysToDue !== null && daysToDue < 0;
   const isDueSoon = order.status !== "DONE" && daysToDue !== null && daysToDue >= 0 && daysToDue <= 3;
   const notes = order.customizationNotes?.trim();
-  const hasMeasure = order.measureCm !== null && order.measureCm !== undefined && Number.isFinite(Number(order.measureCm));
-  const measureLabel = hasMeasure ? `${Number(order.measureCm).toLocaleString("pt-BR")} cm` : null;
-  const description = [notes, measureLabel ? `Medida: ${measureLabel}` : null].filter(Boolean).join(" | ");
+  const description = notes ?? "";
+  const paymentStatus = getPaymentStatus(order);
+  const deliveryStatus = getDeliveryStatus(order);
+  const isEncomenda = order.orderType === "ENCOMENDA";
 
   return (
     <>
@@ -245,6 +316,35 @@ function ProductionCardBody({
           <div className="text-xs text-muted-foreground sm:text-sm">{order.product.name}</div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+          {isEncomenda ? (
+            <Badge className="border-transparent bg-purple-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">
+              Encomenda
+            </Badge>
+          ) : null}
+          {paymentStatus ? (
+            <Badge
+              className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${
+                paymentStatus === "PAID"
+                  ? "border-transparent bg-emerald-600 text-white"
+                  : paymentStatus === "PARTIAL"
+                    ? "border-transparent bg-amber-400 text-amber-950"
+                    : "border-transparent bg-zinc-500 text-white"
+              }`}
+            >
+              {paymentStatus === "PAID" ? "Pago" : paymentStatus === "PARTIAL" ? "Parcial" : "Pendente"}
+            </Badge>
+          ) : null}
+          {isEncomenda ? (
+            <Badge
+              className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${
+                deliveryStatus === "DELIVERED"
+                  ? "border-transparent bg-cyan-600 text-white"
+                  : "border-transparent bg-zinc-500 text-white"
+              }`}
+            >
+              {deliveryStatus === "DELIVERED" ? "Entregue" : "Pendente"}
+            </Badge>
+          ) : null}
           {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
           {isOverdue ? <Badge className="border-transparent bg-red-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">Vencida</Badge> : null}
           {moveControls}
@@ -261,7 +361,23 @@ function ProductionCardBody({
             <strong>Descrição:</strong> {description}
           </div>
         ) : null}
+        {isEncomenda ? (
+          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3 text-muted-foreground">
+            <div>
+              <strong>Valor do produto:</strong> {formatCurrency(Number(order.product.price ?? 0) * Number(order.qtyPlanned ?? 0))}
+            </div>
+            <div>
+              <strong>Pago:</strong> {formatCurrency(Number(order.amountPaid ?? 0))}
+            </div>
+            {order.deliveredAt ? (
+              <div>
+                <strong>Entregue em:</strong> {format(new Date(order.deliveredAt as any), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {statusHint ? <div>{statusHint}</div> : null}
+        {orderActions ? <div className="pt-1">{orderActions}</div> : null}
         <div className="text-[11px] text-muted-foreground">
           <span className="sm:hidden">Criada {format(new Date(order.createdAt), "dd/MM", { locale: ptBR })}</span>
           <span className="hidden sm:inline">
@@ -277,11 +393,15 @@ function ProductionCard({
   order,
   dragDisabled,
   moveControls,
+  orderActions,
+  onClick,
   statusHint,
 }: {
   order: ProductionOrderWithProduct;
   dragDisabled: boolean;
   moveControls?: ReactNode;
+  orderActions?: ReactNode;
+  onClick?: () => void;
   statusHint?: ReactNode;
 }) {
   const theme = columnTheme[order.status];
@@ -308,13 +428,15 @@ function ProductionCard({
     <article
       ref={setNodeRef}
       style={style}
-      className={`min-h-[92px] rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`min-h-[92px] rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${onClick ? "cursor-pointer" : ""} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
       aria-label={`OP ${order.id}`}
       {...dragProps}
+      onClick={onClick}
     >
       <ProductionCardBody
         order={order}
         moveControls={moveControls}
+        orderActions={orderActions}
         statusHint={statusHint}
       />
     </article>
@@ -380,6 +502,10 @@ export default function Production() {
   const createMutation = useCreateProductionOrder();
   const moveMutation = useMoveProductionOrder();
   const concludeMutation = useConcludeProductionOrder();
+  const updateOrderMutation = useUpdateProductionOrder();
+  const updateFinancialsMutation = useUpdateProductionOrderFinancials();
+  const deliverMutation = useDeliverProductionOrder();
+  const deleteOrderMutation = useDeleteProductionOrder();
   const { canWrite } = useAuthz();
   const isMobile = useIsMobile();
 
@@ -398,14 +524,22 @@ export default function Production() {
     orderedIds: number[];
   } | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<ProductionOrderWithProduct | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<ProductionOrderWithProduct | null>(null);
+  const [orderType, setOrderType] = useState<ProductionOrderType>("NORMAL");
   const [productId, setProductId] = useState("");
   const [qtyPlanned, setQtyPlanned] = useState("1");
   const [customizationNotes, setCustomizationNotes] = useState("");
+  const [amountPaid, setAmountPaid] = useState("");
   const [dueAt, setDueAt] = useState<Date | undefined>(undefined);
+  const [paymentDialogOrder, setPaymentDialogOrder] = useState<ProductionOrderWithProduct | null>(null);
+  const [paymentDialogAmountPaid, setPaymentDialogAmountPaid] = useState("");
+  const [deliveryDialogOrder, setDeliveryDialogOrder] = useState<ProductionOrderWithProduct | null>(null);
   const [activeDropTarget, setActiveDropTarget] = useState<ProductionKanbanStatus | null>(null);
   const [activeOverId, setActiveOverId] = useState<string | null>(null);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const dragStartRectRef = useRef<{ left: number; width: number } | null>(null);
+  const suppressCardClickRef = useRef(false);
   useEffect(() => {
     if (pendingCompletion !== null) return;
     if (pendingStart !== null) return;
@@ -418,18 +552,74 @@ export default function Production() {
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 6 } }),
   );
 
-  const selectedProduct = useMemo(() => activeProducts.find((product) => String(product.id) === productId), [activeProducts, productId]);
+  const formProducts = useMemo(() => {
+    if (!editingOrder) return activeProducts;
+    const currentProduct = products?.find((product) => product.id === editingOrder.productId);
+    if (!currentProduct) return activeProducts;
+    if (activeProducts.some((product) => product.id === currentProduct.id)) return activeProducts;
+    return [...activeProducts, currentProduct];
+  }, [activeProducts, editingOrder, products]);
+  const selectedProductForForm = useMemo(
+    () => formProducts.find((product) => String(product.id) === productId),
+    [formProducts, productId],
+  );
+  const selectedProduct = selectedProductForForm;
   const activeOrder = activeOrderId !== null ? findOrder(boardState, activeOrderId) : null;
-  const interactionsDisabled = moveMutation.isPending || concludeMutation.isPending || pendingCompletion !== null || pendingStart !== null;
+  const interactionsDisabled =
+    moveMutation.isPending ||
+    concludeMutation.isPending ||
+    updateOrderMutation.isPending ||
+    updateFinancialsMutation.isPending ||
+    deliverMutation.isPending ||
+    deleteOrderMutation.isPending ||
+    pendingCompletion !== null ||
+    pendingStart !== null;
 
   const productById = useMemo(() => new Map((products ?? []).map((product) => [product.id, product])), [products]);
   const materialById = useMemo(() => new Map((materials ?? []).map((material) => [material.id, material])), [materials]);
   const selectedProductBomCount = selectedProduct?.bomItems?.length ?? 0;
+  const selectedProductIdValue = Number(productId);
+  const qtyPlannedValue = Number(qtyPlanned);
+  const isCoreOrderChange =
+    editingOrder === null ||
+    editingOrder.productId !== selectedProductIdValue ||
+    editingOrder.qtyPlanned !== qtyPlannedValue ||
+    editingOrder.orderType !== orderType;
 
-  const handleCreate = (event: React.FormEvent) => {
+  const resetCreateForm = () => {
+    setOrderType("NORMAL");
+    setProductId("");
+    setQtyPlanned("1");
+    setCustomizationNotes("");
+    setAmountPaid("");
+    setDueAt(undefined);
+  };
+
+  const populateOrderForm = (order: ProductionOrderWithProduct) => {
+    setEditingOrder(order);
+    setOrderType(order.orderType);
+    setProductId(String(order.productId));
+    setQtyPlanned(String(order.qtyPlanned));
+    setCustomizationNotes(order.customizationNotes ?? "");
+    setAmountPaid(formatCurrencyInputValue(Number(order.amountPaid ?? 0)));
+    setDueAt(order.dueAt ? new Date(order.dueAt) : undefined);
+  };
+
+  const openCreateForm = () => {
+    setEditingOrder(null);
+    resetCreateForm();
+    setIsCreateOpen(true);
+  };
+
+  const openEditForm = (order: ProductionOrderWithProduct) => {
+    populateOrderForm(order);
+    setIsCreateOpen(true);
+  };
+
+  const handleOrderSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!canWrite) {
-      toast({ title: "Sem permissão", description: "Seu usuário não pode criar ordens de produção.", variant: "destructive" });
+      toast({ title: "Sem permissão", description: "Seu usuário não pode criar ou editar ordens de produção.", variant: "destructive" });
       return;
     }
     const qtyValue = Number(qtyPlanned);
@@ -437,7 +627,7 @@ export default function Production() {
       toast({ title: "Dados inválidos", description: "Informe uma quantidade planejada maior que zero.", variant: "destructive" });
       return;
     }
-    if (selectedProductBomCount === 0) {
+    if (isCoreOrderChange && selectedProductBomCount === 0) {
       toast({
         title: "Produto sem ficha técnica",
         description: "Não é possível criar OP sem uma ficha técnica ativa para este produto.",
@@ -446,50 +636,84 @@ export default function Production() {
       return;
     }
 
-    const shortages = computeStartStockShortages({
-      productBomItems: selectedProduct?.bomItems ?? [],
-      qtyPlanned: qtyValue,
-      materialById,
-    });
-    if (shortages.length > 0) {
-      const head = shortages.slice(0, 3)
-        .map((s) => `${s.name}: precisa ${formatQty(s.needed)}, disponível ${formatQty(s.available)}`)
-        .join(" · ");
-      const tail = shortages.length > 3 ? ` · +${shortages.length - 3} material(is)` : "";
-      toast({
-        title: "Estoque insuficiente",
-        description: `${head}${tail}`,
-        variant: "destructive",
+    const paidValue = amountPaid.trim() ? parseCurrencyInput(amountPaid) : 0;
+    if (orderType === "ENCOMENDA") {
+      if (!Number.isFinite(paidValue) || paidValue < 0) {
+        toast({ title: "Dados inválidos", description: "Informe um sinal válido.", variant: "destructive" });
+        return;
+      }
+      const productValue = Number(selectedProduct?.price ?? 0) * qtyValue;
+      if (paidValue - productValue > 1e-9) {
+        toast({ title: "Dados inválidos", description: "O sinal não pode ser maior que o valor do produto.", variant: "destructive" });
+        return;
+      }
+    }
+
+    if (isCoreOrderChange) {
+      const shortages = computeStartStockShortages({
+        productBomItems: selectedProduct?.bomItems ?? [],
+        qtyPlanned: qtyValue,
+        materialById,
       });
-      return;
+      if (shortages.length > 0) {
+        const head = shortages
+          .slice(0, 3)
+          .map((s) => `${s.name}: precisa ${formatQty(s.needed)}, disponível ${formatQty(s.available)}`)
+          .join(" · ");
+        const tail = shortages.length > 3 ? ` · +${shortages.length - 3} material(is)` : "";
+        toast({
+          title: "Estoque insuficiente",
+          description: `${head}${tail}`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     const dueAtIso = dueAt
       ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 12, 0, 0, 0).toISOString()
       : null;
-    createMutation.mutate(
-      {
-        productId: Number(productId),
-        qtyPlanned: qtyValue,
-        customizationNotes: customizationNotes.trim() || null,
-        salesChannel: "ONLINE",
-        dueAt: dueAtIso,
-      },
-      {
-        onSuccess: () => {
-          setIsCreateOpen(false);
-          setProductId("");
-          setQtyPlanned("1");
-          setCustomizationNotes("");
-          setDueAt(undefined);
+
+    const payload = {
+      productId: selectedProductIdValue,
+      qtyPlanned: qtyValue,
+      orderType,
+      customizationNotes: customizationNotes.trim() || null,
+      amountPaid: orderType === "ENCOMENDA" ? paidValue : 0,
+      salesChannel: "ONLINE" as const,
+      dueAt: dueAtIso,
+    };
+
+    if (editingOrder) {
+      updateOrderMutation.mutate(
+        {
+          id: editingOrder.id,
+          data: payload,
         },
+        {
+          onSuccess: () => {
+            setIsCreateOpen(false);
+            setEditingOrder(null);
+            resetCreateForm();
+          },
+        },
+      );
+      return;
+    }
+
+    createMutation.mutate(payload, {
+      onSuccess: () => {
+        setIsCreateOpen(false);
+        setEditingOrder(null);
+        resetCreateForm();
       },
-    );
+    });
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     const nextOrderId = Number(event.active.id);
     if (!Number.isNaN(nextOrderId)) {
+      suppressCardClickRef.current = true;
       setActiveOrderId(nextOrderId);
       const activeRect = event.active.rect.current as { initial?: { left: number; width: number } } | null;
       dragStartRectRef.current = activeRect?.initial
@@ -597,6 +821,9 @@ export default function Production() {
     setActiveDropTarget(null);
     setActiveOverId(null);
     dragStartRectRef.current = null;
+    window.setTimeout(() => {
+      suppressCardClickRef.current = false;
+    }, 0);
     const { active, over } = event;
     if (!over) return;
 
@@ -690,6 +917,70 @@ export default function Production() {
     );
   };
 
+  const openPaymentDialog = (order: ProductionOrderWithProduct) => {
+    setPaymentDialogOrder(order);
+    setPaymentDialogAmountPaid(formatCurrencyInputValue(Number(order.amountPaid ?? 0)));
+  };
+
+  const handlePaymentSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!paymentDialogOrder) return;
+
+    const paidValue = paymentDialogAmountPaid.trim() ? parseCurrencyInput(paymentDialogAmountPaid) : 0;
+
+    if (!Number.isFinite(paidValue) || paidValue < 0) {
+      toast({ title: "Dados inválidos", description: "Informe um valor pago válido.", variant: "destructive" });
+      return;
+    }
+    const productValue = Number(paymentDialogOrder.product.price ?? 0) * Number(paymentDialogOrder.qtyPlanned ?? 0);
+    if (paidValue - productValue > 1e-9) {
+      toast({ title: "Dados inválidos", description: "O valor pago não pode ser maior que o valor do produto.", variant: "destructive" });
+      return;
+    }
+
+    updateFinancialsMutation.mutate(
+      {
+        id: paymentDialogOrder.id,
+        data: {
+          amountPaid: paidValue,
+        },
+      },
+      {
+        onSuccess: () => setPaymentDialogOrder(null),
+      },
+    );
+  };
+
+  const openDeliveryDialog = (order: ProductionOrderWithProduct) => {
+    setDeliveryDialogOrder(order);
+  };
+
+  const handleDeliveryConfirm = () => {
+    if (!deliveryDialogOrder) return;
+    deliverMutation.mutate(
+      { id: deliveryDialogOrder.id, data: {} },
+      {
+        onSuccess: () => setDeliveryDialogOrder(null),
+      },
+    );
+  };
+
+  const openDeleteDialog = (order: ProductionOrderWithProduct) => {
+    setOrderToDelete(order);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!orderToDelete) return;
+    deleteOrderMutation.mutate(orderToDelete.id, {
+      onSuccess: () => {
+        setOrderToDelete(null);
+        setIsCreateOpen(false);
+        setEditingOrder(null);
+        resetCreateForm();
+      },
+    });
+  };
+
   const renderInsertionMarker = (key: string) => (
     <div
       key={key}
@@ -707,26 +998,61 @@ export default function Production() {
           Ordens de Produção
         </h1>
 
-        <ResponsiveDialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <ResponsiveDialog
+          open={isCreateOpen}
+          onOpenChange={(open) => {
+            setIsCreateOpen(open);
+            if (!open) {
+              setEditingOrder(null);
+              resetCreateForm();
+            }
+          }}
+        >
           <ResponsiveDialogTrigger asChild>
-            <Button disabled={!canWrite || createMutation.isPending}>
+            <Button disabled={!canWrite || createMutation.isPending || updateOrderMutation.isPending} onClick={openCreateForm}>
               <Plus className="mr-2 h-4 w-4" /> Nova OP
             </Button>
           </ResponsiveDialogTrigger>
           <ResponsiveDialogContent className="max-w-2xl border-border bg-card text-card-foreground shadow-2xl">
             <ResponsiveDialogHeader className="border-b border-border px-4 pb-4 pt-5 md:px-6">
-              <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Criar Ordem de Produção</ResponsiveDialogTitle>
-              <ResponsiveDialogDescription className="text-sm text-foreground/75">A nova OP entra no backlog. Os materiais serão reservados ao mover para Em produção e consumidos ao concluir.</ResponsiveDialogDescription>
+              <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">
+                {editingOrder ? `Editar Ordem de Produção #${editingOrder.id}` : "Criar Ordem de Produção"}
+              </ResponsiveDialogTitle>
+              <ResponsiveDialogDescription className="text-sm text-foreground/75">
+                {editingOrder
+                  ? "Ajuste os dados da OP. Depois de entrar em produção, produto, quantidade e tipo ficam travados."
+                  : "A nova OP entra no backlog. Os materiais serão reservados ao mover para Em produção e consumidos ao concluir."}
+              </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
 
-            <form onSubmit={handleCreate} className="flex min-h-[320px] flex-col">
+            <form onSubmit={handleOrderSubmit} className="flex min-h-[320px] flex-col">
               <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 md:px-6">
                 <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <Select
+                    value={orderType}
+                    onValueChange={(value) => setOrderType(value as ProductionOrderType)}
+                    disabled={editingOrder !== null && editingOrder.status !== "BACKLOG"}
+                  >
+                    <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NORMAL">Normal</SelectItem>
+                      <SelectItem value="ENCOMENDA">Encomenda</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label>Produto</Label>
-                  <Select value={productId} onValueChange={setProductId}>
+                  <Select
+                    value={productId}
+                    onValueChange={setProductId}
+                    disabled={editingOrder !== null && editingOrder.status !== "BACKLOG"}
+                  >
                     <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
-                      {activeProducts.map((product) => (
+                      {formProducts.map((product) => (
                         <SelectItem key={product.id} value={String(product.id)}>{product.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -734,70 +1060,144 @@ export default function Production() {
                 </div>
                 <div className="space-y-2">
                   <Label>Quantidade planejada</Label>
-                  <Input type="number" min="1" value={qtyPlanned} onChange={(e) => setQtyPlanned(e.target.value)} className="h-11 rounded-xl border-border bg-card px-4" />
+                  <Input
+                    type="number"
+                    min="1"
+                    value={qtyPlanned}
+                    onChange={(e) => setQtyPlanned(e.target.value)}
+                    disabled={editingOrder !== null && editingOrder.status !== "BACKLOG"}
+                    className="h-11 rounded-xl border-border bg-card px-4"
+                  />
                 </div>
+
+                {orderType === "ENCOMENDA" ? (
+                  <div className="rounded-2xl border border-purple-500/20 bg-purple-500/5 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">Dados da encomenda</div>
+                        <div className="text-xs text-muted-foreground">O valor vem do preço do produto; o sinal continua opcional.</div>
+                      </div>
+                      <Badge className="border-transparent bg-purple-600 text-white">Encomenda</Badge>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <Label>Sinal recebido</Label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={amountPaid}
+                        onChange={(e) => setAmountPaid(normalizeCurrencyInput(e.target.value))}
+                        placeholder="Opcional"
+                        className="h-11 rounded-xl border-border bg-card px-4"
+                      />
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <Label>Descrição (opcional)</Label>
                   <Textarea
                     value={customizationNotes}
                     onChange={(e) => setCustomizationNotes(e.target.value)}
-                    placeholder="Ex.: carteira Cirrus para RG, medida 105 cm, mescla de cores..."
+                    placeholder="Ex.: carteira Cirrus para RG, mescla de cores..."
                     rows={3}
                     maxLength={500}
                     className="rounded-xl border-border bg-card px-4 py-3"
                   />
                 </div>
 
-              <div className="space-y-2">
-                <Label>Prazo (opcional)</Label>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={`h-11 justify-start rounded-xl border-border bg-card px-4 text-left font-normal hover:bg-card ${!dueAt ? "text-muted-foreground" : ""}`}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar data"}
+                <div className="space-y-2">
+                  <Label>Prazo (opcional)</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={`h-11 justify-start rounded-xl border-border bg-card px-4 text-left font-normal hover:bg-card ${!dueAt ? "text-muted-foreground" : ""}`}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar data"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={dueAt} onSelect={setDueAt} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                    {dueAt ? (
+                      <Button type="button" variant="ghost" onClick={() => setDueAt(undefined)}>
+                        Limpar
                       </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={dueAt} onSelect={setDueAt} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                  {dueAt ? (
-                    <Button type="button" variant="ghost" onClick={() => setDueAt(undefined)}>
-                      Limpar
+                    ) : null}
+                  </div>
+                </div>
+
+                {selectedProduct ? (
+                  <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
+                    <div><strong>Entrada inicial:</strong> Backlog</div>
+                    <div><strong>Reserva de materiais:</strong> ao mover para Em produção, exceto itens sem controle</div>
+                    <div><strong>Materiais na ficha:</strong> {selectedProductBomCount}</div>
+                    {selectedProductBomCount === 0 ? (
+                      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
+                        Este produto não pode gerar OP até ter uma ficha técnica ativa.
+                      </div>
+                    ) : null}
+                    <div><strong>Tipo:</strong> {orderType === "ENCOMENDA" ? "Encomenda" : "Normal"}</div>
+                    <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
+                    {orderType === "ENCOMENDA" ? (
+                      <>
+                        <div><strong>Valor do produto:</strong> {selectedProduct ? formatCurrency(Number(selectedProduct.price ?? 0) * Number(qtyPlanned || 0)) : "-"}</div>
+                        <div><strong>Sinal:</strong> {amountPaid.trim() ? formatCurrencyFromInput(amountPaid) : "-"}</div>
+                      </>
+                    ) : null}
+                    <div><strong>Descrição:</strong> {customizationNotes.trim() || "-"}</div>
+                    <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
+                  </div>
+                ) : null}
+              </div>
+              <ResponsiveDialogFooter className="justify-between gap-2 border-t border-border px-4 py-4 md:px-6">
+                <div className="flex items-center gap-2">
+                  {editingOrder ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => openDeleteDialog(editingOrder)}
+                      disabled={editingOrder.status !== "BACKLOG" || Number(editingOrder.amountPaid ?? 0) > 0 || deleteOrderMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Excluir
                     </Button>
                   ) : null}
-                </div>
-              </div>
-
-              {selectedProduct ? (
-                <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
-                  <div><strong>Entrada inicial:</strong> Backlog</div>
-                  <div><strong>Reserva de materiais:</strong> ao mover para Em produção, exceto itens sem controle</div>
-                  <div><strong>Materiais na ficha:</strong> {selectedProductBomCount}</div>
-                  {selectedProductBomCount === 0 ? (
-                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
-                      Este produto não pode gerar OP até ter uma ficha técnica ativa.
-                    </div>
+                  {editingOrder && (editingOrder.status !== "BACKLOG" || Number(editingOrder.amountPaid ?? 0) > 0) ? (
+                    <span className="text-xs text-muted-foreground">
+                      Só é possível excluir ordens em backlog sem sinal.
+                    </span>
                   ) : null}
-                  <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
-                  <div><strong>Descrição:</strong> {customizationNotes.trim() || "-"}</div>
-                  <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
                 </div>
-              ) : null}
-              </div>
-              <ResponsiveDialogFooter className="justify-end gap-2 border-t border-border px-4 py-4 md:px-6">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending || !productId || selectedProductBomCount === 0}>
-                  {createMutation.isPending ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando...</>
-                  ) : "Criar"}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsCreateOpen(false);
+                      setEditingOrder(null);
+                      resetCreateForm();
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      createMutation.isPending ||
+                      updateOrderMutation.isPending ||
+                      !productId ||
+                      (isCoreOrderChange && selectedProductBomCount === 0)
+                    }
+                  >
+                    {createMutation.isPending || updateOrderMutation.isPending ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {editingOrder ? "Salvando..." : "Criando..."}</>
+                    ) : editingOrder ? "Salvar" : "Criar"}
+                  </Button>
+                </div>
               </ResponsiveDialogFooter>
             </form>
           </ResponsiveDialogContent>
@@ -843,7 +1243,7 @@ export default function Production() {
                 <UiCardDescription>Crie uma ordem para acompanhar backlog, produção e conclusão.</UiCardDescription>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => setIsCreateOpen(true)}>
+                <Button onClick={openCreateForm}>
                   <Plus className="mr-2 h-4 w-4" /> Nova OP
                 </Button>
               </CardContent>
@@ -895,7 +1295,8 @@ export default function Production() {
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8 sm:w-8"
                                   aria-label="Mover para etapa anterior"
                                   disabled={!previousStatus || interactionsDisabled}
-                                  onClick={() => {
+                                  onClick={(event) => {
+                                    event.stopPropagation();
                                     if (!previousStatus) return;
                                     moveOrderWithConfirmation(order.id, previousStatus);
                                   }}
@@ -907,13 +1308,46 @@ export default function Production() {
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8 sm:w-8"
                                   aria-label="Mover para próxima etapa"
                                   disabled={!nextStatus || interactionsDisabled}
-                                  onClick={() => {
+                                  onClick={(event) => {
+                                    event.stopPropagation();
                                     if (!nextStatus) return;
                                     moveOrderWithConfirmation(order.id, nextStatus as any);
                                   }}
                                 >
                                   <ChevronRight className="h-4 w-4" />
                                 </button>
+                              </div>
+                            ) : null;
+                          const orderActions =
+                            canWrite && order.orderType === "ENCOMENDA" ? (
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 rounded-lg border-border bg-card px-3 text-xs"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openPaymentDialog(order);
+                                  }}
+                                  disabled={interactionsDisabled}
+                                >
+                                  Registrar pagamento
+                                </Button>
+                                {order.status === "DONE" && !order.deliveredAt ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-8 rounded-lg px-3 text-xs"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openDeliveryDialog(order);
+                                    }}
+                                    disabled={interactionsDisabled}
+                                  >
+                                    Marcar entregue
+                                  </Button>
+                                ) : null}
                               </div>
                             ) : null;
 
@@ -923,6 +1357,11 @@ export default function Production() {
                               order={order}
                               dragDisabled={interactionsDisabled || order.status === "DONE" || isMobile}
                               moveControls={arrowControls}
+                              orderActions={orderActions}
+                              onClick={() => {
+                                if (suppressCardClickRef.current) return;
+                                openEditForm(order);
+                              }}
                               statusHint={statusHint}
                             />,
                           );
@@ -1048,6 +1487,113 @@ export default function Production() {
               {concludeMutation.isPending ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Concluindo...</>
               ) : "Concluir OP"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <ResponsiveDialog
+        open={paymentDialogOrder !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPaymentDialogOrder(null);
+            setPaymentDialogAmountPaid("");
+          }
+        }}
+      >
+        <ResponsiveDialogContent className="max-w-xl border-border bg-card text-card-foreground shadow-2xl">
+          <ResponsiveDialogHeader className="border-b border-border px-4 pb-4 pt-5 md:px-6">
+            <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">
+              Registrar pagamento
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription className="text-sm text-foreground/75">
+              Atualize o sinal da encomenda sem depender da produção.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+
+          <form onSubmit={handlePaymentSubmit} className="flex min-h-[220px] flex-col">
+            <div className="flex-1 space-y-4 px-4 py-4 md:px-6">
+              <div className="space-y-2">
+                <Label>Valor pago</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={paymentDialogAmountPaid}
+                  onChange={(e) => setPaymentDialogAmountPaid(normalizeCurrencyInput(e.target.value))}
+                  className="h-11 rounded-xl border-border bg-card px-4"
+                />
+              </div>
+            </div>
+            <ResponsiveDialogFooter className="justify-end gap-2 border-t border-border px-4 py-4 md:px-6">
+              <Button type="button" variant="outline" onClick={() => setPaymentDialogOrder(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={updateFinancialsMutation.isPending}>
+                {updateFinancialsMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+                ) : "Salvar"}
+              </Button>
+            </ResponsiveDialogFooter>
+          </form>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+
+      <AlertDialog
+        open={deliveryDialogOrder !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeliveryDialogOrder(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Marcar encomenda como entregue</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deliveryDialogOrder ? (
+                <>
+                  Confirmar entrega da OP <strong>#{deliveryDialogOrder.id}</strong> para{" "}
+                  <strong>{deliveryDialogOrder.product.name}</strong>?
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeliveryDialogOrder(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeliveryConfirm} disabled={deliverMutation.isPending}>
+              {deliverMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Marcando...</>
+              ) : "Marcar entregue"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={orderToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setOrderToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir OP #{orderToDelete?.id ?? ""}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {orderToDelete ? (
+                <>
+                  Excluir <strong>{orderToDelete.product.name}</strong> da lista? Essa ação só é permitida para ordens em backlog sem sinal registrado.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOrderToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleteOrderMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteOrderMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Excluindo...</>
+              ) : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

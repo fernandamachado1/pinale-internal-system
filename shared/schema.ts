@@ -37,6 +37,7 @@ export type ProductCategory = z.infer<typeof productCategorySchema>;
 export const materialCategoryEnum = pgEnum("material_category", ["PACKAGING", "NOTIONS", "RAW_MATERIAL"]);
 export const unitOfMeasureEnum = pgEnum("unit_of_measure", ["UNIT", "SQUARE_METER", "METER"]);
 export const productionOrderStatusEnum = pgEnum("production_order_status", ["BACKLOG", "IN_PROGRESS", "DONE"]);
+export const productionOrderTypeEnum = pgEnum("production_order_type", ["NORMAL", "ENCOMENDA"]);
 export const productionOrderSalesChannelEnum = pgEnum("production_order_sales_channel", ["ONLINE", "PHYSICAL"]);
 export const movementEntityTypeEnum = pgEnum("movement_entity_type", ["PRODUCT", "MATERIAL"]);
 export const movementDirectionEnum = pgEnum("movement_direction", ["IN", "OUT"]);
@@ -130,9 +131,11 @@ export const productionOrders = pgTable("production_orders", {
   orgId: uuid("org_id").notNull(),
   productId: integer("product_id").notNull(),
   bomId: integer("bom_id"),
+  orderType: productionOrderTypeEnum("order_type").notNull().default("NORMAL"),
   qtyPlanned: integer("qty_planned").notNull(),
-  measureCm: numeric("measure_cm", { precision: 8, scale: 2 }),
   customizationNotes: text("customization_notes"),
+  amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }).notNull().default("0"),
+  deliveredAt: timestamp("delivered_at"),
   status: productionOrderStatusEnum("status").notNull().default("BACKLOG"),
   salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
   dueAt: timestamp("due_at"),
@@ -336,11 +339,37 @@ const saleChannelEnum = z.enum(["ONLINE", "PHYSICAL"]);
 export const insertProductionOrderSchema = z.object({
   productId: z.number().int().positive(),
   bomId: z.number().int().positive().optional(),
+  orderType: z.enum(["NORMAL", "ENCOMENDA"]).default("NORMAL"),
   qtyPlanned: z.number().int().positive(),
-  measureCm: z.number().positive().max(9999).optional().nullable(),
   customizationNotes: z.string().trim().max(500).optional().nullable(),
+  amountPaid: z.number().min(0).default(0),
   salesChannel: saleChannelEnum,
   dueAt: z.string().datetime().optional().nullable(),
+}).superRefine((value, ctx) => {
+  if (value.orderType === "ENCOMENDA" && value.amountPaid < 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "amountPaid cannot be negative",
+      path: ["amountPaid"],
+    });
+  }
+});
+
+export const updateProductionOrderSchema = z.object({
+  productId: z.number().int().positive().optional(),
+  qtyPlanned: z.number().int().positive().optional(),
+  orderType: z.enum(["NORMAL", "ENCOMENDA"]).optional(),
+  customizationNotes: z.string().trim().max(500).optional().nullable(),
+  amountPaid: z.number().min(0).optional(),
+  dueAt: z.string().datetime().optional().nullable(),
+});
+
+export const updateProductionOrderFinancialsSchema = z.object({
+  amountPaid: z.number().min(0),
+});
+
+export const markProductionOrderDeliveredSchema = z.object({
+  deliveredAt: z.string().datetime().optional().nullable(),
 });
 
 export const moveProductionOrderSchema = z.object({
@@ -409,6 +438,7 @@ export type Bom = typeof boms.$inferSelect;
 export type BomItem = typeof bomItems.$inferSelect;
 export type ProducedProductStock = typeof producedProductStocks.$inferSelect;
 export type ProductionOrder = typeof productionOrders.$inferSelect;
+export type ProductionOrderType = "NORMAL" | "ENCOMENDA";
 export type Sale = typeof sales.$inferSelect;
 export type SaleItem = typeof saleItems.$inferSelect;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
@@ -428,6 +458,9 @@ export type UpdateProductInput = z.input<typeof updateProductInputSchema>;
 export type BomItemInput = z.input<typeof bomItemInputSchema>;
 
 export type InsertProductionOrder = z.input<typeof insertProductionOrderSchema>;
+export type UpdateProductionOrderInput = z.input<typeof updateProductionOrderSchema>;
+export type UpdateProductionOrderFinancialsInput = z.input<typeof updateProductionOrderFinancialsSchema>;
+export type MarkProductionOrderDeliveredInput = z.input<typeof markProductionOrderDeliveredSchema>;
 export type MoveProductionOrderInput = z.input<typeof moveProductionOrderSchema>;
 export type ConcludeProductionOrderInput = z.input<typeof concludeProductionOrderSchema>;
 export type RegisterInitialProducedStockInput = z.input<typeof registerInitialProducedStockSchema>;
@@ -495,7 +528,7 @@ export const receivePurchaseOrderSchema = z.object({
     .array(
       z.object({
         id: z.number().int().positive(),
-        qtyReceiveNow: z.string().min(1),
+        qtyReceiveNow: z.string().optional(),
         materialId: z.number().int().positive().optional().nullable(),
         materialName: z.string().optional(),
         qtyOrdered: z.string().optional(),

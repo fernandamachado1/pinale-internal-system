@@ -16,6 +16,8 @@ import type {
   ProducedProductStockWithProduct,
   ProductionOrder,
   ProductionOrderWithProduct,
+  UpdateProductionOrderInput,
+  UpdateProductionOrderFinancialsInput,
   PurchaseOrderWithItems,
   PurchaseOrder,
   PurchaseOrderItem,
@@ -60,8 +62,12 @@ export interface IErpRepository extends ISalesRepository {
   getProductionOrders(): Promise<ProductionOrderWithProduct[]>;
   getProductionOrder(id: number): Promise<ProductionOrderWithProduct | undefined>;
   createProductionOrder(data: InsertProductionOrder): Promise<ProductionOrder>;
+  updateProductionOrder(id: number, input: UpdateProductionOrderInput): Promise<ProductionOrder>;
   moveProductionOrder(id: number, input: MoveProductionOrderInput): Promise<ProductionOrder>;
+  updateProductionOrderFinancials(id: number, input: UpdateProductionOrderFinancialsInput): Promise<ProductionOrder>;
+  markProductionOrderDelivered(id: number, deliveredAt: Date): Promise<ProductionOrder>;
   markProductionOrderDone(id: number, completedAt: Date): Promise<ProductionOrder>;
+  deleteProductionOrder(id: number): Promise<void>;
 
   getInventoryMovements(): Promise<MovementWithDetails[]>;
 

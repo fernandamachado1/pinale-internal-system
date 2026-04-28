@@ -30,6 +30,8 @@ import {
   type ProducedProductStockWithProduct,
   type ProductionOrder,
   type ProductionOrderWithProduct,
+  type UpdateProductionOrderInput,
+  type UpdateProductionOrderFinancialsInput,
   type PurchaseOrder,
   type PurchaseOrderItem,
   type PurchaseOrderWithItems,
@@ -597,9 +599,11 @@ export class DrizzleErpRepository implements IErpRepository {
         orgId: this.orgIdValue(),
         productId: data.productId,
         bomId: (data as any).bomId ?? null,
+        orderType: data.orderType ?? "NORMAL",
         qtyPlanned: data.qtyPlanned,
-        measureCm: data.measureCm ?? null,
         customizationNotes: data.customizationNotes?.trim() || null,
+        amountPaid: data.amountPaid ?? 0,
+        deliveredAt: null,
         status: "BACKLOG",
         salesChannel: data.salesChannel,
         dueAt: data.dueAt ? new Date(data.dueAt) : null,
@@ -607,6 +611,29 @@ export class DrizzleErpRepository implements IErpRepository {
       } as any)
       .returning()) as ProductionOrder[];
     return created;
+  }
+
+  async updateProductionOrder(id: number, input: UpdateProductionOrderInput): Promise<ProductionOrder> {
+    const conditions = [eq(productionOrders.id, id)];
+    if (this.orgId) conditions.push(eq(productionOrders.orgId, this.orgId));
+    const nextBomId =
+      input.productId !== undefined
+        ? (await this.getActiveBomByProductId(input.productId))?.id ?? null
+        : undefined;
+    const [updated] = (await this.database
+      .update(productionOrders)
+      .set({
+        ...(input.productId !== undefined ? { productId: input.productId } : {}),
+        ...(input.qtyPlanned !== undefined ? { qtyPlanned: input.qtyPlanned } : {}),
+        ...(input.orderType !== undefined ? { orderType: input.orderType } : {}),
+        ...(input.customizationNotes !== undefined ? { customizationNotes: input.customizationNotes?.trim() || null } : {}),
+        ...(input.amountPaid !== undefined ? { amountPaid: input.amountPaid } : {}),
+        ...(input.dueAt !== undefined ? { dueAt: input.dueAt ? new Date(input.dueAt) : null } : {}),
+        ...(nextBomId !== undefined ? { bomId: nextBomId } : {}),
+      } as any)
+      .where(and(...conditions))
+      .returning()) as ProductionOrder[];
+    return updated;
   }
 
   async moveProductionOrder(id: number, input: MoveProductionOrderInput): Promise<ProductionOrder> {
@@ -631,6 +658,30 @@ export class DrizzleErpRepository implements IErpRepository {
     return updated;
   }
 
+  async updateProductionOrderFinancials(id: number, input: UpdateProductionOrderFinancialsInput): Promise<ProductionOrder> {
+    const conditions = [eq(productionOrders.id, id)];
+    if (this.orgId) conditions.push(eq(productionOrders.orgId, this.orgId));
+    const [updated] = (await this.database
+      .update(productionOrders)
+      .set({
+        ...(input.amountPaid !== undefined ? { amountPaid: input.amountPaid } : {}),
+      } as any)
+      .where(and(...conditions))
+      .returning()) as ProductionOrder[];
+    return updated;
+  }
+
+  async markProductionOrderDelivered(id: number, deliveredAt: Date): Promise<ProductionOrder> {
+    const conditions = [eq(productionOrders.id, id)];
+    if (this.orgId) conditions.push(eq(productionOrders.orgId, this.orgId));
+    const [updated] = (await this.database
+      .update(productionOrders)
+      .set({ deliveredAt })
+      .where(and(...conditions))
+      .returning()) as ProductionOrder[];
+    return updated;
+  }
+
   async markProductionOrderDone(id: number, completedAt: Date): Promise<ProductionOrder> {
     const sortOrder = await this.getNextProductionSortOrder("DONE");
     const conditions = [eq(productionOrders.id, id)];
@@ -641,6 +692,12 @@ export class DrizzleErpRepository implements IErpRepository {
       .where(and(...conditions))
       .returning()) as ProductionOrder[];
     return updated;
+  }
+
+  async deleteProductionOrder(id: number): Promise<void> {
+    const conditions = [eq(productionOrders.id, id)];
+    if (this.orgId) conditions.push(eq(productionOrders.orgId, this.orgId));
+    await this.database.delete(productionOrders).where(and(...conditions));
   }
 
   async createSale(data: {

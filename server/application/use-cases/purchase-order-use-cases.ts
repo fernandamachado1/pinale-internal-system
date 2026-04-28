@@ -31,6 +31,13 @@ function assertPositiveQty(label: string, raw: string): number {
   return qty;
 }
 
+function parseOptionalPositiveQty(label: string, raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  return assertPositiveQty(label, trimmed);
+}
+
 function parseOptionalNonNegativeQty(label: string, raw: string | undefined): number {
   if (raw === undefined) return 0;
   const trimmed = raw.trim();
@@ -201,17 +208,6 @@ export class ReceivePurchaseOrderUseCase {
         const item = itemsById.get(receiveLine.id);
         if (!item) throw new ValidationDomainError(`Purchase order item ${receiveLine.id} not found`);
 
-        const qtyNow = assertPositiveQty("qtyReceiveNow", receiveLine.qtyReceiveNow);
-        const nextQtyOrderedValue = parseOptionalNonNegativeQty("qtyOrdered", receiveLine.qtyOrdered);
-        const effectiveQtyOrdered = receiveLine.qtyOrdered === undefined ? Number(item.qtyOrdered) : nextQtyOrderedValue;
-        if (effectiveQtyOrdered > 0 && effectiveQtyOrdered < Number(item.qtyReceived)) {
-          throw new ValidationDomainError("qtyOrdered cannot be less than qtyReceived");
-        }
-        if (effectiveQtyOrdered > 0) {
-          const remaining = effectiveQtyOrdered - Number(item.qtyReceived);
-          if (qtyNow > remaining) throw new ValidationDomainError("qtyReceiveNow cannot exceed remaining quantity");
-        }
-
         let materialId = item.materialId ?? null;
         let materialName = (receiveLine.materialName?.trim() ? receiveLine.materialName.trim() : item.materialName).trim();
         if (!materialName) throw new ValidationDomainError("materialName is required");
@@ -221,19 +217,41 @@ export class ReceivePurchaseOrderUseCase {
           materialId = receiveLine.materialId;
         }
 
+        const materialRecord = materialId ? await tx.getMaterial(materialId) : undefined;
+        const isStockTracked = materialRecord ? materialRecord.stockTracked !== false : true;
+
+        const nextQtyOrderedValue = parseOptionalNonNegativeQty("qtyOrdered", receiveLine.qtyOrdered);
+        let effectiveQtyOrdered = receiveLine.qtyOrdered === undefined ? Number(item.qtyOrdered) : nextQtyOrderedValue;
+        const providedQtyNow = parseOptionalPositiveQty("qtyReceiveNow", receiveLine.qtyReceiveNow);
+        const qtyNow = isStockTracked
+          ? providedQtyNow ?? (() => { throw new ValidationDomainError("qtyReceiveNow must be greater than zero"); })()
+          : providedQtyNow ?? (effectiveQtyOrdered > 0 ? effectiveQtyOrdered : 1);
+
+        if (effectiveQtyOrdered > 0 && effectiveQtyOrdered < Number(item.qtyReceived)) {
+          throw new ValidationDomainError("qtyOrdered cannot be less than qtyReceived");
+        }
+        if (isStockTracked && effectiveQtyOrdered > 0) {
+          const remaining = effectiveQtyOrdered - Number(item.qtyReceived);
+          if (qtyNow > remaining) throw new ValidationDomainError("qtyReceiveNow cannot exceed remaining quantity");
+        }
+        if (!isStockTracked && effectiveQtyOrdered <= 0) {
+          effectiveQtyOrdered = qtyNow;
+        }
+
         const nextQtyReceived = toQty3(Number(item.qtyReceived) + qtyNow);
 
         await tx.updatePurchaseOrderItem(item.id, {
           materialId,
           materialName,
-          ...(receiveLine.qtyOrdered !== undefined ? { qtyOrdered: toQty3(nextQtyOrderedValue) } : {}),
+          ...(
+            receiveLine.qtyOrdered !== undefined || (!isStockTracked && Number(item.qtyOrdered) <= 0)
+              ? { qtyOrdered: toQty3(effectiveQtyOrdered) }
+              : {}
+          ),
           qtyReceived: nextQtyReceived,
         });
 
-        if (materialId) {
-          const materialRecord = await tx.getMaterial(materialId);
-          if (!materialRecord) throw new ValidationDomainError(`Material ${materialId} not found`);
-
+        if (materialRecord) {
           const material = new Material({
             id: materialRecord.id,
             name: materialRecord.name,

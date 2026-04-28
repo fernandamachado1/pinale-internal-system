@@ -6,6 +6,8 @@ import type {
   InsertMaterial,
   MoveProductionOrderInput,
   InsertProductionOrder,
+  UpdateProductionOrderInput,
+  UpdateProductionOrderFinancialsInput,
   InsertSale,
   Material,
   MovementWithDetails,
@@ -42,9 +44,13 @@ export interface IErpGateway {
   deleteProduct(id: number): Promise<void>;
 
   getProductionOrders(): Promise<ProductionOrderWithProduct[]>;
+  updateProductionOrder(id: number, data: UpdateProductionOrderInput): Promise<ProductionOrderWithProduct>;
   createProductionOrder(data: InsertProductionOrder): Promise<ProductionOrderWithProduct>;
   moveProductionOrder(id: number, data: MoveProductionOrderInput): Promise<ProductionOrderWithProduct>;
+  updateProductionOrderFinancials(id: number, data: UpdateProductionOrderFinancialsInput): Promise<ProductionOrderWithProduct>;
   concludeProductionOrder(id: number, data: ConcludeProductionOrderInput): Promise<ProductionOrderWithProduct>;
+  deliverProductionOrder(id: number, data: { deliveredAt?: string | null }): Promise<ProductionOrderWithProduct>;
+  deleteProductionOrder(id: number): Promise<void>;
 
   getSales(): Promise<SaleListItem[]>;
   createSale(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }>;

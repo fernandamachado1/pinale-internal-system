@@ -86,9 +86,9 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
   })();
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground md:border-r md:border-sidebar-border md:shadow-[8px_0_32px_rgba(15,23,42,0.04)]">
       {/* Logo */}
-      <div className="p-6 flex items-center gap-3 border-b border-sidebar-border">
+      <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-5">
         <div
           role="img"
           aria-label="Pinale ERP"
@@ -115,16 +115,16 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-4 py-5 space-y-6 overflow-y-auto">
+      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
         {/* Dashboard */}
         <div>
           <Link
             href={dashboardItem.href}
             aria-current={location === dashboardItem.href ? "page" : undefined}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 ${
+            className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-150 ${
               location === dashboardItem.href
-                ? "bg-sidebar-accent text-sidebar-foreground"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                ? "bg-sidebar-accent text-sidebar-foreground shadow-sm before:absolute before:left-0 before:top-2 before:h-6 before:w-1 before:rounded-full before:bg-primary"
+                : "text-sidebar-foreground/72 hover:bg-sidebar-accent/80 hover:text-sidebar-foreground"
             }`}
           >
             <dashboardItem.icon className="w-[18px] h-[18px] shrink-0" />
@@ -135,10 +135,10 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
         {/* Groups */}
         {menuGroups.map((group) => (
           <div key={group.label}>
-            <h3 className="px-3 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/50 mb-2">
+            <h3 className="mb-2 px-3 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/50">
               {group.label}
             </h3>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {group.items.map((item) => {
                 const isActive = location === item.href;
                 return (
@@ -146,10 +146,10 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
                     key={item.href}
                     href={item.href}
                     aria-current={isActive ? "page" : undefined}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 ${
+                    className={`group relative flex items-center gap-3 rounded-xl px-3 py-2 transition-all duration-150 ${
                       isActive
-                        ? "bg-sidebar-accent text-sidebar-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                        ? "bg-sidebar-accent text-sidebar-foreground shadow-sm before:absolute before:left-0 before:top-2 before:h-6 before:w-1 before:rounded-full before:bg-primary"
+                        : "text-sidebar-foreground/72 hover:bg-sidebar-accent/80 hover:text-sidebar-foreground"
                     }`}
                   >
                     <item.icon className="w-[18px] h-[18px] shrink-0" />
@@ -164,11 +164,11 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
 
       <div className="p-4 border-t border-sidebar-border">
         <div className="mb-3">
-          <ThemeToggle className="h-9 w-full justify-start gap-2 rounded-lg px-3" />
+          <ThemeToggle className="h-10 w-full justify-start gap-2 rounded-xl border border-sidebar-border bg-background/70 px-3 shadow-sm transition-colors hover:bg-background" />
         </div>
         <Link
           href="/profile"
-          className="mb-3 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-sidebar-accent transition-colors"
+          className="mb-3 flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 transition-colors hover:border-sidebar-border hover:bg-sidebar-accent/60"
         >
           <Avatar className="h-9 w-9">
             <AvatarImage src={profile?.avatarUrl ?? undefined} alt={profile?.displayName ?? profile?.email ?? "Usuário"} />
@@ -179,7 +179,7 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
             <div className="truncate text-xs text-sidebar-foreground/60">{profile?.email ?? "—"}</div>
           </div>
         </Link>
-        <Button variant="ghost" className="w-full justify-start gap-2" onClick={logout}>
+        <Button variant="ghost" className="w-full justify-start gap-2 rounded-xl hover:bg-sidebar-accent/70" onClick={logout}>
           <LogOut className="w-4 h-4" />
           Sair
         </Button>
@@ -188,7 +188,7 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
   );
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background text-foreground flex">
       {/* Desktop Sidebar */}
       <aside className="hidden md:block w-64 h-screen sticky top-0 z-30 shrink-0">
         <SidebarContent />
@@ -200,15 +200,15 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
           <div className="flex h-16 items-center justify-between px-4 md:hidden">
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" aria-label="Abrir menu">
                   <Menu className="w-5 h-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-64 border-r-0">
+              <SheetContent side="left" className="w-64 border-r-0 bg-sidebar p-0">
                 <SidebarContent />
               </SheetContent>
             </Sheet>
-            <ThemeToggle className="h-9 rounded-lg px-3" />
+            <ThemeToggle className="h-9 rounded-lg border border-sidebar-border bg-background/70 px-3 shadow-sm" />
           </div>
         ) : null}
 

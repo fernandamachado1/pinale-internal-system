@@ -27,9 +27,12 @@ import {
 } from "../server/application/use-cases/product-use-cases.ts";
 import {
   CreateProductionOrderUseCase,
+  DeleteProductionOrderUseCase,
   GetProductionOrderUseCase,
   ListProductionOrdersUseCase,
   MoveProductionOrderUseCase,
+  MarkProductionOrderDeliveredUseCase,
+  UpdateProductionOrderUseCase,
 } from "../server/application/use-cases/production-use-cases.ts";
 import {
   AdjustProducedStockUseCase,
@@ -652,6 +655,17 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     }
   });
 
+  app.put(api.productionOrders.update.path, async (c) => {
+    try {
+      const input = api.productionOrders.update.input.parse(await c.req.json());
+      const useCase = new UpdateProductionOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
+      return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
   app.post(api.productionOrders.move.path, async (c) => {
     try {
       const input = api.productionOrders.move.input.parse(await c.req.json());
@@ -671,6 +685,30 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       const getUseCase = new GetProductionOrderUseCase(repo);
       await completeUseCase.execute(Number(c.req.param("id")), input);
       return c.json(await getUseCase.execute(Number(c.req.param("id"))), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.productionOrders.deliver.path, async (c) => {
+    try {
+      const input = api.productionOrders.deliver.input.parse(await c.req.json());
+      const repo = await repositoryForOrg(c.get("profile").orgId);
+      const useCase = new MarkProductionOrderDeliveredUseCase(repo);
+      const deliveredAt = input.deliveredAt ? new Date(input.deliveredAt) : new Date();
+      return c.json(await useCase.execute(Number(c.req.param("id")), deliveredAt), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.delete(api.productionOrders.delete.path, async (c) => {
+    try {
+      const useCase = new DeleteProductionOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
+      await useCase.execute(Number(c.req.param("id")));
+      return c.body(null, 204);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);

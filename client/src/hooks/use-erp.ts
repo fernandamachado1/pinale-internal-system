@@ -9,6 +9,7 @@ import type {
   ReorderPurchaseOrdersInput,
   ReceivePurchaseOrderInput,
   InsertSale,
+  UpdateProductionOrderFinancialsInput,
   UpdatePurchaseOrderInput,
 } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +23,8 @@ import {
   CreateProductUseCase,
   MoveProductionOrderUseCase,
   CreateProductionOrderUseCase,
+  DeliverProductionOrderUseCase,
+  DeleteProductionOrderUseCase,
   CreateSaleUseCase,
   DeleteSaleUseCase,
   DeleteMaterialUseCase,
@@ -44,6 +47,8 @@ import {
   UpdatePurchaseOrderUseCase,
   UpdateMaterialUseCase,
   UpdateProductUseCase,
+  UpdateProductionOrderUseCase,
+  UpdateProductionOrderFinancialsUseCase,
 } from "@/application/use-cases/erp-use-cases";
 
 const gateway = new HttpErpGateway();
@@ -65,9 +70,13 @@ const updateProductUseCase = new UpdateProductUseCase(gateway);
 const deleteProductUseCase = new DeleteProductUseCase(gateway);
 
 const getProductionOrdersUseCase = new GetProductionOrdersUseCase(gateway);
+const updateProductionOrderUseCase = new UpdateProductionOrderUseCase(gateway);
 const createProductionOrderUseCase = new CreateProductionOrderUseCase(gateway);
 const moveProductionOrderUseCase = new MoveProductionOrderUseCase(gateway);
+const updateProductionOrderFinancialsUseCase = new UpdateProductionOrderFinancialsUseCase(gateway);
 const concludeProductionOrderUseCase = new ConcludeProductionOrderUseCase(gateway);
+const deliverProductionOrderUseCase = new DeliverProductionOrderUseCase(gateway);
+const deleteProductionOrderUseCase = new DeleteProductionOrderUseCase(gateway);
 
 const getSalesUseCase = new GetSalesUseCase(gateway);
 const createSaleUseCase = new CreateSaleUseCase(gateway);
@@ -387,6 +396,21 @@ export function useCreateProductionOrder() {
   });
 }
 
+export function useUpdateProductionOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateProductionOrderUseCase.execute>[1] }) =>
+      updateProductionOrderUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      message.success("Ordem de produção atualizada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
 export function useMoveProductionOrder() {
   const queryClient = useQueryClient();
   const message = useCrudToast();
@@ -398,6 +422,21 @@ export function useMoveProductionOrder() {
       queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Ordem de produção atualizada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useUpdateProductionOrderFinancials() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdateProductionOrderFinancialsInput }) =>
+      updateProductionOrderFinancialsUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      message.success("Dados financeiros atualizados com sucesso.");
     },
     onError: message.error,
   });
@@ -416,6 +455,35 @@ export function useConcludeProductionOrder() {
       queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Ordem de produção concluída com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useDeliverProductionOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { deliveredAt?: string | null } }) =>
+      deliverProductionOrderUseCase.execute(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      message.success("Entrega registrada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useDeleteProductionOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (id: number) => deleteProductionOrderUseCase.execute(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      message.success("Ordem de produção excluída com sucesso.");
     },
     onError: message.error,
   });

@@ -40,8 +40,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(api.productionOrders.list.path, withHandler((req, res) => controller.listProductionOrders(req, res)));
   app.get(api.productionOrders.get.path, withHandler((req, res) => controller.getProductionOrder(req, res)));
   app.post(api.productionOrders.create.path, withHandler((req, res) => controller.createProductionOrder(req, res)));
+  app.put(api.productionOrders.update.path, withHandler((req, res) => controller.updateProductionOrder(req, res)));
   app.post(api.productionOrders.move.path, withHandler((req, res) => controller.moveProductionOrder(req, res)));
+  app.patch(api.productionOrders.updateFinancials.path, withHandler((req, res) => controller.updateProductionOrderFinancials(req, res)));
   app.post(api.productionOrders.conclude.path, withHandler((req, res) => controller.concludeProductionOrder(req, res)));
+  app.post(api.productionOrders.deliver.path, withHandler((req, res) => controller.deliverProductionOrder(req, res)));
+  app.delete(api.productionOrders.delete.path, withHandler((req, res) => controller.deleteProductionOrder(req, res)));
   app.get(api.producedProductStocks.list.path, withHandler((req, res) => controller.listProducedProductStocks(req, res)));
   app.get(api.producedProductStocks.summary.path, withHandler((req, res) => controller.listProducedProductStockSummary(req, res)));
   app.post(api.producedProductStocks.registerInitial.path, withHandler((req, res) => controller.registerInitialProducedStock(req, res)));

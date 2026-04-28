@@ -7,6 +7,8 @@ import type {
   InsertMaterial,
   MoveProductionOrderInput,
   InsertProductionOrder,
+  UpdateProductionOrderInput,
+  UpdateProductionOrderFinancialsInput,
   InsertSale,
   Material,
   MovementWithDetails,
@@ -128,6 +130,13 @@ export class GetProductionOrdersUseCase {
   }
 }
 
+export class UpdateProductionOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: UpdateProductionOrderInput): Promise<ProductionOrderWithProduct> {
+    return this.gateway.updateProductionOrder(id, data);
+  }
+}
+
 export class CreateProductionOrderUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(data: InsertProductionOrder): Promise<ProductionOrderWithProduct> {
@@ -146,6 +155,27 @@ export class MoveProductionOrderUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(id: number, data: MoveProductionOrderInput): Promise<ProductionOrderWithProduct> {
     return this.gateway.moveProductionOrder(id, data);
+  }
+}
+
+export class UpdateProductionOrderFinancialsUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: UpdateProductionOrderFinancialsInput): Promise<ProductionOrderWithProduct> {
+    return this.gateway.updateProductionOrderFinancials(id, data);
+  }
+}
+
+export class DeliverProductionOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: { deliveredAt?: string | null }): Promise<ProductionOrderWithProduct> {
+    return this.gateway.deliverProductionOrder(id, data);
+  }
+}
+
+export class DeleteProductionOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number): Promise<void> {
+    return this.gateway.deleteProductionOrder(id);
   }
 }
 

@@ -8,7 +8,7 @@
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-  --background: 231 27% 96%;
+  --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
 
   --card: 0 0% 100%;
@@ -22,33 +22,33 @@
   --primary: 32 93% 55%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 40% 96.1%;
+  --secondary: 0 0% 96%;
   --secondary-foreground: 222.2 47.4% 11.2%;
 
-  --muted: 210 40% 96.1%;
+  --muted: 0 0% 96%;
   /* Darker for better contrast */
   --muted-foreground: 215 18% 34%;
 
-  --accent: 210 40% 96.1%;
+  --accent: 0 0% 96%;
   --accent-foreground: 222.2 47.4% 11.2%;
 
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
 
-  --border: 214 24% 86%;
-  --input: 214 24% 86%;
+  --border: 214 20% 88%;
+  --input: 214 20% 88%;
   --ring: 32 93% 55%;
 
   --badge-outline: hsl(var(--border));
 
   /* Sidebar tokens */
-  --sidebar: 24 100% 98%;
+  --sidebar: 0 0% 100%;
   --sidebar-foreground: 222.2 84% 4.9%;
-  --sidebar-border: 24 25% 90%;
+  --sidebar-border: 214 20% 90%;
   --sidebar-ring: var(--primary);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: 24 95% 93%;
+  --sidebar-accent: 0 0% 96%;
   --sidebar-accent-foreground: 222.2 84% 4.9%;
   --sidebar-primary-border: transparent;
   --sidebar-accent-border: transparent;

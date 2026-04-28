@@ -8,6 +8,8 @@ import type {
   InsertMaterial,
   MoveProductionOrderInput,
   InsertProductionOrder,
+  UpdateProductionOrderInput,
+  UpdateProductionOrderFinancialsInput,
   InsertSale,
   Material,
   MovementWithDetails,
@@ -150,6 +152,15 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<ProductionOrderWithProduct[]>(res, "Falha ao carregar ordens de produção");
   }
 
+  async updateProductionOrder(id: number, data: UpdateProductionOrderInput): Promise<ProductionOrderWithProduct> {
+    const res = await apiFetch(buildUrl(api.productionOrders.update.path, { id }), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao atualizar ordem de produção");
+  }
+
   async createProductionOrder(data: InsertProductionOrder): Promise<ProductionOrderWithProduct> {
     const res = await apiFetch(api.productionOrders.create.path, {
       method: "POST",
@@ -168,6 +179,15 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao mover ordem de produção");
   }
 
+  async updateProductionOrderFinancials(id: number, data: UpdateProductionOrderFinancialsInput): Promise<ProductionOrderWithProduct> {
+    const res = await apiFetch(buildUrl(api.productionOrders.updateFinancials.path, { id }), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao atualizar dados financeiros da ordem de produção");
+  }
+
   async concludeProductionOrder(id: number, data: ConcludeProductionOrderInput): Promise<ProductionOrderWithProduct> {
     const res = await apiFetch(buildUrl(api.productionOrders.conclude.path, { id }), {
       method: "POST",
@@ -175,6 +195,20 @@ export class HttpErpGateway implements IErpGateway {
       body: JSON.stringify(data),
     });
     return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao concluir ordem de produção");
+  }
+
+  async deliverProductionOrder(id: number, data: { deliveredAt?: string | null }): Promise<ProductionOrderWithProduct> {
+    const res = await apiFetch(buildUrl(api.productionOrders.deliver.path, { id }), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<ProductionOrderWithProduct>(res, "Falha ao registrar entrega da ordem de produção");
+  }
+
+  async deleteProductionOrder(id: number): Promise<void> {
+    const res = await apiFetch(buildUrl(api.productionOrders.delete.path, { id }), { method: "DELETE" });
+    await throwIfNotOk(res, "Falha ao excluir ordem de produção");
   }
 
   async getSales(): Promise<SaleListItem[]> {
