@@ -307,6 +307,7 @@ function ProductionCardBody({
   const paymentStatus = getPaymentStatus(order);
   const deliveryStatus = getDeliveryStatus(order);
   const isEncomenda = order.orderType === "ENCOMENDA";
+  const showPaymentBadge = paymentStatus !== null && (!isEncomenda || paymentStatus !== "PENDING");
 
   return (
     <>
@@ -321,7 +322,7 @@ function ProductionCardBody({
               Encomenda
             </Badge>
           ) : null}
-          {paymentStatus ? (
+          {showPaymentBadge ? (
             <Badge
               className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${
                 paymentStatus === "PAID"
@@ -342,7 +343,7 @@ function ProductionCardBody({
                   : "border-transparent bg-zinc-500 text-white"
               }`}
             >
-              {deliveryStatus === "DELIVERED" ? "Entregue" : "Pendente"}
+              {deliveryStatus === "DELIVERED" ? "Entregue" : "Entrega pendente"}
             </Badge>
           ) : null}
           {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
