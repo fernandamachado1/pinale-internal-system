@@ -9,6 +9,7 @@ import type {
   ReorderPurchaseOrdersInput,
   ReceivePurchaseOrderInput,
   InsertSale,
+  ProductionOrderWithProduct,
   UpdateProductionOrderFinancialsInput,
   UpdatePurchaseOrderInput,
 } from "@shared/schema";
@@ -434,7 +435,10 @@ export function useUpdateProductionOrderFinancials() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: UpdateProductionOrderFinancialsInput }) =>
       updateProductionOrderFinancialsUseCase.execute(id, data),
-    onSuccess: () => {
+    onSuccess: (updatedOrder) => {
+      queryClient.setQueryData([api.productionOrders.list.path], (current: ProductionOrderWithProduct[] | undefined) =>
+        current?.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)),
+      );
       queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
       message.success("Dados financeiros atualizados com sucesso.");
     },

@@ -134,6 +134,9 @@ export const productionOrders = pgTable("production_orders", {
   orderType: productionOrderTypeEnum("order_type").notNull().default("NORMAL"),
   qtyPlanned: integer("qty_planned").notNull(),
   customizationNotes: text("customization_notes"),
+  // Legacy fields kept to match the current database schema and avoid destructive pushes.
+  measureCm: numeric("measure_cm", { precision: 12, scale: 3 }),
+  quotedAmount: numeric("quoted_amount", { precision: 12, scale: 2 }),
   amountPaid: numeric("amount_paid", { precision: 12, scale: 2 }).notNull().default("0"),
   deliveredAt: timestamp("delivered_at"),
   status: productionOrderStatusEnum("status").notNull().default("BACKLOG"),

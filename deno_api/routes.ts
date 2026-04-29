@@ -32,6 +32,7 @@ import {
   ListProductionOrdersUseCase,
   MoveProductionOrderUseCase,
   MarkProductionOrderDeliveredUseCase,
+  UpdateProductionOrderFinancialsUseCase,
   UpdateProductionOrderUseCase,
 } from "../server/application/use-cases/production-use-cases.ts";
 import {
@@ -659,6 +660,17 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     try {
       const input = api.productionOrders.update.input.parse(await c.req.json());
       const useCase = new UpdateProductionOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
+      return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.patch(api.productionOrders.updateFinancials.path, async (c) => {
+    try {
+      const input = api.productionOrders.updateFinancials.input.parse(await c.req.json());
+      const useCase = new UpdateProductionOrderFinancialsUseCase(await repositoryForOrg(c.get("profile").orgId));
       return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);

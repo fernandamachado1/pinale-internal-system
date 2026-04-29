@@ -31,16 +31,35 @@ import { apiFetch } from "@/lib/api-fetch";
 
 async function parseJsonResponse<T>(res: Response, fallbackMessage: string): Promise<T> {
   if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string; field?: string } | null;
-    throw new AppError(payload?.message || fallbackMessage, payload?.code, payload?.field);
+    const rawBody = await res.text().catch(() => "");
+    let payload: { message?: string; code?: string; field?: string } | null = null;
+    if (rawBody) {
+      try {
+        payload = JSON.parse(rawBody) as { message?: string; code?: string; field?: string } | null;
+      } catch {
+        payload = null;
+      }
+    }
+
+    const message = payload?.message || rawBody || `${fallbackMessage} (${res.status} ${res.statusText})`;
+    throw new AppError(message, payload?.code, payload?.field);
   }
   return (await res.json()) as T;
 }
 
 async function throwIfNotOk(res: Response, fallbackMessage: string): Promise<void> {
   if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as { message?: string; code?: string; field?: string } | null;
-    throw new AppError(payload?.message || fallbackMessage, payload?.code, payload?.field);
+    const rawBody = await res.text().catch(() => "");
+    let payload: { message?: string; code?: string; field?: string } | null = null;
+    if (rawBody) {
+      try {
+        payload = JSON.parse(rawBody) as { message?: string; code?: string; field?: string } | null;
+      } catch {
+        payload = null;
+      }
+    }
+    const message = payload?.message || rawBody || `${fallbackMessage} (${res.status} ${res.statusText})`;
+    throw new AppError(message, payload?.code, payload?.field);
   }
 }
 

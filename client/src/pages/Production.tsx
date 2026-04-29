@@ -305,7 +305,6 @@ function ProductionCardBody({
   const notes = order.customizationNotes?.trim();
   const description = notes ?? "";
   const paymentStatus = getPaymentStatus(order);
-  const deliveryStatus = getDeliveryStatus(order);
   const isEncomenda = order.orderType === "ENCOMENDA";
   const showPaymentBadge = paymentStatus !== null && (!isEncomenda || paymentStatus !== "PENDING");
 
@@ -316,12 +315,14 @@ function ProductionCardBody({
           <div className="text-xs font-semibold sm:text-sm">OP #{order.id}</div>
           <div className="text-xs text-muted-foreground sm:text-sm">{order.product.name}</div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+        <div className="flex flex-col items-end gap-1.5 sm:gap-2">
+          <div className="flex flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
           {isEncomenda ? (
             <Badge className="border-transparent bg-purple-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">
               Encomenda
             </Badge>
           ) : null}
+          {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
           {showPaymentBadge ? (
             <Badge
               className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${
@@ -335,19 +336,8 @@ function ProductionCardBody({
               {paymentStatus === "PAID" ? "Pago" : paymentStatus === "PARTIAL" ? "Parcial" : "Pendente"}
             </Badge>
           ) : null}
-          {isEncomenda ? (
-            <Badge
-              className={`px-2 py-0.5 text-[10px] sm:px-2.5 sm:py-1 sm:text-xs ${
-                deliveryStatus === "DELIVERED"
-                  ? "border-transparent bg-cyan-600 text-white"
-                  : "border-transparent bg-zinc-500 text-white"
-              }`}
-            >
-              {deliveryStatus === "DELIVERED" ? "Entregue" : "Entrega pendente"}
-            </Badge>
-          ) : null}
-          {isDueSoon ? <Badge className="border-transparent bg-yellow-400 px-2 py-0.5 text-[10px] text-yellow-950 sm:px-2.5 sm:py-1 sm:text-xs">A vencer</Badge> : null}
           {isOverdue ? <Badge className="border-transparent bg-red-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">Vencida</Badge> : null}
+          </div>
           {moveControls}
         </div>
       </div>
@@ -363,7 +353,7 @@ function ProductionCardBody({
           </div>
         ) : null}
         {isEncomenda ? (
-          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3 text-muted-foreground">
+          <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-muted-foreground">
             <div>
               <strong>Valor do produto:</strong> {formatCurrency(Number(order.product.price ?? 0) * Number(order.qtyPlanned ?? 0))}
             </div>

@@ -3,6 +3,7 @@ import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
 const debugPerf = String(import.meta.env.VITE_DEBUG_PERF ?? "").toLowerCase() === "true";
+const localApiBaseUrl = "http://localhost:8001";
 
 let didInitAuthListener = false;
 let cachedAccessToken: string | null | undefined = undefined;
@@ -46,12 +47,25 @@ function isAbsoluteUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+function getDefaultApiBaseUrl(): string | null {
+  if (apiBaseUrl) return apiBaseUrl;
+  if (typeof window === "undefined") return null;
+
+  const { hostname } = window.location;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return localApiBaseUrl;
+  }
+
+  return null;
+}
+
 function resolveApiUrl(input: RequestInfo | URL): RequestInfo | URL {
-  if (!apiBaseUrl) return input;
+  const defaultBaseUrl = getDefaultApiBaseUrl();
+  if (!defaultBaseUrl) return input;
 
   if (typeof input === "string") {
     if (isAbsoluteUrl(input)) return input;
-    if (input.startsWith("/")) return new URL(input, apiBaseUrl).toString();
+    if (input.startsWith("/")) return new URL(input, defaultBaseUrl).toString();
     return input;
   }
 
@@ -90,7 +104,13 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
     init.headers,
   );
 
-  const res = await fetch(resolvedInput, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(resolvedInput, { ...init, headers });
+  } catch (error) {
+    const url = typeof resolvedInput === "string" ? resolvedInput : String(resolvedInput);
+    throw new Error(`Não foi possível conectar à API em ${url}. Verifique se o backend está no ar.`, { cause: error });
+  }
   if (debugPerf) {
     const t2 = performance.now();
     console.debug("[perf] apiFetch", {
