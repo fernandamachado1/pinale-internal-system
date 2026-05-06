@@ -235,6 +235,11 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<SaleListItem[]>(res, "Falha ao carregar vendas");
   }
 
+  async getSale(id: number): Promise<{ sale: unknown; items: unknown[] }> {
+    const res = await apiFetch(buildUrl(api.sales.get.path, { id }));
+    return parseJsonResponse<{ sale: unknown; items: unknown[] }>(res, "Falha ao carregar venda");
+  }
+
   async createSale(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }> {
     const res = await apiFetch(api.sales.create.path, {
       method: "POST",
@@ -242,6 +247,15 @@ export class HttpErpGateway implements IErpGateway {
       body: JSON.stringify(data),
     });
     return parseJsonResponse<{ sale: unknown; items: unknown[] }>(res, "Falha ao criar venda");
+  }
+
+  async updateSale(id: number, data: InsertSale): Promise<{ sale: unknown; items: unknown[] }> {
+    const res = await apiFetch(buildUrl(api.sales.update.path, { id }), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return parseJsonResponse<{ sale: unknown; items: unknown[] }>(res, "Falha ao atualizar venda");
   }
 
   async deleteSale(id: number): Promise<void> {

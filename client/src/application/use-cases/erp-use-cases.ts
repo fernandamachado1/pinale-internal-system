@@ -186,10 +186,24 @@ export class GetSalesUseCase {
   }
 }
 
+export class GetSaleUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number): Promise<{ sale: unknown; items: unknown[] }> {
+    return this.gateway.getSale(id);
+  }
+}
+
 export class CreateSaleUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }> {
     return this.gateway.createSale(data);
+  }
+}
+
+export class UpdateSaleUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number, data: InsertSale): Promise<{ sale: unknown; items: unknown[] }> {
+    return this.gateway.updateSale(id, data);
   }
 }
 

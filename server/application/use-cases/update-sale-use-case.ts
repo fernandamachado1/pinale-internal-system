@@ -5,17 +5,54 @@ import { SaleAggregate } from "../../domain/entities/sale.ts";
 import { NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
 import type { ISalesRepository } from "../contracts/sales-repository.ts";
 
-export interface CreateSaleOutput {
+export interface UpdateSaleOutput {
   saleId: number;
 }
 
-export class CreateSaleUseCase {
+export class UpdateSaleUseCase {
   constructor(private readonly repository: ISalesRepository) {}
 
-  async execute(input: InsertSale): Promise<CreateSaleOutput> {
+  async execute(saleId: number, input: InsertSale): Promise<UpdateSaleOutput> {
     if (input.items.length < 1) throw new ValidationDomainError("Sale must have at least one item");
 
     return this.repository.withTransaction(async (txRepository) => {
+      const existing = await txRepository.getSaleWithItems(saleId);
+      if (!existing) throw new NotFoundDomainError("Sale not found");
+
+      // Revert previous sale stock impact
+      for (const item of existing.items) {
+        const producedStockRecord = await txRepository.getProducedProductStockByProductId(item.productId);
+        if (!producedStockRecord) {
+          throw new NotFoundDomainError(`Produced stock for product ${item.productId} not found`);
+        }
+
+        const producedStock = new ProducedProductStock({
+          productId: item.productId,
+          stockQty: Number(producedStockRecord.stockQty),
+        });
+        const itemQty = Number(item.qty);
+        producedStock.increase(itemQty);
+        await txRepository.updateProducedProductStockQty(item.productId, producedStock.toPersistence().stockQty);
+
+        const movement = InventoryMovement.create({
+          entityType: "PRODUCT",
+          entityId: item.productId,
+          direction: "IN",
+          qty: item.qty,
+          reason: "ADJUSTMENT",
+          referenceType: "SALE",
+          referenceId: saleId,
+          metadata: {
+            subtype: "SALE_EDIT_REVERT",
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+          },
+        });
+        await txRepository.createInventoryMovement(movement.toData());
+      }
+
+      await txRepository.deleteSaleItemsBySaleId(saleId);
+
       const saleAggregate = new SaleAggregate(input.paymentMethod);
       const producedStocksMap = new Map<number, ProducedProductStock>();
       const normalizedItems: Array<{
@@ -26,6 +63,7 @@ export class CreateSaleUseCase {
         unitPrice: number;
       }> = [];
 
+      // Apply updated sale
       for (const item of input.items) {
         const productRecord = await txRepository.getProduct(item.productId);
         if (!productRecord) throw new NotFoundDomainError(`Product ${item.productId} not found`);
@@ -38,8 +76,8 @@ export class CreateSaleUseCase {
           stockQty: Number(producedStockRecord.stockQty),
         });
 
-        const productId = Number(productRecord.id);
-        producedStocksMap.set(productId, producedStock);
+        producedStocksMap.set(item.productId, producedStock);
+
         const listPrice = Number(productRecord.price);
         const discountType = (item.discountType ?? "PERCENT") as "PERCENT" | "AMOUNT";
         const discountValue = Number(item.discountValue ?? 0);
@@ -48,9 +86,9 @@ export class CreateSaleUseCase {
             ? Math.max(0, listPrice - Math.min(listPrice, Math.max(0, discountValue)))
             : listPrice * (1 - Math.min(100, Math.max(0, discountValue)) / 100);
 
-        saleAggregate.addItem(productId, item.qty, unitPrice);
+        saleAggregate.addItem(item.productId, item.qty, unitPrice);
         normalizedItems.push({
-          productId,
+          productId: item.productId,
           qty: item.qty,
           discountType,
           discountValue,
@@ -66,7 +104,7 @@ export class CreateSaleUseCase {
       }
 
       const totalAmount = saleAggregate.calculateTotalAmount();
-      const createdSale = await txRepository.createSale({
+      await txRepository.updateSale(saleId, {
         paymentMethod: input.paymentMethod,
         description: input.description ?? null,
         totalAmount: totalAmount.toFixed(2),
@@ -75,7 +113,7 @@ export class CreateSaleUseCase {
       });
 
       const createdItems = await txRepository.createSaleItems(
-        createdSale.id,
+        saleId,
         normalizedItems.map((item) => ({
           productId: item.productId,
           qty: item.qty,
@@ -94,8 +132,9 @@ export class CreateSaleUseCase {
           qty: item.qty,
           reason: "SALE",
           referenceType: "SALE",
-          referenceId: createdSale.id,
+          referenceId: saleId,
           metadata: {
+            subtype: "SALE_EDIT_APPLY",
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,
           },
@@ -103,7 +142,7 @@ export class CreateSaleUseCase {
         await txRepository.createInventoryMovement(movement.toData());
       }
 
-      return { saleId: createdSale.id };
+      return { saleId };
     });
   }
 }

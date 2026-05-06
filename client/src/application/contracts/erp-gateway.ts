@@ -53,7 +53,9 @@ export interface IErpGateway {
   deleteProductionOrder(id: number): Promise<void>;
 
   getSales(): Promise<SaleListItem[]>;
+  getSale(id: number): Promise<{ sale: unknown; items: unknown[] }>;
   createSale(data: InsertSale): Promise<{ sale: unknown; items: unknown[] }>;
+  updateSale(id: number, data: InsertSale): Promise<{ sale: unknown; items: unknown[] }>;
   deleteSale(id: number): Promise<void>;
 
   getInventoryMovements(): Promise<MovementWithDetails[]>;

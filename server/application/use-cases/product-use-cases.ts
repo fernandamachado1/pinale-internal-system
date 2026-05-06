@@ -82,6 +82,12 @@ export class CreateProductUseCase {
     if (Number(input.product.price) < 0) {
       throw new ValidationDomainError("Product price must be greater than or equal to zero");
     }
+    if (input.product.discountPercent !== undefined) {
+      const discount = Number(input.product.discountPercent);
+      if (Number.isNaN(discount) || discount < 0 || discount > 100) {
+        throw new ValidationDomainError("Product discountPercent must be between 0 and 100");
+      }
+    }
     const initialStockQty = input.initialStockQty ?? 0;
     if (!Number.isInteger(initialStockQty) || initialStockQty < 0) {
       throw new ValidationDomainError("initialStockQty must be an integer greater than or equal to zero");
@@ -104,6 +110,7 @@ export class CreateProductUseCase {
         name,
         category: input.product.category,
         price: input.product.price,
+        discountPercent: input.product.discountPercent ?? "0",
         isActive: input.product.isActive,
         description: input.product.description ?? "",
         attachments: input.product.attachments ?? [],
@@ -164,6 +171,12 @@ export class UpdateProductUseCase {
 
     if (input.product.price !== undefined && Number(input.product.price) < 0) {
       throw new ValidationDomainError("Product price must be greater than or equal to zero");
+    }
+    if (input.product.discountPercent !== undefined) {
+      const discount = Number(input.product.discountPercent);
+      if (Number.isNaN(discount) || discount < 0 || discount > 100) {
+        throw new ValidationDomainError("Product discountPercent must be between 0 and 100");
+      }
     }
 
     if (input.product.colorVariants !== undefined) {

@@ -233,6 +233,7 @@ export default function Products() {
   const [createMaterialForNewRow, setCreateMaterialForNewRow] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [discountPercent, setDiscountPercent] = useState("0");
   const [category, setCategory] = useState<ProductCategory>("ACCESSORIES");
   const [description, setDescription] = useState("");
   const [colorVariants, setColorVariants] = useState<ColorFormItem[]>([]);
@@ -274,6 +275,7 @@ export default function Products() {
     if (editingProduct) {
       setName(editingProduct.name);
       setPrice(editingProduct.price);
+      setDiscountPercent(editingProduct.discountPercent ?? "0");
       setCategory(editingProduct.category as ProductCategory);
       setDescription(editingProduct.description ?? "");
       setColorVariants((editingProduct.colorVariants ?? []).map((variant) => ({ name: variant.name, qty: String(variant.qty) })));
@@ -289,6 +291,7 @@ export default function Products() {
 
     setName("");
     setPrice("");
+    setDiscountPercent("0");
     setCategory("ACCESSORIES");
     setDescription("");
     setColorVariants([]);
@@ -368,6 +371,18 @@ export default function Products() {
       toast({ title: "Sem permissão", description: "Seu usuário não pode criar/editar produtos.", variant: "destructive" });
       return;
     }
+    if (!name.trim()) {
+      toast({ title: "Nome obrigatório", description: "Informe o nome do produto.", variant: "destructive" });
+      return;
+    }
+    if (!price || Number(price) < 0) {
+      toast({ title: "Preço inválido", description: "Informe um preço maior ou igual a zero.", variant: "destructive" });
+      return;
+    }
+    if (discountPercent === "" || Number(discountPercent) < 0 || Number(discountPercent) > 100) {
+      toast({ title: "Desconto inválido", description: "Informe um desconto percentual entre 0 e 100.", variant: "destructive" });
+      return;
+    }
     let normalizedColorVariants: ProductColorVariant[] = [];
     try {
       normalizedColorVariants = productMode === "COLORS" ? normalizeColorVariants(colorVariants) : [];
@@ -404,7 +419,7 @@ export default function Products() {
     }
 
     const payload = {
-      product: { name, price, category, attachments, colorVariants: normalizedColorVariants, isActive: 1, description },
+      product: { name, price, discountPercent, category, attachments, colorVariants: normalizedColorVariants, isActive: 1, description },
       technicalSpec: {
         bomItems: (hasTechnicalSpec ? bomItems : [])
           .filter((item) => item.materialId)
@@ -524,6 +539,7 @@ export default function Products() {
                   <TableHead>Nome</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Preço</TableHead>
+                  <TableHead>Desconto</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
                   <TableHead className="hidden lg:table-cell">Estrutura de produção</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -545,6 +561,7 @@ export default function Products() {
                         </Badge>
                       </TableCell>
                       <TableCell>{brl(Number(item.price))}</TableCell>
+                      <TableCell>{Number(item.discountPercent ?? 0) > 0 ? `${toPtBrDecimal(item.discountPercent)}%` : "—"}</TableCell>
                       <TableCell className="text-right font-semibold">{formatQtyByUom(item.stockQty, "UNIT")}</TableCell>
                       <TableCell className="hidden lg:table-cell">
                         {item.bomItems.length > 0 ? (
@@ -631,7 +648,7 @@ export default function Products() {
                       <Label className="ml-1 text-sm font-bold text-foreground">Nome</Label>
                       <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Bolsa Executiva de Couro" className="h-11 rounded-xl border-border bg-card px-4" />
                     </div>
-                    <div className="space-y-2 md:col-span-3">
+                    <div className="space-y-2 md:col-span-2">
                       <Label className="ml-1 text-sm font-bold text-foreground">Preço</Label>
                       <Input
                         inputMode="decimal"
@@ -642,7 +659,18 @@ export default function Products() {
                         className="h-11 rounded-xl border-border bg-card px-4 font-semibold"
                       />
                     </div>
-                    <div className="space-y-2 md:col-span-3">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label className="ml-1 text-sm font-bold text-foreground">Desconto (%)</Label>
+                      <Input
+                        inputMode="decimal"
+                        value={toPtBrDecimal(discountPercent)}
+                        onChange={(e) => setDiscountPercent(fromPtBrDecimal(e.target.value, 2))}
+                        placeholder="0,00"
+                        className="h-11 rounded-xl border-border bg-card px-4 font-semibold"
+                      />
+                      <p className="text-xs text-muted-foreground ml-1">Aplicado automaticamente nas vendas.</p>
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
                       <Label className="ml-1 text-sm font-bold text-foreground">Categoria</Label>
                       <select
                         value={category}

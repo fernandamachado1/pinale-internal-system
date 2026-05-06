@@ -23,9 +23,19 @@ export interface ISalesRepository {
     salesChannel: "ONLINE" | "PHYSICAL";
     soldAt?: string | null;
   }): Promise<Sale>;
+  updateSale(
+    id: number,
+    data: {
+      paymentMethod: string;
+      description?: string | null;
+      totalAmount: string;
+      salesChannel: "ONLINE" | "PHYSICAL";
+      soldAt?: string | null;
+    },
+  ): Promise<void>;
   createSaleItems(
     saleId: number,
-    items: Array<{ productId: number; qty: number; unitPrice: string; totalPrice: string }>,
+    items: Array<{ productId: number; qty: number; discountType: "PERCENT" | "AMOUNT"; discountValue: string; unitPrice: string; totalPrice: string }>,
   ): Promise<SaleItem[]>;
   getSales(): Promise<SaleListItem[]>;
   getSaleWithItems(id: number): Promise<{ sale: Sale; items: Array<SaleItem & { product: Product }> } | undefined>;

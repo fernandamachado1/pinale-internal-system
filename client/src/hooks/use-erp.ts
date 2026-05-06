@@ -41,6 +41,7 @@ import {
   GetProducedProductStocksUseCase,
   GetProductsUseCase,
   GetSalesUseCase,
+  GetSaleUseCase,
   RegisterInitialProducedStockUseCase,
   CancelPurchaseOrderUseCase,
   CreatePurchaseOrderUseCase,
@@ -50,6 +51,7 @@ import {
   UpdateProductUseCase,
   UpdateProductionOrderUseCase,
   UpdateProductionOrderFinancialsUseCase,
+  UpdateSaleUseCase,
 } from "@/application/use-cases/erp-use-cases";
 
 const gateway = new HttpErpGateway();
@@ -80,8 +82,10 @@ const deliverProductionOrderUseCase = new DeliverProductionOrderUseCase(gateway)
 const deleteProductionOrderUseCase = new DeleteProductionOrderUseCase(gateway);
 
 const getSalesUseCase = new GetSalesUseCase(gateway);
+const getSaleUseCase = new GetSaleUseCase(gateway);
 const createSaleUseCase = new CreateSaleUseCase(gateway);
 const deleteSaleUseCase = new DeleteSaleUseCase(gateway);
+const updateSaleUseCase = new UpdateSaleUseCase(gateway);
 
 const getInventoryMovementsUseCase = new GetInventoryMovementsUseCase(gateway);
 const getDashboardReportUseCase = new GetDashboardReportUseCase(gateway);
@@ -500,6 +504,14 @@ export function useSales() {
   });
 }
 
+export function useSale(id: number | null) {
+  return useQuery({
+    queryKey: [api.sales.get.path, id],
+    queryFn: () => getSaleUseCase.execute(id as number),
+    enabled: Boolean(id),
+  });
+}
+
 export function useCreateSale() {
   const queryClient = useQueryClient();
   const message = useCrudToast();
@@ -513,6 +525,25 @@ export function useCreateSale() {
       queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
       queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
       message.success("Venda registrada com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
+export function useUpdateSale() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: InsertSale }) => updateSaleUseCase.execute(id, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sales.get.path, variables.id] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      message.success("Venda atualizada com sucesso.");
     },
     onError: message.error,
   });

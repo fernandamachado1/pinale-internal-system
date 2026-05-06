@@ -3,18 +3,21 @@ import { api } from "@shared/routes";
 import { CreateSaleUseCase } from "../application/use-cases/create-sale-use-case";
 import { DeleteSaleUseCase } from "../application/use-cases/delete-sale-use-case";
 import { GetSaleUseCase, ListSalesUseCase } from "../application/use-cases/sale-use-cases";
+import { UpdateSaleUseCase } from "../application/use-cases/update-sale-use-case";
 import type { ISalesRepository } from "../application/contracts/sales-repository";
 
 export class SalesController {
   private readonly listSalesUseCase: ListSalesUseCase;
   private readonly getSaleUseCase: GetSaleUseCase;
   private readonly createSaleUseCase: CreateSaleUseCase;
+  private readonly updateSaleUseCase: UpdateSaleUseCase;
   private readonly deleteSaleUseCase: DeleteSaleUseCase;
 
   constructor(repository: ISalesRepository) {
     this.listSalesUseCase = new ListSalesUseCase(repository);
     this.getSaleUseCase = new GetSaleUseCase(repository);
     this.createSaleUseCase = new CreateSaleUseCase(repository);
+    this.updateSaleUseCase = new UpdateSaleUseCase(repository);
     this.deleteSaleUseCase = new DeleteSaleUseCase(repository);
   }
 
@@ -30,6 +33,13 @@ export class SalesController {
     const input = api.sales.create.input.parse(req.body);
     const result = await this.createSaleUseCase.execute(input);
     res.status(201).json(await this.getSaleUseCase.execute(result.saleId));
+  }
+
+  async updateSale(req: Request, res: Response): Promise<void> {
+    const input = api.sales.update.input.parse(req.body);
+    const saleId = Number(req.params.id);
+    const result = await this.updateSaleUseCase.execute(saleId, input);
+    res.json(await this.getSaleUseCase.execute(result.saleId));
   }
 
   async deleteSale(req: Request, res: Response): Promise<void> {

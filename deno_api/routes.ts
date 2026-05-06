@@ -44,6 +44,7 @@ import {
 import { ListInventoryMovementsUseCase } from "../server/application/use-cases/inventory-movement-use-cases.ts";
 import { CreateSaleUseCase } from "../server/application/use-cases/create-sale-use-case.ts";
 import { GetSaleUseCase, ListSalesUseCase } from "../server/application/use-cases/sale-use-cases.ts";
+import { UpdateSaleUseCase } from "../server/application/use-cases/update-sale-use-case.ts";
 import { CompleteProductionUseCase } from "../server/application/use-cases/complete-production-use-case.ts";
 import {
   CancelPurchaseOrderUseCase,
@@ -756,6 +757,20 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       const getUseCase = new GetSaleUseCase(repo);
       const result = await createUseCase.execute(input);
       return c.json(await getUseCase.execute(result.saleId), 201);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.put(api.sales.update.path, async (c) => {
+    try {
+      const input = api.sales.update.input.parse(await c.req.json());
+      const repo = await repositoryForOrg(c.get("profile").orgId);
+      const updateUseCase = new UpdateSaleUseCase(repo);
+      const getUseCase = new GetSaleUseCase(repo);
+      const result = await updateUseCase.execute(Number(c.req.param("id")), input);
+      return c.json(await getUseCase.execute(result.saleId), 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);

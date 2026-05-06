@@ -375,6 +375,12 @@ export const api = {
       input: insertSaleSchema,
       responses: { 201: saleSchema.and(z.object({ items: z.array(saleItemSchema) })), 400: errorSchemas.badRequest },
     },
+    update: {
+      method: "PUT" as const,
+      path: "/api/sales/:id" as const,
+      input: insertSaleSchema,
+      responses: { 200: saleSchema.and(z.object({ items: z.array(saleItemSchema) })), 400: errorSchemas.badRequest, 404: errorSchemas.notFound },
+    },
     delete: {
       method: "DELETE" as const,
       path: "/api/sales/:id" as const,

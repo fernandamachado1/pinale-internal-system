@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SaleListItem } from "@shared/schema";
 import { Layout } from "@/components/Layout";
-import { useCreateSale, useDeleteSale, useProducedProductStocks, useProducts, useSales } from "@/hooks/use-erp";
+import { useCreateSale, useDeleteSale, useProducedProductStocks, useProducts, useSale, useSales, useUpdateSale } from "@/hooks/use-erp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,13 +24,25 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ShoppingCart, Plus, Trash2 } from "lucide-react";
+import { Loader2, ShoppingCart, Plus, Trash2, Pencil } from "lucide-react";
 import { brl, formatDateTimeBR } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
+import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 
-type SaleItem = { productId: string; qty: string };
+type SaleDiscountType = "PERCENT" | "AMOUNT";
+type SaleItem = { productId: string; qty: string; discountType: SaleDiscountType; discountValue: string };
 
 const PAYMENT_METHODS = ["PIX", "DINHEIRO", "DEBITO", "CREDITO", "BOLETO"] as const;
+
+function discountedUnitPrice(price: string | number, discountType: SaleDiscountType, discountValue?: string | number | null): number {
+  const listPrice = Number(price ?? 0);
+  const value = Math.max(0, Number(discountValue ?? 0));
+  if (discountType === "AMOUNT") {
+    return Math.max(0, listPrice - Math.min(listPrice, value));
+  }
+  const discount = Math.min(100, value);
+  return listPrice * (1 - discount / 100);
+}
 
 function localDateInputValue(date: Date): string {
   const year = date.getFullYear();
@@ -40,7 +52,7 @@ function localDateInputValue(date: Date): string {
 }
 
 function emptyItem(): SaleItem {
-  return { productId: "", qty: "1" };
+  return { productId: "", qty: "1", discountType: "PERCENT", discountValue: "0" };
 }
 
 export default function Sales() {
@@ -48,6 +60,7 @@ export default function Sales() {
   const { data: products, error: productsError } = useProducts();
   const { data: producedStocks, error: stocksError } = useProducedProductStocks();
   const createMutation = useCreateSale();
+  const updateMutation = useUpdateSale();
   const deleteMutation = useDeleteSale();
   const { canWrite } = useAuthz();
 
@@ -55,10 +68,13 @@ export default function Sales() {
   const [items, setItems] = useState<SaleItem[]>([emptyItem()]);
   const [saleToDelete, setSaleToDelete] = useState<SaleListItem | null>(null);
   const [deletingSaleId, setDeletingSaleId] = useState<number | null>(null);
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("PIX");
   const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
   const [description, setDescription] = useState("");
   const [saleDate, setSaleDate] = useState(() => localDateInputValue(new Date()));
+
+  const { data: editingSaleData } = useSale(editingSaleId);
 
   const activeProducts = useMemo(() => products?.filter((p) => p.isActive === 1) ?? [], [products]);
 
@@ -77,7 +93,7 @@ export default function Sales() {
       items.reduce((acc, item) => {
         const product = productById.get(item.productId);
         if (!product) return acc;
-        return acc + Number(product.price) * Number(item.qty || "0");
+        return acc + discountedUnitPrice(product.price, item.discountType, item.discountValue) * Number(item.qty || "0");
       }, 0),
     [items, productById],
   );
@@ -90,6 +106,10 @@ export default function Sales() {
         if (!product) return false;
         const qty = Number(item.qty);
         if (!qty || qty <= 0) return false;
+        const discount = Number(item.discountValue);
+        if (Number.isNaN(discount) || discount < 0) return false;
+        if (item.discountType === "PERCENT" && discount > 100) return false;
+        if (item.discountType === "AMOUNT" && discount > Number(product.price)) return false;
         return qty <= (stockByProductId.get(product.id) ?? 0);
       }),
     [items, productById, stockByProductId],
@@ -110,7 +130,43 @@ export default function Sales() {
     setSalesChannel("ONLINE");
     setDescription("");
     setSaleDate(localDateInputValue(new Date()));
+    setEditingSaleId(null);
   };
+
+  const openEditSaleDialog = (saleId: number) => {
+    if (!canWrite) return;
+    setEditingSaleId(saleId);
+    setIsOpen(true);
+  };
+
+  const openCreateSaleDialog = () => {
+    if (!canWrite) return;
+    setEditingSaleId(null);
+    setIsOpen(true);
+  };
+
+  // Hydrate form when editing sale loads
+  useEffect(() => {
+    if (!editingSaleId) return;
+    if (!editingSaleData) return;
+    const sale = editingSaleData.sale as any;
+    const saleItems = (editingSaleData.items as any[]) ?? [];
+    setPaymentMethod(String(sale.paymentMethod ?? "PIX"));
+    setSalesChannel((sale.salesChannel ?? "ONLINE") as "ONLINE" | "PHYSICAL");
+    setDescription(String(sale.description ?? ""));
+    const soldAt = sale.soldAt ? new Date(sale.soldAt) : new Date();
+    setSaleDate(localDateInputValue(soldAt));
+    setItems(
+      saleItems.map((entry) => {
+        return {
+          productId: String(entry.productId ?? ""),
+          qty: String(entry.qty ?? "1"),
+          discountType: (entry.discountType ?? "PERCENT") as SaleDiscountType,
+          discountValue: String(entry.discountValue ?? 0),
+        };
+      }),
+    );
+  }, [editingSaleId, editingSaleData]);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -122,16 +178,25 @@ export default function Sales() {
         })()
       : null;
 
-    createMutation.mutate(
-      {
-        paymentMethod,
-        description: description.trim() || null,
-        salesChannel,
-        soldAt: soldAtIso,
-        items: items.map((item) => ({ productId: Number(item.productId), qty: Number(item.qty) })),
-      },
-      { onSuccess: handleClose },
-    );
+    const payload = {
+      paymentMethod,
+      description: description.trim() || null,
+      salesChannel,
+      soldAt: soldAtIso,
+      items: items.map((item) => ({
+        productId: Number(item.productId),
+        qty: Number(item.qty),
+        discountType: item.discountType,
+        discountValue: Number(item.discountValue),
+      })),
+    };
+
+    if (editingSaleId) {
+      updateMutation.mutate({ id: editingSaleId, data: payload }, { onSuccess: handleClose });
+      return;
+    }
+
+    createMutation.mutate(payload, { onSuccess: handleClose });
   };
 
   return (
@@ -143,14 +208,18 @@ export default function Sales() {
 
         <ResponsiveDialog open={isOpen} onOpenChange={(open) => (open ? setIsOpen(true) : handleClose())}>
           <ResponsiveDialogTrigger asChild>
-            <Button disabled={!canWrite || createMutation.isPending}>
+            <Button disabled={!canWrite || createMutation.isPending || updateMutation.isPending} onClick={openCreateSaleDialog}>
               <Plus className="w-4 h-4 mr-2" /> Nova Venda
             </Button>
           </ResponsiveDialogTrigger>
           <ResponsiveDialogContent className="max-w-lg">
             <ResponsiveDialogHeader>
-              <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Registrar Venda</ResponsiveDialogTitle>
-              <ResponsiveDialogDescription className="text-sm text-foreground/75">Adicione um ou mais produtos à venda.</ResponsiveDialogDescription>
+              <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">
+                {editingSaleId ? `Editar Venda #${editingSaleId}` : "Registrar Venda"}
+              </ResponsiveDialogTitle>
+              <ResponsiveDialogDescription className="text-sm text-foreground/75">
+                {editingSaleId ? "Ajuste itens, descontos e dados da venda." : "Adicione um ou mais produtos à venda."}
+              </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
 
             {(productsError || stocksError) ? (
@@ -220,11 +289,26 @@ export default function Sales() {
                   const qty = Number(item.qty || "0");
                   const overStock = product && qty > stock;
                   const selectedInOtherRows = new Set(items.filter((_, i) => i !== index).map((row) => row.productId).filter(Boolean));
+                  const discountValue = Number(item.discountValue ?? "0");
+                  const hasDiscount = Boolean(product) && discountValue > 0;
+                  const unitPrice = product ? discountedUnitPrice(product.price, item.discountType, item.discountValue) : 0;
 
                   return (
-                    <div key={index} className="flex gap-2 items-start">
-                      <div className="flex-1 space-y-1">
-                        <Select value={item.productId} onValueChange={(v) => updateItem(index, { productId: v, qty: "1" })}>
+                    <div key={index} className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_96px_auto] lg:items-start">
+                        <div className="space-y-1">
+                        <Select
+                          value={item.productId}
+                          onValueChange={(v) => {
+                            const nextProduct = productById.get(v);
+                            updateItem(index, {
+                              productId: v,
+                              qty: "1",
+                              discountType: "PERCENT",
+                              discountValue: String(nextProduct?.discountPercent ?? "0"),
+                            });
+                          }}
+                        >
                           <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue placeholder="Produto" /></SelectTrigger>
                           <SelectContent>
                             {activeProducts.map((p) => (
@@ -233,7 +317,8 @@ export default function Sales() {
                                 value={String(p.id)}
                                 disabled={(stockByProductId.get(p.id) ?? 0) <= 0 || selectedInOtherRows.has(String(p.id))}
                               >
-                                {p.name} — {brl(Number(p.price))}
+                                {p.name} — {brl(discountedUnitPrice(p.price, "PERCENT", p.discountPercent))}
+                                {Number(p.discountPercent ?? 0) > 0 ? ` (de ${brl(Number(p.price))})` : ""}
                                 {(stockByProductId.get(p.id) ?? 0) <= 0 ? " (sem estoque)" : ""}
                               </SelectItem>
                             ))}
@@ -244,19 +329,71 @@ export default function Sales() {
                             Estoque disponível: {stock} un{overStock ? " — quantidade excede o estoque" : ""}
                           </p>
                         )}
+                        {product && (
+                          <p className="text-xs text-muted-foreground">
+                            Unitário: <span className="font-semibold text-foreground">{brl(unitPrice)}</span>
+                            {hasDiscount ? (
+                              <>
+                                {" "}
+                                (<span className="text-muted-foreground">
+                                  de {brl(Number(product.price))}, {item.discountType === "AMOUNT" ? brl(discountValue) : `${toPtBrDecimal(item.discountValue)}%`} off
+                                </span>)
+                              </>
+                            ) : null}
+                          </p>
+                        )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="ml-1 text-xs font-semibold text-muted-foreground">Desconto</Label>
+                          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                            <Select
+                              value={item.discountType}
+                              onValueChange={(value) => {
+                                const nextType = value as SaleDiscountType;
+                                const nextProduct = productById.get(item.productId);
+                                const nextValue =
+                                  nextType === "PERCENT"
+                                    ? String(Math.min(100, Number(item.discountValue || nextProduct?.discountPercent || 0)))
+                                    : String(Math.min(Number(nextProduct?.price ?? 0), Number(item.discountValue || 0)));
+                                updateItem(index, { discountType: nextType, discountValue: nextValue });
+                              }}
+                            >
+                              <SelectTrigger className="h-11 rounded-xl border-border bg-card px-3">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="PERCENT">%</SelectItem>
+                                <SelectItem value="AMOUNT">R$</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              inputMode="decimal"
+                              value={product ? toPtBrDecimal(item.discountValue) : ""}
+                              onChange={(e) => updateItem(index, { discountValue: fromPtBrDecimal(e.target.value, 2) })}
+                              placeholder="0,00"
+                              className="h-11 rounded-xl border-border bg-card px-3 text-right font-semibold"
+                              title={`Desconto do item (${item.discountType === "AMOUNT" ? "valor" : "%"})`}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="ml-1 text-xs font-semibold text-muted-foreground">Qtd</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.qty}
+                            onChange={(e) => updateItem(index, { qty: e.target.value })}
+                            className="h-11 rounded-xl border-border bg-card px-3"
+                          />
+                        </div>
+                        <div className="flex justify-end lg:pt-7">
+                          {items.length > 1 && (
+                            <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => updateItem(index, { qty: e.target.value })}
-                        className="h-11 w-20 rounded-xl border-border bg-card px-3"
-                      />
-                      {items.length > 1 && (
-                        <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
-                          <Trash2 className="w-4 h-4 text-muted-foreground" />
-                        </Button>
-                      )}
                     </div>
                   );
                 })}
@@ -274,10 +411,10 @@ export default function Sales() {
 
               <ResponsiveDialogFooter className="justify-end gap-2">
                 <Button type="button" variant="outline" onClick={handleClose}>Cancelar</Button>
-                <Button type="submit" disabled={!canWrite || createMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
-                  {createMutation.isPending ? (
+                <Button type="submit" disabled={!canWrite || createMutation.isPending || updateMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
+                  {createMutation.isPending || updateMutation.isPending ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
-                  ) : "Salvar"}
+                  ) : editingSaleId ? "Atualizar" : "Salvar"}
                 </Button>
               </ResponsiveDialogFooter>
             </form>
@@ -335,19 +472,30 @@ export default function Sales() {
                 <TableCell>{formatDateTimeBR(item.sale.soldAt ?? item.sale.createdAt)}</TableCell>
                 <TableCell className="text-right">
                   {canWrite ? (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="flex items-center justify-end gap-1"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => setSaleToDelete(item)}
-                    >
-                      {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
-                        <><Loader2 className="h-4 w-4 animate-spin" /> Excluindo...</>
-                      ) : (
-                        <><Trash2 className="h-4 w-4" /> Excluir</>
-                      )}
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex items-center justify-end gap-1"
+                        disabled={deleteMutation.isPending || updateMutation.isPending}
+                        onClick={() => openEditSaleDialog(item.sale.id)}
+                      >
+                        <Pencil className="h-4 w-4" /> Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="flex items-center justify-end gap-1"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => setSaleToDelete(item)}
+                      >
+                        {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
+                          <><Loader2 className="h-4 w-4 animate-spin" /> Excluindo...</>
+                        ) : (
+                          <><Trash2 className="h-4 w-4" /> Excluir</>
+                        )}
+                      </Button>
+                    </div>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}

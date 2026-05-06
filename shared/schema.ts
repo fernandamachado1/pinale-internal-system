@@ -43,6 +43,7 @@ export const movementEntityTypeEnum = pgEnum("movement_entity_type", ["PRODUCT",
 export const movementDirectionEnum = pgEnum("movement_direction", ["IN", "OUT"]);
 export const movementReasonEnum = pgEnum("movement_reason", ["PRODUCTION_CONSUMPTION", "PRODUCTION_OUTPUT", "SALE", "PURCHASE", "ADJUSTMENT"]);
 export const movementReferenceTypeEnum = pgEnum("movement_reference_type", ["OP", "SALE", "MANUAL"]);
+export const saleDiscountTypeEnum = pgEnum("sale_discount_type", ["PERCENT", "AMOUNT"]);
 export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", [
   "OPEN",
   "PARTIALLY_RECEIVED",
@@ -84,6 +85,7 @@ export const products = pgTable("products", {
   orgId: uuid("org_id").notNull(),
   name: text("name").notNull(),
   price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+  discountPercent: numeric("discount_percent", { precision: 5, scale: 2 }).notNull().default("0"),
   category: productCategoryEnum("category").notNull().default("ACCESSORIES"),
   description: text("description").notNull().default(""),
   attachments: jsonb("attachments").$type<ProductAttachment[]>().notNull().default([]),
@@ -164,6 +166,8 @@ export const saleItems = pgTable("sale_items", {
   saleId: integer("sale_id").notNull(),
   productId: integer("product_id").notNull(),
   qty: integer("qty").notNull(),
+  discountType: saleDiscountTypeEnum("discount_type").notNull().default("PERCENT"),
+  discountValue: numeric("discount_value", { precision: 12, scale: 2 }).notNull().default("0"),
   unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
   totalPrice: numeric("total_price", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -312,6 +316,7 @@ export const insertProductSchema = createInsertSchema(products)
   .omit({ id: true, orgId: true, createdAt: true, updatedAt: true })
   .extend({
     price: z.string(),
+    discountPercent: z.string().default("0"),
     isActive: z.number().int().default(1),
     category: productCategorySchema,
     attachments: z.array(productAttachmentSchema).default([]),
@@ -405,6 +410,8 @@ export const insertSaleSchema = z.object({
       z.object({
         productId: z.number().int().positive(),
         qty: z.number().int().positive(),
+        discountType: z.enum(["PERCENT", "AMOUNT"]).default("PERCENT"),
+        discountValue: z.number().min(0).default(0),
       }),
     )
     .min(1),
@@ -444,6 +451,7 @@ export type ProductionOrder = typeof productionOrders.$inferSelect;
 export type ProductionOrderType = "NORMAL" | "ENCOMENDA";
 export type Sale = typeof sales.$inferSelect;
 export type SaleItem = typeof saleItems.$inferSelect;
+export type SaleDiscountType = "PERCENT" | "AMOUNT";
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;

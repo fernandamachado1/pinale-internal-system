@@ -721,12 +721,41 @@ export class DrizzleErpRepository implements IErpRepository {
     return created;
   }
 
-  async createSaleItems(saleId: number, items: Array<{ productId: number; qty: number; unitPrice: string; totalPrice: string }>): Promise<SaleItem[]> {
+  async updateSale(
+    id: number,
+    data: {
+      paymentMethod: string;
+      description?: string | null;
+      totalAmount: string;
+      salesChannel: "ONLINE" | "PHYSICAL";
+      soldAt?: string | null;
+    },
+  ): Promise<void> {
+    const conditions = [eq(sales.id, id)];
+    if (this.orgId) conditions.push(eq(sales.orgId, this.orgId));
+    await this.database
+      .update(sales)
+      .set({
+        paymentMethod: data.paymentMethod,
+        description: data.description ?? null,
+        totalAmount: data.totalAmount,
+        salesChannel: data.salesChannel,
+        soldAt: data.soldAt ? new Date(data.soldAt) : new Date(),
+      } as any)
+      .where(and(...conditions));
+  }
+
+  async createSaleItems(
+    saleId: number,
+    items: Array<{ productId: number; qty: number; discountType: "PERCENT" | "AMOUNT"; discountValue: string; unitPrice: string; totalPrice: string }>,
+  ): Promise<SaleItem[]> {
     const rows = items.map((item) => ({
       orgId: this.orgIdValue(),
       saleId,
       productId: item.productId,
       qty: item.qty,
+      discountType: item.discountType,
+      discountValue: item.discountValue,
       unitPrice: item.unitPrice,
       totalPrice: item.totalPrice,
     }));
