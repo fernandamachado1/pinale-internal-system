@@ -70,6 +70,7 @@ export default function Sales() {
   const [deletingSaleId, setDeletingSaleId] = useState<number | null>(null);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("PIX");
+  const [installments, setInstallments] = useState("1");
   const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
   const [description, setDescription] = useState("");
   const [saleDate, setSaleDate] = useState(() => localDateInputValue(new Date()));
@@ -101,6 +102,7 @@ export default function Sales() {
   const isValid = useMemo(
     () =>
       items.length > 0 &&
+      (paymentMethod !== "CREDITO" || (Number(installments) >= 1 && Number.isInteger(Number(installments)))) &&
       items.every((item) => {
         const product = productById.get(item.productId);
         if (!product) return false;
@@ -112,7 +114,7 @@ export default function Sales() {
         if (item.discountType === "AMOUNT" && discount > Number(product.price)) return false;
         return qty <= (stockByProductId.get(product.id) ?? 0);
       }),
-    [items, productById, stockByProductId],
+    [items, productById, stockByProductId, paymentMethod, installments],
   );
 
   const updateItem = (index: number, patch: Partial<SaleItem>) => {
@@ -127,6 +129,7 @@ export default function Sales() {
     setIsOpen(false);
     setItems([emptyItem()]);
     setPaymentMethod("PIX");
+    setInstallments("1");
     setSalesChannel("ONLINE");
     setDescription("");
     setSaleDate(localDateInputValue(new Date()));
@@ -152,6 +155,7 @@ export default function Sales() {
     const sale = editingSaleData.sale as any;
     const saleItems = (editingSaleData.items as any[]) ?? [];
     setPaymentMethod(String(sale.paymentMethod ?? "PIX"));
+    setInstallments(String(sale.installments ?? "1"));
     setSalesChannel((sale.salesChannel ?? "ONLINE") as "ONLINE" | "PHYSICAL");
     setDescription(String(sale.description ?? ""));
     const soldAt = sale.soldAt ? new Date(sale.soldAt) : new Date();
@@ -180,6 +184,7 @@ export default function Sales() {
 
     const payload = {
       paymentMethod,
+      installments: paymentMethod === "CREDITO" ? Number(installments) : null,
       description: description.trim() || null,
       salesChannel,
       soldAt: soldAtIso,
@@ -232,7 +237,15 @@ export default function Sales() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label>Forma de Pagamento</Label>
-                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <Select
+                  value={paymentMethod}
+                  onValueChange={(value) => {
+                    setPaymentMethod(value);
+                    if (value !== "CREDITO") {
+                      setInstallments("1");
+                    }
+                  }}
+                >
                   <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PAYMENT_METHODS.map((m) => (
@@ -241,6 +254,23 @@ export default function Sales() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {paymentMethod === "CREDITO" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="sale-installments">Número de parcelas</Label>
+                  <Input
+                    id="sale-installments"
+                    inputMode="numeric"
+                    type="number"
+                    min={1}
+                    max={24}
+                    step={1}
+                    value={installments}
+                    onChange={(event) => setInstallments(event.target.value)}
+                    className="h-11 rounded-xl border-border bg-card px-4"
+                  />
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 <Label>Canal de venda</Label>
@@ -295,103 +325,111 @@ export default function Sales() {
 
                   return (
                     <div key={index} className="rounded-2xl border border-border/70 bg-muted/20 p-3">
-                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_96px_auto] lg:items-start">
-                        <div className="space-y-1">
-                        <Select
-                          value={item.productId}
-                          onValueChange={(v) => {
-                            const nextProduct = productById.get(v);
-                            updateItem(index, {
-                              productId: v,
-                              qty: "1",
-                              discountType: "PERCENT",
-                              discountValue: String(nextProduct?.discountPercent ?? "0"),
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue placeholder="Produto" /></SelectTrigger>
-                          <SelectContent>
-                            {activeProducts.map((p) => (
-                              <SelectItem
-                                key={p.id}
-                                value={String(p.id)}
-                                disabled={(stockByProductId.get(p.id) ?? 0) <= 0 || selectedInOtherRows.has(String(p.id))}
-                              >
-                                {p.name} — {brl(discountedUnitPrice(p.price, "PERCENT", p.discountPercent))}
-                                {Number(p.discountPercent ?? 0) > 0 ? ` (de ${brl(Number(p.price))})` : ""}
-                                {(stockByProductId.get(p.id) ?? 0) <= 0 ? " (sem estoque)" : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {product && (
-                          <p className={`text-xs ${overStock ? "text-destructive" : "text-muted-foreground"}`}>
-                            Estoque disponível: {stock} un{overStock ? " — quantidade excede o estoque" : ""}
-                          </p>
-                        )}
-                        {product && (
-                          <p className="text-xs text-muted-foreground">
-                            Unitário: <span className="font-semibold text-foreground">{brl(unitPrice)}</span>
-                            {hasDiscount ? (
-                              <>
-                                {" "}
-                                (<span className="text-muted-foreground">
-                                  de {brl(Number(product.price))}, {item.discountType === "AMOUNT" ? brl(discountValue) : `${toPtBrDecimal(item.discountValue)}%`} off
-                                </span>)
-                              </>
-                            ) : null}
-                          </p>
-                        )}
-                        </div>
+                      <div className="grid gap-3">
                         <div className="space-y-2">
-                          <Label className="ml-1 text-xs font-semibold text-muted-foreground">Desconto</Label>
-                          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
-                            <Select
-                              value={item.discountType}
-                              onValueChange={(value) => {
-                                const nextType = value as SaleDiscountType;
-                                const nextProduct = productById.get(item.productId);
-                                const nextValue =
-                                  nextType === "PERCENT"
-                                    ? String(Math.min(100, Number(item.discountValue || nextProduct?.discountPercent || 0)))
-                                    : String(Math.min(Number(nextProduct?.price ?? 0), Number(item.discountValue || 0)));
-                                updateItem(index, { discountType: nextType, discountValue: nextValue });
-                              }}
-                            >
-                              <SelectTrigger className="h-11 rounded-xl border-border bg-card px-3">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="PERCENT">%</SelectItem>
-                                <SelectItem value="AMOUNT">R$</SelectItem>
-                              </SelectContent>
-                            </Select>
+                          <Label className="ml-1 text-xs font-semibold text-muted-foreground">Produto</Label>
+                          <Select
+                            value={item.productId}
+                            onValueChange={(v) => {
+                              const nextProduct = productById.get(v);
+                              updateItem(index, {
+                                productId: v,
+                                qty: "1",
+                                discountType: "PERCENT",
+                                discountValue: String(nextProduct?.discountPercent ?? "0"),
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="h-11 w-full rounded-xl border-border bg-card px-4">
+                              <SelectValue placeholder="Produto" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeProducts.map((p) => (
+                                <SelectItem
+                                  key={p.id}
+                                  value={String(p.id)}
+                                  disabled={(stockByProductId.get(p.id) ?? 0) <= 0 || selectedInOtherRows.has(String(p.id))}
+                                >
+                                  {p.name} — {brl(discountedUnitPrice(p.price, "PERCENT", p.discountPercent))}
+                                  {Number(p.discountPercent ?? 0) > 0 ? ` (de ${brl(Number(p.price))})` : ""}
+                                  {(stockByProductId.get(p.id) ?? 0) <= 0 ? " (sem estoque)" : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {product && (
+                            <p className={`text-xs ${overStock ? "text-destructive" : "text-muted-foreground"}`}>
+                              Estoque disponível: {stock} un{overStock ? " — quantidade excede o estoque" : ""}
+                            </p>
+                          )}
+                          {product && (
+                            <p className="text-xs text-muted-foreground">
+                              Unitário: <span className="font-semibold text-foreground">{brl(unitPrice)}</span>
+                              {hasDiscount ? (
+                                <>
+                                  {" "}
+                                  (<span className="text-muted-foreground">
+                                    de {brl(Number(product.price))}, {item.discountType === "AMOUNT" ? brl(discountValue) : `${toPtBrDecimal(item.discountValue)}%`} off
+                                  </span>)
+                                </>
+                              ) : null}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-[minmax(0,1fr)_96px_auto] items-end gap-3">
+                          <div className="space-y-2">
+                            <Label className="ml-1 text-xs font-semibold text-muted-foreground">Desconto</Label>
+                            <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                              <Select
+                                value={item.discountType}
+                                onValueChange={(value) => {
+                                  const nextType = value as SaleDiscountType;
+                                  const nextProduct = productById.get(item.productId);
+                                  const nextValue =
+                                    nextType === "PERCENT"
+                                      ? String(Math.min(100, Number(item.discountValue || nextProduct?.discountPercent || 0)))
+                                      : String(Math.min(Number(nextProduct?.price ?? 0), Number(item.discountValue || 0)));
+                                  updateItem(index, { discountType: nextType, discountValue: nextValue });
+                                }}
+                              >
+                                <SelectTrigger className="h-11 rounded-xl border-border bg-card px-3">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="PERCENT">%</SelectItem>
+                                  <SelectItem value="AMOUNT">R$</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                inputMode="decimal"
+                                value={product ? toPtBrDecimal(item.discountValue) : ""}
+                                onChange={(e) => updateItem(index, { discountValue: fromPtBrDecimal(e.target.value, 2) })}
+                                placeholder="0,00"
+                                className="h-11 rounded-xl border-border bg-card px-3 text-right font-semibold"
+                                title={`Desconto do item (${item.discountType === "AMOUNT" ? "valor" : "%"})`}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="ml-1 text-xs font-semibold text-muted-foreground">Qtd</Label>
                             <Input
-                              inputMode="decimal"
-                              value={product ? toPtBrDecimal(item.discountValue) : ""}
-                              onChange={(e) => updateItem(index, { discountValue: fromPtBrDecimal(e.target.value, 2) })}
-                              placeholder="0,00"
-                              className="h-11 rounded-xl border-border bg-card px-3 text-right font-semibold"
-                              title={`Desconto do item (${item.discountType === "AMOUNT" ? "valor" : "%"})`}
+                              type="number"
+                              min="1"
+                              value={item.qty}
+                              onChange={(e) => updateItem(index, { qty: e.target.value })}
+                              className="h-11 rounded-xl border-border bg-card px-3"
                             />
                           </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="ml-1 text-xs font-semibold text-muted-foreground">Qtd</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.qty}
-                            onChange={(e) => updateItem(index, { qty: e.target.value })}
-                            className="h-11 rounded-xl border-border bg-card px-3"
-                          />
-                        </div>
-                        <div className="flex justify-end lg:pt-7">
-                          {items.length > 1 && (
-                            <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          )}
+
+                          <div className="flex justify-end pb-1">
+                            {items.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

@@ -18,6 +18,7 @@ export interface ISalesRepository {
 
   createSale(data: {
     paymentMethod: string;
+    installments?: number | null;
     description?: string | null;
     totalAmount: string;
     salesChannel: "ONLINE" | "PHYSICAL";
@@ -27,6 +28,7 @@ export interface ISalesRepository {
     id: number,
     data: {
       paymentMethod: string;
+      installments?: number | null;
       description?: string | null;
       totalAmount: string;
       salesChannel: "ONLINE" | "PHYSICAL";

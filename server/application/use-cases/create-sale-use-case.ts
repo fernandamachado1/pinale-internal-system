@@ -14,6 +14,11 @@ export class CreateSaleUseCase {
 
   async execute(input: InsertSale): Promise<CreateSaleOutput> {
     if (input.items.length < 1) throw new ValidationDomainError("Sale must have at least one item");
+    const paymentMethod = (input.paymentMethod ?? "").toUpperCase();
+    const installments = input.installments ?? null;
+    if (paymentMethod === "CREDITO" && (!installments || installments < 1)) {
+      throw new ValidationDomainError("installments is required for CREDITO");
+    }
 
     return this.repository.withTransaction(async (txRepository) => {
       const saleAggregate = new SaleAggregate(input.paymentMethod);
@@ -68,6 +73,7 @@ export class CreateSaleUseCase {
       const totalAmount = saleAggregate.calculateTotalAmount();
       const createdSale = await txRepository.createSale({
         paymentMethod: input.paymentMethod,
+        installments: paymentMethod === "CREDITO" ? installments : null,
         description: input.description ?? null,
         totalAmount: totalAmount.toFixed(2),
         salesChannel: input.salesChannel,

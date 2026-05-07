@@ -702,6 +702,7 @@ export class DrizzleErpRepository implements IErpRepository {
 
   async createSale(data: {
     paymentMethod: string;
+    installments?: number | null;
     description?: string | null;
     totalAmount: string;
     salesChannel: "ONLINE" | "PHYSICAL";
@@ -712,6 +713,7 @@ export class DrizzleErpRepository implements IErpRepository {
       .values({
         orgId: this.orgIdValue(),
         paymentMethod: data.paymentMethod,
+        installments: data.installments ?? null,
         description: data.description ?? null,
         totalAmount: data.totalAmount,
         salesChannel: data.salesChannel,
@@ -725,6 +727,7 @@ export class DrizzleErpRepository implements IErpRepository {
     id: number,
     data: {
       paymentMethod: string;
+      installments?: number | null;
       description?: string | null;
       totalAmount: string;
       salesChannel: "ONLINE" | "PHYSICAL";
@@ -737,6 +740,7 @@ export class DrizzleErpRepository implements IErpRepository {
       .update(sales)
       .set({
         paymentMethod: data.paymentMethod,
+        installments: data.installments ?? null,
         description: data.description ?? null,
         totalAmount: data.totalAmount,
         salesChannel: data.salesChannel,

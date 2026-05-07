@@ -153,6 +153,7 @@ export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
   orgId: uuid("org_id").notNull(),
   paymentMethod: text("payment_method").notNull(),
+  installments: integer("installments"),
   description: text("description"),
   salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
   soldAt: timestamp("sold_at").notNull().defaultNow(),
@@ -402,6 +403,7 @@ export const createManyMaterialsSchema = z.object({
 
 export const insertSaleSchema = z.object({
   paymentMethod: z.string().min(1),
+  installments: z.number().int().min(1).max(24).optional().nullable(),
   description: z.string().trim().max(500).optional().nullable(),
   salesChannel: saleChannelEnum,
   soldAt: z.string().datetime().optional().nullable(),
@@ -415,6 +417,17 @@ export const insertSaleSchema = z.object({
       }),
     )
     .min(1),
+}).superRefine((value, ctx) => {
+  const method = (value.paymentMethod ?? "").toUpperCase();
+  if (method === "CREDITO") {
+    if (!value.installments || value.installments < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "installments is required for CREDITO",
+        path: ["installments"],
+      });
+    }
+  }
 });
 
 export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, orgId: true, createdAt: true });
