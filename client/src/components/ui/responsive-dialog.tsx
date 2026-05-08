@@ -116,13 +116,16 @@ export function ResponsiveDialogHeader(props: React.ComponentPropsWithoutRef<typ
 }
 
 export function ResponsiveDialogFooter(props: React.ComponentPropsWithoutRef<typeof DialogFooter>) {
+  const { isMobile } = useResponsiveDialogContext();
   const { padded } = useResponsiveDialogPadding();
   return (
     <DialogFooter
       {...(props as any)}
       className={cn(
-        "sticky bottom-0 z-30 mt-4 w-full border-t border-border bg-card p-4 shadow-[0_-1px_0_hsl(var(--border))]",
-        padded ? "-mx-4" : undefined,
+        isMobile
+          ? "mt-6 w-full border-t border-border bg-card px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-none flex flex-col gap-2"
+          : "sticky bottom-0 z-30 mt-4 w-full border-t border-border bg-card p-4 shadow-[0_-1px_0_hsl(var(--border))]",
+        padded && !isMobile ? "-mx-4" : undefined,
         props.className,
       )}
     />

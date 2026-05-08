@@ -325,7 +325,7 @@ export default function Sales() {
 
                   return (
                     <div key={index} className="rounded-2xl border border-border/70 bg-muted/20 p-3">
-                      <div className="grid gap-3">
+                      <div className="grid gap-4">
                         <div className="space-y-2">
                           <Label className="ml-1 text-xs font-semibold text-muted-foreground">Produto</Label>
                           <Select
@@ -377,10 +377,10 @@ export default function Sales() {
                           )}
                         </div>
 
-                        <div className="grid grid-cols-[minmax(0,1fr)_96px_auto] items-end gap-3">
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_96px_auto] sm:items-end">
                           <div className="space-y-2">
                             <Label className="ml-1 text-xs font-semibold text-muted-foreground">Desconto</Label>
-                            <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                            <div className="grid gap-2 sm:grid-cols-[88px_minmax(0,1fr)]">
                               <Select
                                 value={item.discountType}
                                 onValueChange={(value) => {
@@ -425,7 +425,7 @@ export default function Sales() {
 
                           <div className="flex justify-end pb-1">
                             {items.length > 1 && (
-                              <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)} className="h-11 w-11">
                                 <Trash2 className="h-4 w-4 text-muted-foreground" />
                               </Button>
                             )}
@@ -447,9 +447,15 @@ export default function Sales() {
                 Total: {brl(total)}
               </div>
 
-              <ResponsiveDialogFooter className="justify-end gap-2">
-                <Button type="button" variant="outline" onClick={handleClose}>Cancelar</Button>
-                <Button type="submit" disabled={!canWrite || createMutation.isPending || updateMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}>
+              <ResponsiveDialogFooter className="sm:justify-end sm:gap-2">
+                <Button type="button" variant="outline" onClick={handleClose} className="w-full sm:w-auto">
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  className="w-full sm:w-auto"
+                  disabled={!canWrite || createMutation.isPending || updateMutation.isPending || !isValid || Boolean(productsError) || Boolean(stocksError)}
+                >
                   {createMutation.isPending || updateMutation.isPending ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
                   ) : editingSaleId ? "Atualizar" : "Salvar"}
