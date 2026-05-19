@@ -74,6 +74,7 @@ export default function Sales() {
   const [salesChannel, setSalesChannel] = useState<"ONLINE" | "PHYSICAL">("ONLINE");
   const [description, setDescription] = useState("");
   const [saleDate, setSaleDate] = useState(() => localDateInputValue(new Date()));
+  const [visibleCount, setVisibleCount] = useState(100);
 
   const { data: editingSaleData } = useSale(editingSaleId);
 
@@ -88,6 +89,8 @@ export default function Sales() {
     () => new Map(activeProducts.map((p) => [String(p.id), p])),
     [activeProducts],
   );
+  const visibleSales = useMemo(() => sales?.slice(0, visibleCount) ?? [], [sales, visibleCount]);
+  const hasMoreSales = (sales?.length ?? 0) > visibleCount;
 
   const total = useMemo(
     () =>
@@ -487,67 +490,76 @@ export default function Sales() {
           ))}
         </div>
       ) : sales?.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Venda</TableHead>
-              <TableHead>Produto</TableHead>
-              <TableHead>Canal</TableHead>
-              <TableHead>Qtd</TableHead>
-              <TableHead>Unitário</TableHead>
-              <TableHead>Total Item</TableHead>
-              <TableHead>Pagamento</TableHead>
-              <TableHead>Descrição</TableHead>
-              <TableHead>Data da venda</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sales.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell>#{item.saleId}</TableCell>
-                <TableCell>{item.product.name}</TableCell>
-                <TableCell>{item.sale.salesChannel === "PHYSICAL" ? "Físico" : "Online"}</TableCell>
-               <TableCell>{item.qty}</TableCell>
-                <TableCell>{brl(Number(item.unitPrice))}</TableCell>
-                <TableCell>{brl(Number(item.totalPrice))}</TableCell>
-                <TableCell>{item.sale.paymentMethod}</TableCell>
-                <TableCell>{item.sale.description || "—"}</TableCell>
-                <TableCell>{formatDateTimeBR(item.sale.soldAt ?? item.sale.createdAt)}</TableCell>
-                <TableCell className="text-right">
-                  {canWrite ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex items-center justify-end gap-1"
-                        disabled={deleteMutation.isPending || updateMutation.isPending}
-                        onClick={() => openEditSaleDialog(item.sale.id)}
-                      >
-                        <Pencil className="h-4 w-4" /> Editar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="flex items-center justify-end gap-1"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => setSaleToDelete(item)}
-                      >
-                        {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
-                          <><Loader2 className="h-4 w-4 animate-spin" /> Excluindo...</>
-                        ) : (
-                          <><Trash2 className="h-4 w-4" /> Excluir</>
-                        )}
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
+        <div className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Venda</TableHead>
+                <TableHead>Produto</TableHead>
+                <TableHead>Canal</TableHead>
+                <TableHead>Qtd</TableHead>
+                <TableHead>Unitário</TableHead>
+                <TableHead>Total Item</TableHead>
+                <TableHead>Pagamento</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead>Data da venda</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {visibleSales.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>#{item.saleId}</TableCell>
+                  <TableCell>{item.product.name}</TableCell>
+                  <TableCell>{item.sale.salesChannel === "PHYSICAL" ? "Físico" : "Online"}</TableCell>
+                  <TableCell>{item.qty}</TableCell>
+                  <TableCell>{brl(Number(item.unitPrice))}</TableCell>
+                  <TableCell>{brl(Number(item.totalPrice))}</TableCell>
+                  <TableCell>{item.sale.paymentMethod}</TableCell>
+                  <TableCell>{item.sale.description || "—"}</TableCell>
+                  <TableCell>{formatDateTimeBR(item.sale.soldAt ?? item.sale.createdAt)}</TableCell>
+                  <TableCell className="text-right">
+                    {canWrite ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex items-center justify-end gap-1"
+                          disabled={deleteMutation.isPending || updateMutation.isPending}
+                          onClick={() => openEditSaleDialog(item.sale.id)}
+                        >
+                          <Pencil className="h-4 w-4" /> Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="flex items-center justify-end gap-1"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => setSaleToDelete(item)}
+                        >
+                          {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
+                            <><Loader2 className="h-4 w-4 animate-spin" /> Excluindo...</>
+                          ) : (
+                            <><Trash2 className="h-4 w-4" /> Excluir</>
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {hasMoreSales ? (
+            <div className="flex justify-center">
+              <Button variant="outline" onClick={() => setVisibleCount((current) => current + 100)}>
+                Carregar mais {Math.min(100, (sales?.length ?? 0) - visibleCount)}
+              </Button>
+            </div>
+          ) : null}
+        </div>
       ) : (
         <Card>
           <CardHeader>

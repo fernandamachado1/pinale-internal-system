@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTimeBR } from "@/lib/format";
 import { useLocation } from "wouter";
+import { useMemo, useState } from "react";
 
 const entityLabels: Record<"PRODUCT" | "MATERIAL", string> = {
   PRODUCT: "Produto",
@@ -34,6 +35,10 @@ const referenceTypeLabels: Record<"OP" | "SALE" | "MANUAL", string> = {
 export default function Movements() {
   const { data: movements, isLoading, error, refetch } = useInventoryMovements();
   const [, setLocation] = useLocation();
+  const [visibleCount, setVisibleCount] = useState(100);
+
+  const visibleMovements = useMemo(() => movements?.slice(0, visibleCount) ?? [], [movements, visibleCount]);
+  const hasMore = (movements?.length ?? 0) > visibleCount;
 
   const getReasonLabel = (movement: MovementWithDetails) => {
     const subtype = typeof movement?.metadata === "object" && movement?.metadata
@@ -74,39 +79,48 @@ export default function Movements() {
           ))}
         </div>
       ) : movements?.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>Entidade</TableHead>
-              <TableHead>Direção</TableHead>
-              <TableHead>Qty</TableHead>
-              <TableHead>Razão</TableHead>
-              <TableHead>Referência</TableHead>
-              <TableHead>Data</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {movements.map((movement) => (
-              <TableRow key={movement.id}>
-                <TableCell>#{movement.id}</TableCell>
-                <TableCell>
-                  {entityLabels[movement.entityType]}
-                  {movement.product ? ` - ${movement.product.name}` : ""}
-                  {movement.material ? ` - ${movement.material.name}` : ""}
-                </TableCell>
-                <TableCell>{directionLabels[movement.direction]}</TableCell>
-                <TableCell>{movement.qty}</TableCell>
-                <TableCell>{getReasonLabel(movement)}</TableCell>
-                <TableCell>
-                  {referenceTypeLabels[movement.referenceType]}
-                  {movement.referenceId ? ` #${movement.referenceId}` : ""}
-                </TableCell>
-                <TableCell>{formatDateTimeBR(movement.createdAt)}</TableCell>
+        <div className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Entidade</TableHead>
+                <TableHead>Direção</TableHead>
+                <TableHead>Qty</TableHead>
+                <TableHead>Razão</TableHead>
+                <TableHead>Referência</TableHead>
+                <TableHead>Data</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {visibleMovements.map((movement) => (
+                <TableRow key={movement.id}>
+                  <TableCell>#{movement.id}</TableCell>
+                  <TableCell>
+                    {entityLabels[movement.entityType]}
+                    {movement.product ? ` - ${movement.product.name}` : ""}
+                    {movement.material ? ` - ${movement.material.name}` : ""}
+                  </TableCell>
+                  <TableCell>{directionLabels[movement.direction]}</TableCell>
+                  <TableCell>{movement.qty}</TableCell>
+                  <TableCell>{getReasonLabel(movement)}</TableCell>
+                  <TableCell>
+                    {referenceTypeLabels[movement.referenceType]}
+                    {movement.referenceId ? ` #${movement.referenceId}` : ""}
+                  </TableCell>
+                  <TableCell>{formatDateTimeBR(movement.createdAt)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {hasMore ? (
+            <div className="flex justify-center">
+              <Button variant="outline" onClick={() => setVisibleCount((current) => current + 100)}>
+                Carregar mais {Math.min(100, (movements?.length ?? 0) - visibleCount)}
+              </Button>
+            </div>
+          ) : null}
+        </div>
       ) : (
         <Card>
           <CardHeader>

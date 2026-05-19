@@ -5,20 +5,22 @@ export interface PeriodInput {
   to?: Date;
 }
 
-function inPeriod(date: Date, period: PeriodInput): boolean {
-  if (period.from && date < period.from) return false;
-  if (period.to && date > period.to) return false;
-  return true;
-}
-
 export class ProductionReportUseCase {
   constructor(private readonly repository: IErpRepository) {}
 
   async execute(period: PeriodInput) {
-    const orders = await this.repository.getProductionOrders();
-    const movements = await this.repository.getInventoryMovements();
-
-    const doneOrders = orders.filter((order) => order.status === "DONE" && inPeriod(new Date(order.createdAt), period));
+    const doneOrders = await this.repository.getProductionOrders({
+      status: ["DONE"],
+      from: period.from,
+      to: period.to,
+    });
+    const movements = await this.repository.getInventoryMovements({
+      from: period.from,
+      to: period.to,
+      entityType: "MATERIAL",
+      direction: "OUT",
+      reason: ["PRODUCTION_CONSUMPTION"],
+    });
 
     const producedByProductMap = new Map<number, { productId: number; productName: string; qtyProduced: number }>();
     for (const order of doneOrders) {
@@ -33,10 +35,6 @@ export class ProductionReportUseCase {
 
     const fixedMaterialConsumptionMap = new Map<number, { materialId: number; materialName: string; qty: number }>();
     for (const movement of movements) {
-      if (!inPeriod(new Date(movement.createdAt), period)) continue;
-      if (movement.entityType !== "MATERIAL") continue;
-      if (movement.direction !== "OUT") continue;
-      if (movement.reason !== "PRODUCTION_CONSUMPTION") continue;
       if (!movement.entityId || !movement.material) continue;
 
       const current = fixedMaterialConsumptionMap.get(movement.entityId) ?? {
@@ -61,22 +59,22 @@ export class LeatherConsumptionReportUseCase {
   constructor(private readonly repository: IErpRepository) {}
 
   async execute(period: PeriodInput) {
-    const movements = await this.repository.getInventoryMovements();
-    const orders = await this.repository.getProductionOrders();
-    const productByOrderId = new Map(orders.map((order) => [order.id, order.product]));
-
-    const filtered = movements.filter((movement) => {
-      if (!inPeriod(new Date(movement.createdAt), period)) return false;
-      if (movement.entityType !== "MATERIAL") return false;
-      if (movement.direction !== "OUT") return false;
-      if (movement.reason !== "PRODUCTION_CONSUMPTION") return false;
-      return true;
+    const movements = await this.repository.getInventoryMovements({
+      from: period.from,
+      to: period.to,
+      entityType: "MATERIAL",
+      direction: "OUT",
+      reason: ["PRODUCTION_CONSUMPTION"],
+      referenceType: ["OP"],
     });
+    const referenceIds = Array.from(new Set(movements.flatMap((movement) => (movement.referenceId ? [movement.referenceId] : []))));
+    const orders = await this.repository.getProductionOrdersByIds(referenceIds);
+    const productByOrderId = new Map(orders.map((order) => [order.id, order.product]));
 
     const byProductMap = new Map<number, { productId: number; productName: string; qty: number }>();
     let totalGeneral = 0;
 
-    for (const movement of filtered) {
+    for (const movement of movements) {
       const qty = Number(movement.qty);
       totalGeneral += qty;
 
@@ -101,15 +99,16 @@ export class SalesReportUseCase {
   constructor(private readonly repository: IErpRepository) {}
 
   async execute(period: PeriodInput) {
-    const salesItems = await this.repository.getSales();
-
-    const filtered = salesItems.filter((item) => inPeriod(new Date(item.sale.soldAt ?? item.sale.createdAt), period));
+    const salesItems = await this.repository.getSales({
+      from: period.from,
+      to: period.to,
+    });
 
     let totalRevenue = 0;
     const soldByProductMap = new Map<number, { productId: number; productName: string; qty: number; revenue: number }>();
     const revenueByPaymentMap = new Map<string, number>();
 
-    for (const item of filtered) {
+    for (const item of salesItems) {
       const revenue = Number(item.totalPrice);
       totalRevenue += revenue;
 
@@ -140,24 +139,19 @@ export class DashboardReportUseCase {
 
   async execute(period: PeriodInput) {
     const [orders, salesItems, stocks, movements] = await Promise.all([
-      this.repository.getProductionOrders(),
-      this.repository.getSales(),
+      this.repository.getProductionOrders({ status: ["BACKLOG", "IN_PROGRESS"] }),
+      this.repository.getSales({ from: period.from, to: period.to }),
       this.repository.getProducedProductStocks(),
-      this.repository.getInventoryMovements(),
+      this.repository.getInventoryMovements({
+        from: period.from,
+        to: period.to,
+        entityType: "PRODUCT",
+        direction: "IN",
+        reason: ["PRODUCTION_OUTPUT", "ADJUSTMENT"],
+      }),
     ]);
 
-    const productById = new Map(orders.map((order) => [order.productId, order.product]));
-    const producedMovements = movements.filter((movement) => {
-      if (!inPeriod(new Date(movement.createdAt), period)) return false;
-      if (movement.entityType !== "PRODUCT") return false;
-      if (movement.direction !== "IN") return false;
-      if (movement.reason !== "PRODUCTION_OUTPUT" && movement.reason !== "ADJUSTMENT") return false;
-      return true;
-    });
-    const filteredSales = salesItems.filter((s) => inPeriod(new Date(s.sale.soldAt ?? s.sale.createdAt), period));
-
-    const allOpenOrders = orders.filter((o) => o.status !== "DONE");
-    const openOrders = allOpenOrders
+    const openOrders = [...orders]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 5)
       .map((o) => ({
@@ -167,19 +161,19 @@ export class DashboardReportUseCase {
         createdAt: new Date(o.createdAt).toISOString(),
       }));
 
-    const producedValue = producedMovements.reduce((acc, movement) => {
+    const producedValue = movements.reduce((acc, movement) => {
       if (!movement.entityId) return acc;
-      const product = movement.product ?? productById.get(movement.entityId);
+      const product = movement.product;
       if (!product) return acc;
       return acc + Number(movement.qty) * Number(product.price);
     }, 0);
-    const soldValue = filteredSales.reduce((acc, s) => acc + Number(s.totalPrice), 0);
-    const distinctSaleCount = new Set(filteredSales.map((s) => s.saleId)).size;
+    const soldValue = salesItems.reduce((acc, s) => acc + Number(s.totalPrice), 0);
+    const distinctSaleCount = new Set(salesItems.map((s) => s.saleId)).size;
 
     const producedByProductMap = new Map<number, { productId: number; productName: string; qty: number; value: number }>();
-    for (const movement of producedMovements) {
+    for (const movement of movements) {
       if (!movement.entityId) continue;
-      const product = movement.product ?? productById.get(movement.entityId);
+      const product = movement.product;
       if (!product) continue;
       const qty = Number(movement.qty);
       if (!Number.isFinite(qty)) continue;
@@ -190,7 +184,7 @@ export class DashboardReportUseCase {
     }
 
     const soldByProductMap = new Map<number, { productId: number; productName: string; qty: number; revenue: number }>();
-    for (const item of filteredSales) {
+    for (const item of salesItems) {
       const cur = soldByProductMap.get(item.productId) ?? { productId: item.productId, productName: item.product.name, qty: 0, revenue: 0 };
       cur.qty += item.qty;
       cur.revenue += Number(item.totalPrice);
@@ -198,9 +192,9 @@ export class DashboardReportUseCase {
     }
 
     const chartMap = new Map<string, { date: string; producedValue: number; soldValue: number }>();
-    for (const movement of producedMovements) {
+    for (const movement of movements) {
       if (!movement.entityId) continue;
-      const product = movement.product ?? productById.get(movement.entityId);
+      const product = movement.product;
       if (!product) continue;
       const date = new Date(movement.createdAt).toISOString().slice(0, 10);
       const qty = Number(movement.qty);
@@ -209,7 +203,7 @@ export class DashboardReportUseCase {
       cur.producedValue += qty * Number(product.price);
       chartMap.set(date, cur);
     }
-    for (const item of filteredSales) {
+    for (const item of salesItems) {
       const date = new Date(item.sale.soldAt ?? item.sale.createdAt).toISOString().slice(0, 10);
       const cur = chartMap.get(date) ?? { date, producedValue: 0, soldValue: 0 };
       cur.soldValue += Number(item.totalPrice);
@@ -225,7 +219,7 @@ export class DashboardReportUseCase {
       producedValue,
       soldValue,
       distinctSaleCount,
-      openOrdersCount: allOpenOrders.length,
+      openOrdersCount: orders.length,
       topProduced: Array.from(producedByProductMap.values()).sort((a, b) => b.value - a.value).slice(0, 5),
       topSold: Array.from(soldByProductMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5),
       chartSeries: Array.from(chartMap.values()).sort((a, b) => a.date.localeCompare(b.date)),

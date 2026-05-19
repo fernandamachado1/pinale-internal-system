@@ -454,7 +454,7 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex flex-col rounded-2xl border p-2.5 transition-colors sm:p-4 ${
+      className={`flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border p-2.5 transition-colors sm:max-h-[calc(100dvh-18rem)] sm:p-4 ${
         isMobile
           ? "min-h-[260px] w-[82vw] max-w-[420px] flex-none snap-start sm:min-h-[360px]"
           : "min-h-[360px] w-[360px] max-w-[420px] min-w-[320px] flex-none"
@@ -471,7 +471,7 @@ function ColumnDropZone({
       </div>
 
       <SortableContext id={status} items={orders.map((order) => String(order.id))} strategy={rectSortingStrategy}>
-        <div className="flex flex-1 flex-col gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {visibleOrders.length > 0 ? (
             children
           ) : (
@@ -1011,7 +1011,7 @@ export default function Production() {
               </ResponsiveDialogTitle>
               <ResponsiveDialogDescription className="text-sm text-foreground/75">
                 {editingOrder
-                  ? "Ajuste os dados da OP. Depois de entrar em produção, produto, quantidade e tipo ficam travados."
+                  ? "Ajuste os dados da OP. Enquanto estiver em produção, produto, quantidade e tipo ficam travados."
                   : "A nova OP entra no backlog. Os materiais serão reservados ao mover para Em produção e consumidos ao concluir."}
               </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
@@ -1023,7 +1023,7 @@ export default function Production() {
                   <Select
                     value={orderType}
                     onValueChange={(value) => setOrderType(value as ProductionOrderType)}
-                    disabled={editingOrder !== null && editingOrder.status !== "BACKLOG"}
+                    disabled={editingOrder?.status === "IN_PROGRESS"}
                   >
                     <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4">
                       <SelectValue placeholder="Selecione" />
@@ -1039,7 +1039,7 @@ export default function Production() {
                   <Select
                     value={productId}
                     onValueChange={setProductId}
-                    disabled={editingOrder !== null && editingOrder.status !== "BACKLOG"}
+                    disabled={editingOrder?.status === "IN_PROGRESS"}
                   >
                     <SelectTrigger className="h-11 rounded-xl border-border bg-card px-4"><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
@@ -1056,7 +1056,7 @@ export default function Production() {
                     min="1"
                     value={qtyPlanned}
                     onChange={(e) => setQtyPlanned(e.target.value)}
-                    disabled={editingOrder !== null && editingOrder.status !== "BACKLOG"}
+                    disabled={editingOrder?.status === "IN_PROGRESS"}
                     className="h-11 rounded-xl border-border bg-card px-4"
                   />
                 </div>

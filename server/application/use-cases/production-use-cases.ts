@@ -59,16 +59,13 @@ export class UpdateProductionOrderUseCase {
   async execute(id: number, input: UpdateProductionOrderInput): Promise<ProductionOrderWithProduct> {
     const order = await this.repository.getProductionOrder(id);
     if (!order) throw new NotFoundDomainError("Production order not found");
-    if (order.status === "DONE") {
-      throw new InvalidOperationDomainError("Done production orders cannot be edited");
-    }
 
     const mutatingCoreFields = input.productId !== undefined || input.qtyPlanned !== undefined || input.orderType !== undefined;
     let productForValidation = order.product;
 
     if (mutatingCoreFields) {
-      if (order.status !== "BACKLOG") {
-        throw new InvalidOperationDomainError("Only backlog production orders can change product, quantity or type");
+      if (order.status === "IN_PROGRESS") {
+        throw new InvalidOperationDomainError("Only backlog or completed production orders can change product, quantity or type");
       }
       const nextProductId = input.productId ?? order.productId;
       const product = await this.repository.getProduct(nextProductId);

@@ -59,7 +59,12 @@ export interface IErpRepository extends ISalesRepository {
     technicalSpec: { bomItems: BomItemInput[] },
   ): Promise<{ id: number; items: BomItem[] } | undefined>;
 
-  getProductionOrders(): Promise<ProductionOrderWithProduct[]>;
+  getProductionOrders(filters?: {
+    status?: Array<ProductionOrder["status"]>;
+    from?: Date;
+    to?: Date;
+  }): Promise<ProductionOrderWithProduct[]>;
+  getProductionOrdersByIds(ids: number[]): Promise<ProductionOrderWithProduct[]>;
   getProductionOrder(id: number): Promise<ProductionOrderWithProduct | undefined>;
   createProductionOrder(data: InsertProductionOrder): Promise<ProductionOrder>;
   updateProductionOrder(id: number, input: UpdateProductionOrderInput): Promise<ProductionOrder>;
@@ -69,7 +74,14 @@ export interface IErpRepository extends ISalesRepository {
   markProductionOrderDone(id: number, completedAt: Date): Promise<ProductionOrder>;
   deleteProductionOrder(id: number): Promise<void>;
 
-  getInventoryMovements(): Promise<MovementWithDetails[]>;
+  getInventoryMovements(filters?: {
+    from?: Date;
+    to?: Date;
+    entityType?: "PRODUCT" | "MATERIAL";
+    direction?: "IN" | "OUT";
+    reason?: Array<"PRODUCTION_CONSUMPTION" | "PRODUCTION_OUTPUT" | "SALE" | "PURCHASE" | "ADJUSTMENT">;
+    referenceType?: Array<"OP" | "SALE" | "MANUAL">;
+  }): Promise<MovementWithDetails[]>;
 
   getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
   getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined>;

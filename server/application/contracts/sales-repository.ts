@@ -39,7 +39,7 @@ export interface ISalesRepository {
     saleId: number,
     items: Array<{ productId: number; qty: number; discountType: "PERCENT" | "AMOUNT"; discountValue: string; unitPrice: string; totalPrice: string }>,
   ): Promise<SaleItem[]>;
-  getSales(): Promise<SaleListItem[]>;
+  getSales(filters?: { from?: Date; to?: Date }): Promise<SaleListItem[]>;
   getSaleWithItems(id: number): Promise<{ sale: Sale; items: Array<SaleItem & { product: Product }> } | undefined>;
   deleteSaleItemsBySaleId(saleId: number): Promise<void>;
   deleteSale(id: number): Promise<void>;
