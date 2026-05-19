@@ -419,7 +419,7 @@ function ProductionCard({
     <article
       ref={setNodeRef}
       style={style}
-      className={`min-h-[92px] rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${onClick ? "cursor-pointer" : ""} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`min-h-[92px] shrink-0 rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${onClick ? "cursor-pointer" : ""} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
       aria-label={`OP ${order.id}`}
       {...dragProps}
       onClick={onClick}
@@ -975,7 +975,7 @@ export default function Production() {
   const renderInsertionMarker = (key: string) => (
     <div
       key={key}
-      className="rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 px-3 py-4 text-center text-xs font-medium text-primary"
+      className="shrink-0 rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 px-3 py-4 text-center text-xs font-medium text-primary"
     >
       Solte aqui para inserir
     </div>
