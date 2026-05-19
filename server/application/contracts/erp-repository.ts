@@ -25,6 +25,7 @@ import type {
   UpdateMaterialRequest,
   UpdateProductInput,
 } from "@shared/schema.ts";
+import type { DashboardReport } from "@shared/routes";
 import type { ISalesRepository } from "./sales-repository.ts";
 
 export interface IErpRepository extends ISalesRepository {
@@ -82,6 +83,8 @@ export interface IErpRepository extends ISalesRepository {
     reason?: Array<"PRODUCTION_CONSUMPTION" | "PRODUCTION_OUTPUT" | "SALE" | "PURCHASE" | "ADJUSTMENT">;
     referenceType?: Array<"OP" | "SALE" | "MANUAL">;
   }): Promise<MovementWithDetails[]>;
+
+  getDashboardReport(period: { from?: Date; to?: Date }): Promise<DashboardReport>;
 
   getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
   getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined>;

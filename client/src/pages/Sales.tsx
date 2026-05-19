@@ -327,7 +327,7 @@ export default function Sales() {
                   const unitPrice = product ? discountedUnitPrice(product.price, item.discountType, item.discountValue) : 0;
 
                   return (
-                    <div key={index} className="rounded-2xl border border-border/70 bg-muted/20 p-3">
+                    <div key={index} className="rounded-none border-0 bg-transparent p-0 md:rounded-2xl md:border md:border-border/70 md:bg-muted/20 md:p-3">
                       <div className="grid gap-4">
                         <div className="space-y-2">
                           <Label className="ml-1 text-xs font-semibold text-muted-foreground">Produto</Label>
@@ -491,67 +491,133 @@ export default function Sales() {
         </div>
       ) : sales?.length ? (
         <div className="space-y-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Venda</TableHead>
-                <TableHead>Produto</TableHead>
-                <TableHead>Canal</TableHead>
-                <TableHead>Qtd</TableHead>
-                <TableHead>Unitário</TableHead>
-                <TableHead>Total Item</TableHead>
-                <TableHead>Pagamento</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead>Data da venda</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visibleSales.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>#{item.saleId}</TableCell>
-                  <TableCell>{item.product.name}</TableCell>
-                  <TableCell>{item.sale.salesChannel === "PHYSICAL" ? "Físico" : "Online"}</TableCell>
-                  <TableCell>{item.qty}</TableCell>
-                  <TableCell>{brl(Number(item.unitPrice))}</TableCell>
-                  <TableCell>{brl(Number(item.totalPrice))}</TableCell>
-                  <TableCell>{item.sale.paymentMethod}</TableCell>
-                  <TableCell>{item.sale.description || "—"}</TableCell>
-                  <TableCell>{formatDateTimeBR(item.sale.soldAt ?? item.sale.createdAt)}</TableCell>
-                  <TableCell className="text-right">
-                    {canWrite ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex items-center justify-end gap-1"
-                          disabled={deleteMutation.isPending || updateMutation.isPending}
-                          onClick={() => openEditSaleDialog(item.sale.id)}
-                        >
-                          <Pencil className="h-4 w-4" /> Editar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="flex items-center justify-end gap-1"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => setSaleToDelete(item)}
-                        >
-                          {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
-                            <><Loader2 className="h-4 w-4 animate-spin" /> Excluindo...</>
-                          ) : (
-                            <><Trash2 className="h-4 w-4" /> Excluir</>
-                          )}
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
+          <div className="space-y-3 md:hidden">
+            {visibleSales.map((item) => (
+              <Card key={item.id} className="border-border/70 bg-card/90 shadow-none">
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs text-muted-foreground">#{item.saleId}</p>
+                      <p className="truncate text-base font-semibold text-foreground">{item.product.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.sale.salesChannel === "PHYSICAL" ? "Físico" : "Online"} • {item.sale.paymentMethod}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Qtd</p>
+                      <p className="text-sm font-semibold text-foreground">{item.qty}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Unitário</p>
+                      <p className="font-medium text-foreground">{brl(Number(item.unitPrice))}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Total</p>
+                      <p className="font-medium text-foreground">{brl(Number(item.totalPrice))}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 px-3 py-2 col-span-2">
+                      <p className="text-[11px] text-muted-foreground">Descrição</p>
+                      <p className="font-medium text-foreground">{item.sale.description || "—"}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 px-3 py-2 col-span-2">
+                      <p className="text-[11px] text-muted-foreground">Data da venda</p>
+                      <p className="font-medium text-foreground">{formatDateTimeBR(item.sale.soldAt ?? item.sale.createdAt)}</p>
+                    </div>
+                  </div>
+
+                  {canWrite ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={deleteMutation.isPending || updateMutation.isPending}
+                        onClick={() => openEditSaleDialog(item.sale.id)}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" /> Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => setSaleToDelete(item)}
+                      >
+                        {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Excluindo...</>
+                        ) : (
+                          <><Trash2 className="mr-2 h-4 w-4" /> Excluir</>
+                        )}
+                      </Button>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Venda</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Canal</TableHead>
+                  <TableHead>Qtd</TableHead>
+                  <TableHead>Unitário</TableHead>
+                  <TableHead>Total Item</TableHead>
+                  <TableHead>Pagamento</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Data da venda</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {visibleSales.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>#{item.saleId}</TableCell>
+                    <TableCell>{item.product.name}</TableCell>
+                    <TableCell>{item.sale.salesChannel === "PHYSICAL" ? "Físico" : "Online"}</TableCell>
+                    <TableCell>{item.qty}</TableCell>
+                    <TableCell>{brl(Number(item.unitPrice))}</TableCell>
+                    <TableCell>{brl(Number(item.totalPrice))}</TableCell>
+                    <TableCell>{item.sale.paymentMethod}</TableCell>
+                    <TableCell>{item.sale.description || "—"}</TableCell>
+                    <TableCell>{formatDateTimeBR(item.sale.soldAt ?? item.sale.createdAt)}</TableCell>
+                    <TableCell className="text-right">
+                      {canWrite ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex items-center justify-end gap-1"
+                            disabled={deleteMutation.isPending || updateMutation.isPending}
+                            onClick={() => openEditSaleDialog(item.sale.id)}
+                          >
+                            <Pencil className="h-4 w-4" /> Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="flex items-center justify-end gap-1"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => setSaleToDelete(item)}
+                          >
+                            {deleteMutation.isPending && deletingSaleId === item.sale.id ? (
+                              <><Loader2 className="h-4 w-4 animate-spin" /> Excluindo...</>
+                            ) : (
+                              <><Trash2 className="h-4 w-4" /> Excluir</>
+                            )}
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
           {hasMoreSales ? (
             <div className="flex justify-center">
               <Button variant="outline" onClick={() => setVisibleCount((current) => current + 100)}>

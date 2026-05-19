@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CatalogProduct, ProductAttachment, ProductCategory, ProductColorVariant } from "@shared/schema";
 import { Layout } from "@/components/Layout";
+import { PageHeader } from "@/components/PageHeader";
 import { useCatalogProducts, useCreateProduct, useMaterials, useUpdateProduct } from "@/hooks/use-erp";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
@@ -453,15 +454,16 @@ export default function Products() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          <Package className="w-8 h-8 text-primary" /> Catálogo de Produtos
-        </h1>
-
-        <Button onClick={openCreateProductDialog} disabled={!canWrite || isSavingProduct}>
-          <Plus className="w-4 h-4 mr-2" /> Novo item
-        </Button>
-      </div>
+      <PageHeader
+        title="Catálogo de produtos"
+        description="Organize fichas técnicas, estoque e variações de forma simples."
+        icon={<Package className="h-6 w-6" />}
+        actions={
+          <Button onClick={openCreateProductDialog} disabled={!canWrite || isSavingProduct}>
+            <Plus className="w-4 h-4 mr-2" /> Novo item
+          </Button>
+        }
+      />
 
       {productsError ? (
         <Alert variant="destructive" className="mb-4">
@@ -531,7 +533,71 @@ export default function Products() {
             {isProductsFetching ? <span>Atualizando...</span> : null}
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="space-y-3 md:hidden">
+            {products.map((item) => (
+              <Card key={item.id} className="border-border/70 bg-card/90 shadow-none">
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-base font-semibold text-foreground">{item.name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="w-fit text-[11px]">
+                          {getProductCategoryLabel(item.category)}
+                        </Badge>
+                        {item.bomItems.length > 0 ? (
+                          <Badge variant="secondary" className="text-[11px]">{item.bomItems.length} material(is)</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[11px]">Sem ficha técnica</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Saldo</p>
+                      <p className="text-sm font-semibold text-foreground">{formatQtyByUom(item.stockQty, "UNIT")}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Preço</p>
+                      <p className="font-medium text-foreground">{brl(Number(item.price))}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Desconto</p>
+                      <p className="font-medium text-foreground">{Number(item.discountPercent ?? 0) > 0 ? `${toPtBrDecimal(item.discountPercent)}%` : "—"}</p>
+                    </div>
+                  </div>
+
+                  {canWrite ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => openAdjustStockDialog(item)}
+                        disabled={isSavingProduct}
+                      >
+                        <ArrowUpDown className="mr-2 h-4 w-4" />
+                        Estoque
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => openEditProductDialog(item)}
+                        disabled={isSavingProduct}
+                      >
+                        <PencilLine className="mr-2 h-4 w-4" />
+                        Editar
+                      </Button>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -690,7 +756,7 @@ export default function Products() {
 
                 <hr className="border-border" />
 
-                <section className="space-y-5 rounded-2xl border border-border bg-card p-4 shadow-sm md:space-y-6 md:p-6">
+                <section className="space-y-5 rounded-none border-0 bg-transparent p-0 md:space-y-6 md:rounded-2xl md:border md:border-border md:bg-card md:p-6 md:shadow-sm">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-1">
                       <h4 className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Estoque inicial</h4>
@@ -722,7 +788,7 @@ export default function Products() {
                     <div className="space-y-2">
                       <Label className="ml-1 text-sm font-semibold text-foreground">Quantidade</Label>
                       {editingProduct ? (
-                        <div className="rounded-xl border border-dashed border-border bg-card px-4 py-3 text-sm text-foreground/75">
+                        <div className="rounded-xl border-0 bg-card px-4 py-3 text-sm text-foreground/75 md:border md:border-dashed md:border-border">
                           Estoque atual: <span className="font-semibold text-foreground">{editingProduct.stockQty ?? 0}</span>. A quantidade inicial só é definida na criação.
                         </div>
                       ) : (
@@ -753,7 +819,7 @@ export default function Products() {
                         {colorVariants.map((item, index) => (
                           <div
                             key={index}
-                            className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[minmax(0,1fr),120px,44px] md:items-end"
+                            className="grid gap-3 rounded-none border-0 bg-transparent p-0 md:grid-cols-[minmax(0,1fr),120px,44px] md:items-end md:rounded-xl md:border md:border-border md:bg-card md:p-4"
                           >
                             <div className="space-y-2">
                               <Label className="text-sm">Nome da cor</Label>
@@ -848,7 +914,7 @@ export default function Products() {
                   {hasTechnicalSpec ? (
                     <div className="space-y-3">
                       {bomItems.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-4 text-sm text-foreground/70">
+                        <div className="rounded-xl border-0 bg-muted/20 px-4 py-4 text-sm text-foreground/70 md:border md:border-dashed md:border-border">
                           Nenhum material na ficha técnica ainda.
                         </div>
                       ) : null}
@@ -859,7 +925,7 @@ export default function Products() {
                       </div>
 
                       {bomItems.map((item, index) => (
-                        <div key={index} className="space-y-3 rounded-xl border border-border bg-card p-4">
+                        <div key={index} className="space-y-3 rounded-none border-0 bg-transparent p-0 md:rounded-xl md:border md:border-border md:bg-card md:p-4">
                           <div className="flex items-center justify-between">
                             <h3 className="text-sm font-medium">Material {index + 1}</h3>
                             <Button
@@ -911,7 +977,7 @@ export default function Products() {
                       </button>
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-4 text-sm text-foreground/70">
+                    <div className="rounded-xl border-0 bg-muted/20 px-4 py-4 text-sm text-foreground/70 md:border md:border-dashed md:border-border">
                       Sem ficha técnica por enquanto. Você poderá adicionar depois editando este mesmo produto.
                     </div>
                   )}
@@ -919,7 +985,7 @@ export default function Products() {
 
                 <hr className="border-border" />
 
-                <section className="space-y-5 rounded-2xl border border-border bg-card p-4 shadow-sm md:space-y-6 md:p-6">
+                <section className="space-y-5 rounded-none border-0 bg-transparent p-0 md:space-y-6 md:rounded-2xl md:border md:border-border md:bg-card md:p-6 md:shadow-sm">
                   <div className="space-y-1">
                     <h4 className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">Anexos</h4>
                     <p className="text-sm text-foreground/75">Links públicos para imagens ou arquivos do produto.</p>
@@ -955,7 +1021,7 @@ export default function Products() {
                       ))}
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-foreground/70">
+                    <div className="rounded-xl border-0 bg-muted/20 px-4 py-6 text-sm text-foreground/70 md:border md:border-dashed md:border-border">
                       Nenhum anexo adicionado.
                     </div>
                   )}

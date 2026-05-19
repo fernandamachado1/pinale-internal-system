@@ -12,12 +12,12 @@ interface StatCardProps {
 
 export function StatCard({ title, value, icon, description, iconClassName }: StatCardProps) {
   return (
-    <Card className="rounded-2xl border-0 bg-card shadow-sm hover:shadow-md transition-shadow">
+    <Card className="rounded-2xl border border-border/70 bg-card/90 shadow-none transition-colors hover:border-border">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{title}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{title}</span>
         <div
           className={cn(
-            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
             iconClassName ?? "bg-primary/10 text-primary",
           )}
         >
@@ -25,7 +25,7 @@ export function StatCard({ title, value, icon, description, iconClassName }: Sta
         </div>
       </CardHeader>
       <CardContent className="space-y-1">
-        <div className="text-2xl font-bold tracking-tight text-foreground">{value}</div>
+        <div className="text-2xl font-semibold tracking-tight text-foreground">{value}</div>
         {description ? (
           <p className="text-[11px] text-muted-foreground leading-relaxed">{description}</p>
         ) : null}

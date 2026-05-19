@@ -86,13 +86,12 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
   })();
 
   const SidebarContent = () => (
-    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground md:border-r md:border-sidebar-border md:shadow-[8px_0_32px_rgba(15,23,42,0.04)]">
-      {/* Logo */}
-      <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-5">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground md:border-r md:border-sidebar-border">
+      <div className="flex items-center gap-3 border-b border-sidebar-border/80 px-5 py-4">
         <div
           role="img"
           aria-label="Pinale ERP"
-          className="w-10 h-10 bg-primary shrink-0"
+          className="h-10 w-10 shrink-0 bg-primary"
           style={{
             WebkitMaskImage: "url(/logo.png)",
             maskImage: "url(/logo.png)",
@@ -105,26 +104,24 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
           }}
         />
         <div>
-          <span className="font-bold text-lg tracking-tight text-sidebar-foreground leading-none block">
-            Pinale 
+          <span className="block text-lg font-semibold tracking-tight leading-none text-sidebar-foreground">
+            Pinale
           </span>
-          <span className="text-[10px] uppercase tracking-widest text-sidebar-foreground/50 font-semibold">
+          <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-sidebar-foreground/55">
             ERP
           </span>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-        {/* Dashboard */}
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
         <div>
           <Link
             href={dashboardItem.href}
             aria-current={location === dashboardItem.href ? "page" : undefined}
-            className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-150 ${
+            className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${
               location === dashboardItem.href
-                ? "bg-sidebar-accent text-sidebar-foreground shadow-sm before:absolute before:left-0 before:top-2 before:h-6 before:w-1 before:rounded-full before:bg-primary"
-                : "text-sidebar-foreground/72 hover:bg-sidebar-accent/80 hover:text-sidebar-foreground"
+                ? "bg-sidebar-accent text-sidebar-foreground ring-1 ring-inset ring-sidebar-border"
+                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
             }`}
           >
             <dashboardItem.icon className="w-[18px] h-[18px] shrink-0" />
@@ -132,10 +129,9 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
           </Link>
         </div>
 
-        {/* Groups */}
         {menuGroups.map((group) => (
           <div key={group.label}>
-            <h3 className="mb-2 px-3 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/50">
+            <h3 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/50">
               {group.label}
             </h3>
             <div className="space-y-1">
@@ -146,10 +142,10 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
                     key={item.href}
                     href={item.href}
                     aria-current={isActive ? "page" : undefined}
-                    className={`group relative flex items-center gap-3 rounded-xl px-3 py-2 transition-all duration-150 ${
+                    className={`group flex items-center gap-3 rounded-xl px-3 py-2 transition-colors ${
                       isActive
-                        ? "bg-sidebar-accent text-sidebar-foreground shadow-sm before:absolute before:left-0 before:top-2 before:h-6 before:w-1 before:rounded-full before:bg-primary"
-                        : "text-sidebar-foreground/72 hover:bg-sidebar-accent/80 hover:text-sidebar-foreground"
+                        ? "bg-sidebar-accent text-sidebar-foreground ring-1 ring-inset ring-sidebar-border"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
                     }`}
                   >
                     <item.icon className="w-[18px] h-[18px] shrink-0" />
@@ -162,13 +158,13 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
         ))}
       </nav>
 
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="border-t border-sidebar-border/80 p-4">
         <div className="mb-3">
-          <ThemeToggle className="h-10 w-full justify-start gap-2 rounded-xl border border-sidebar-border bg-background/70 px-3 shadow-sm transition-colors hover:bg-background" />
+          <ThemeToggle className="h-10 w-full justify-start gap-2 rounded-xl border border-sidebar-border/80 bg-background/70 px-3 transition-colors hover:bg-background" />
         </div>
         <Link
           href="/profile"
-          className="mb-3 flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 transition-colors hover:border-sidebar-border hover:bg-sidebar-accent/60"
+          className="mb-3 flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 transition-colors hover:border-sidebar-border/80 hover:bg-sidebar-accent/60"
         >
           <Avatar className="h-9 w-9">
             <AvatarImage src={profile?.avatarUrl ?? undefined} alt={profile?.displayName ?? profile?.email ?? "Usuário"} />
@@ -190,7 +186,7 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:block w-64 h-screen sticky top-0 z-30 shrink-0">
+      <aside className="sticky top-0 z-30 hidden h-screen w-64 shrink-0 md:block">
         <SidebarContent />
       </aside>
 
@@ -208,17 +204,17 @@ export function Layout({ children, hideMobileMenu = false, fullBleed = false, in
                 <SidebarContent />
               </SheetContent>
             </Sheet>
-            <ThemeToggle className="h-9 rounded-lg border border-sidebar-border bg-background/70 px-3 shadow-sm" />
+            <ThemeToggle className="h-9 rounded-lg border border-sidebar-border/80 bg-background/70 px-3" />
           </div>
         ) : null}
 
         {/* Page Content */}
-        <div className={`${fullBleed ? "p-0" : "px-4 py-6 sm:px-5 md:px-6 lg:px-8"} overflow-x-hidden`}>
+        <div className={`${fullBleed ? "p-0" : "px-4 py-5 sm:px-5 sm:py-6 md:px-6 lg:px-8"} overflow-x-hidden`}>
           <div
-            className={innerClassName ?? "flex h-full w-full flex-col gap-6 max-w-7xl mx-auto animate-in fade-in duration-500 slide-in-from-bottom-2"}
+            className={innerClassName ?? "mx-auto flex h-full w-full max-w-7xl flex-col gap-5 animate-in fade-in duration-500 slide-in-from-bottom-2"}
           >
             {!isAuthzLoading && !canWrite ? (
-              <Alert>
+              <Alert className="border-border/70 bg-card/80">
                 <AlertTitle>Modo leitura</AlertTitle>
                 <AlertDescription>
                   Seu acesso atual é <span className="font-semibold">{role ?? "—"}</span>. Você pode navegar e consultar dados, mas não pode criar/editar.

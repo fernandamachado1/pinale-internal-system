@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout";
 import { useCancelPurchaseOrder, useCreatePurchaseOrder, useMaterials, usePurchaseOrders, useReceivePurchaseOrder, useReorderPurchaseOrders, useUpdatePurchaseOrder } from "@/hooks/use-erp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -228,7 +229,7 @@ function SortableFormItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`space-y-3 rounded-lg border p-4 ${isDragging ? "bg-muted/40 shadow-lg ring-2 ring-primary/20" : ""}`}
+      className={`space-y-3 rounded-none border-0 p-0 md:rounded-lg md:border md:p-4 ${isDragging ? "bg-muted/40 shadow-lg ring-2 ring-primary/20" : ""}`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -659,36 +660,100 @@ export default function PurchaseOrders() {
           </div>
         </div>
       ) : orderedOrders.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10" aria-label="Ordenação" />
-              <TableHead>Itens</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden md:table-cell">Criada em</TableHead>
-              <TableHead className="hidden md:table-cell">Recebida em</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOrdersDragEnd}>
-            <SortableContext items={orderedOrders.map((o) => String(o.id))} strategy={verticalListSortingStrategy}>
-              <TableBody>
-                {orderedOrders.map((order) => (
-                  <SortablePurchaseOrderRow
-                    key={order.id}
-                    order={order}
-                    canWrite={canWrite && !reorderMutation.isPending}
-                    cancelMutation={cancelMutation}
-                    cancelingOrderId={cancelingOrderId}
-                    setCancelingOrderId={setCancelingOrderId}
-                    openEditDialog={openEditDialog}
-                    openReceiveDialog={openReceiveDialog}
-                  />
-                ))}
-              </TableBody>
-            </SortableContext>
-          </DndContext>
-        </Table>
+        <>
+          <div className="space-y-3 md:hidden">
+            {orderedOrders.map((order) => {
+              const itemNames = (order.items ?? []).map((item) => item.materialName).filter(Boolean);
+              const canEdit = order.status !== "RECEIVED" && order.status !== "CANCELED";
+              const canReceive = order.status !== "RECEIVED" && order.status !== "CANCELED";
+              const canCancel = order.status !== "RECEIVED" && order.status !== "CANCELED";
+
+              return (
+                <Card key={order.id} className="border-border/70 bg-card/90 shadow-none">
+                  <CardContent className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-xs text-muted-foreground">OC #{order.id}</p>
+                        <p className="line-clamp-2 text-sm font-semibold text-foreground">
+                          {itemNames.length ? itemNames.join(", ") : "Sem itens informados"}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0">{statusLabels[order.status]}</Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="rounded-xl bg-muted/40 px-3 py-2">
+                        <p className="text-[11px] text-muted-foreground">Criada</p>
+                        <p className="font-medium text-foreground">{formatDate(order.createdAt)}</p>
+                      </div>
+                      <div className="rounded-xl bg-muted/40 px-3 py-2">
+                        <p className="text-[11px] text-muted-foreground">Recebida</p>
+                        <p className="font-medium text-foreground">{formatDate(order.receivedAt)}</p>
+                      </div>
+                    </div>
+
+                    {canWrite ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
+                          Editar
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
+                          Receber
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={!canCancel || cancelMutation.isPending}
+                          onClick={() => {
+                            setCancelingOrderId(order.id);
+                            cancelMutation.mutate(order.id, {
+                              onSettled: () => setCancelingOrderId(null),
+                            });
+                          }}
+                        >
+                          {cancelMutation.isPending && cancelingOrderId === order.id ? "..." : "Cancelar"}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" aria-label="Ordenação" />
+                  <TableHead>Itens</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Criada em</TableHead>
+                  <TableHead className="hidden md:table-cell">Recebida em</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOrdersDragEnd}>
+                <SortableContext items={orderedOrders.map((o) => String(o.id))} strategy={verticalListSortingStrategy}>
+                  <TableBody>
+                    {orderedOrders.map((order) => (
+                      <SortablePurchaseOrderRow
+                        key={order.id}
+                        order={order}
+                        canWrite={canWrite && !reorderMutation.isPending}
+                        cancelMutation={cancelMutation}
+                        cancelingOrderId={cancelingOrderId}
+                        setCancelingOrderId={setCancelingOrderId}
+                        openEditDialog={openEditDialog}
+                        openReceiveDialog={openReceiveDialog}
+                      />
+                    ))}
+                  </TableBody>
+                </SortableContext>
+              </DndContext>
+            </Table>
+          </div>
+        </>
       ) : (
         <Card>
           <CardHeader>
@@ -775,7 +840,7 @@ export default function PurchaseOrders() {
                   const currentMaterial = currentMaterialId ? materialById.get(currentMaterialId) : undefined;
                   const isTracked = currentMaterial?.stockTracked !== false;
                   return (
-                    <div key={item.id} className="space-y-3 rounded-lg border p-4">
+                    <div key={item.id} className="space-y-3 rounded-none border-0 p-0 md:rounded-lg md:border md:p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <div className="text-sm font-semibold">{item.materialName}</div>
@@ -823,7 +888,7 @@ export default function PurchaseOrders() {
                               className="h-11 rounded-xl border-border bg-card px-4"
                             />
                           ) : (
-                            <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                            <div className="rounded-xl border-0 bg-muted/20 px-4 py-3 text-sm text-muted-foreground md:border md:border-dashed md:border-border">
                               Não é necessário informar quantidade.
                             </div>
                           )}

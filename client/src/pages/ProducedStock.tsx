@@ -93,38 +93,48 @@ export default function ProducedStock() {
           ))}
         </div>
       ) : rows.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Produto</TableHead>
-              <TableHead>Preço</TableHead>
-              <TableHead>Estrutura</TableHead>
-              <TableHead className="text-right">Entradas</TableHead>
-              <TableHead className="text-right">Saídas</TableHead>
-              <TableHead className="text-right">Saldo</TableHead>
-              <TableHead>Atualizado em</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          <div className="space-y-3 md:hidden">
             {rows.map((row) => (
-              <TableRow key={row.productId}>
-                <TableCell>{row.productName}</TableCell>
-                <TableCell>{brl(Number(row.productPrice))}</TableCell>
-                <TableCell>
-                  {row.hasBom ? <Badge variant="outline">Com ficha</Badge> : <Badge variant="secondary">Sem ficha</Badge>}
-                </TableCell>
-                <TableCell className="text-right">{row.inQty}</TableCell>
-                <TableCell className="text-right">{row.outQty}</TableCell>
-                <TableCell className="text-right font-semibold">{formatQtyByUom(row.stockQty, "UNIT")}</TableCell>
-                <TableCell>{row.updatedAt ? formatDateTimeBR(row.updatedAt) : "-"}</TableCell>
-                <TableCell className="text-right">
+              <Card key={row.productId} className="border-border/70 bg-card/90 shadow-none">
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-base font-semibold text-foreground">{row.productName}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {row.hasBom ? <Badge variant="outline">Com ficha</Badge> : <Badge variant="secondary">Sem ficha</Badge>}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Saldo</p>
+                      <p className="text-sm font-semibold text-foreground">{formatQtyByUom(row.stockQty, "UNIT")}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Preço</p>
+                      <p className="font-medium text-foreground">{brl(Number(row.productPrice))}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Entradas</p>
+                      <p className="font-medium text-foreground">{row.inQty}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Saídas</p>
+                      <p className="font-medium text-foreground">{row.outQty}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 px-3 py-2">
+                      <p className="text-[11px] text-muted-foreground">Atualizado</p>
+                      <p className="font-medium text-foreground">{row.updatedAt ? formatDateTimeBR(row.updatedAt) : "-"}</p>
+                    </div>
+                  </div>
+
                   {canWrite ? (
                     <Button
                       type="button"
-                      size="icon"
                       variant="outline"
-                      className="h-9 w-9"
+                      className="w-full"
                       onClick={() => {
                         setAdjustProduct({ id: row.productId, name: row.productName, stockQty: row.stockQty });
                         setAdjustDialogOpen(true);
@@ -132,16 +142,67 @@ export default function ProducedStock() {
                       aria-label={`Ajustar estoque de ${row.productName}`}
                       title="Ajustar estoque"
                     >
-                      <ArrowUpDown className="h-4 w-4" />
+                      <ArrowUpDown className="mr-2 h-4 w-4" />
+                      Ajustar estoque
                     </Button>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-              </TableRow>
+                  ) : null}
+                </CardContent>
+              </Card>
             ))}
-          </TableBody>
-        </Table>
+          </div>
+
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Preço</TableHead>
+                  <TableHead>Estrutura</TableHead>
+                  <TableHead className="text-right">Entradas</TableHead>
+                  <TableHead className="text-right">Saídas</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead>Atualizado em</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.productId}>
+                    <TableCell>{row.productName}</TableCell>
+                    <TableCell>{brl(Number(row.productPrice))}</TableCell>
+                    <TableCell>
+                      {row.hasBom ? <Badge variant="outline">Com ficha</Badge> : <Badge variant="secondary">Sem ficha</Badge>}
+                    </TableCell>
+                    <TableCell className="text-right">{row.inQty}</TableCell>
+                    <TableCell className="text-right">{row.outQty}</TableCell>
+                    <TableCell className="text-right font-semibold">{formatQtyByUom(row.stockQty, "UNIT")}</TableCell>
+                    <TableCell>{row.updatedAt ? formatDateTimeBR(row.updatedAt) : "-"}</TableCell>
+                    <TableCell className="text-right">
+                      {canWrite ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          className="h-9 w-9"
+                          onClick={() => {
+                            setAdjustProduct({ id: row.productId, name: row.productName, stockQty: row.stockQty });
+                            setAdjustDialogOpen(true);
+                          }}
+                          aria-label={`Ajustar estoque de ${row.productName}`}
+                          title="Ajustar estoque"
+                        >
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       ) : (
         <Card>
           <CardHeader>

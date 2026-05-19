@@ -212,7 +212,7 @@ export function MaterialDialog({
     <form onSubmit={handleSubmit} className={formClassName}>
       <div className={scrollContainerClassName}>
         {items.map((item, index) => (
-          <div key={index} className="space-y-4 rounded-lg border p-4">
+          <div key={index} className="space-y-4 rounded-none border-0 px-0 py-2 md:rounded-lg md:border md:p-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Material {index + 1}</h3>
               {!isEditing && allowMultiple ? (
@@ -261,7 +261,7 @@ export function MaterialDialog({
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+            <div className="flex items-center justify-between rounded-lg border-0 bg-muted/20 px-4 py-3 md:border md:border-border/60">
               <div className="space-y-1">
                 <Label className="text-sm font-medium">Controla estoque</Label>
                 <p className="text-xs text-muted-foreground">
@@ -311,7 +311,7 @@ export function MaterialDialog({
                 ) : null}
               </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              <div className="rounded-lg border-0 bg-muted/20 px-4 py-3 text-sm text-muted-foreground md:border md:border-dashed md:border-border">
                 Este material não usa controle de estoque. A quantidade fica apenas cadastral.
               </div>
             )}

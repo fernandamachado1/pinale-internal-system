@@ -42,6 +42,7 @@ import {
   type UpdateMaterialRequest,
   type UpdateProductInput,
 } from "@shared/schema.ts";
+import type { DashboardReport } from "@shared/routes";
 import type { IErpRepository } from "../../application/contracts/erp-repository.ts";
 import type { CreateInventoryMovementData } from "../../application/contracts/sales-repository.ts";
 
@@ -923,6 +924,191 @@ export class DrizzleErpRepository implements IErpRepository {
       product: movement.entityType === "PRODUCT" && movement.entityId ? productsById.get(movement.entityId) ?? null : null,
       material: movement.entityType === "MATERIAL" && movement.entityId ? materialsById.get(movement.entityId) ?? null : null,
     }));
+  }
+
+  async getDashboardReport(period: { from?: Date; to?: Date }): Promise<DashboardReport> {
+    const combineWhere = (...conditions: Array<any | undefined>) => {
+      const filtered = conditions.filter(Boolean) as Array<any>;
+      return filtered.length > 0 ? and(...filtered) : undefined;
+    };
+
+    const openOrderWhere = combineWhere(
+      this.orgId ? eq(productionOrders.orgId, this.orgId) : undefined,
+      inArray(productionOrders.status, ["BACKLOG", "IN_PROGRESS"]),
+    );
+
+    const salesConditions = [this.orgId ? eq(sales.orgId, this.orgId) : undefined].filter(Boolean) as Array<any>;
+    this.applyDateRange(salesConditions, sales.soldAt, period.from, period.to);
+    const saleItemConditions = [this.orgId ? eq(saleItems.orgId, this.orgId) : undefined].filter(Boolean) as Array<any>;
+
+    const movementConditions = [
+      this.orgId ? eq(inventoryMovements.orgId, this.orgId) : undefined,
+      eq(inventoryMovements.entityType, "PRODUCT"),
+      eq(inventoryMovements.direction, "IN"),
+      inArray(inventoryMovements.reason, ["PRODUCTION_OUTPUT", "ADJUSTMENT"]),
+      sql`${inventoryMovements.entityId} is not null`,
+    ].filter(Boolean) as Array<any>;
+    this.applyDateRange(movementConditions, inventoryMovements.createdAt, period.from, period.to);
+
+    const stockConditions = [this.orgId ? eq(producedProductStocks.orgId, this.orgId) : undefined].filter(Boolean) as Array<any>;
+    const stockWhere = combineWhere(...stockConditions);
+
+    const [openOrdersCountRow] = (await this.database
+      .select({ count: sql<number>`coalesce(count(*), 0)` })
+      .from(productionOrders)
+      .where(openOrderWhere)) as Array<{ count: number }>;
+
+    const openOrders = (await this.database
+      .select({
+        id: productionOrders.id,
+        productName: products.name,
+        qtyPlanned: productionOrders.qtyPlanned,
+        createdAt: productionOrders.createdAt,
+      })
+      .from(productionOrders)
+      .innerJoin(products, eq(productionOrders.productId, products.id))
+      .where(openOrderWhere)
+      .orderBy(desc(productionOrders.createdAt), desc(productionOrders.id))
+      .limit(5)) as Array<{
+      id: number;
+      productName: string;
+      qtyPlanned: number;
+      createdAt: Date;
+    }>;
+
+    const [salesSummary] = (await this.database
+      .select({
+        totalRevenue: sql<number>`coalesce(sum(${saleItems.totalPrice}), 0)`,
+        distinctSaleCount: sql<number>`count(distinct ${saleItems.saleId})`,
+      })
+      .from(saleItems)
+      .innerJoin(sales, eq(saleItems.saleId, sales.id))
+      .where(combineWhere(...saleItemConditions, ...salesConditions))) as Array<{
+      totalRevenue: number;
+      distinctSaleCount: number;
+    }>;
+
+    const topSold = (await this.database
+      .select({
+        productId: products.id,
+        productName: products.name,
+        qty: sql<number>`coalesce(sum(${saleItems.qty}), 0)`,
+        revenue: sql<number>`coalesce(sum(${saleItems.totalPrice}), 0)`,
+      })
+      .from(saleItems)
+      .innerJoin(sales, eq(saleItems.saleId, sales.id))
+      .innerJoin(products, eq(saleItems.productId, products.id))
+      .where(combineWhere(...saleItemConditions, ...salesConditions))
+      .groupBy(products.id, products.name)
+      .orderBy(desc(sql<number>`coalesce(sum(${saleItems.totalPrice}), 0)`))
+      .limit(5)) as Array<{
+      productId: number;
+      productName: string;
+      qty: number;
+      revenue: number;
+    }>;
+
+    const soldChartRows = (await this.database
+      .select({
+        date: sql<string>`to_char(date_trunc('day', ${sales.soldAt}), 'YYYY-MM-DD')`,
+        soldValue: sql<number>`coalesce(sum(${saleItems.totalPrice}), 0)`,
+      })
+      .from(saleItems)
+      .innerJoin(sales, eq(saleItems.saleId, sales.id))
+      .where(combineWhere(...saleItemConditions, ...salesConditions))
+      .groupBy(sql`date_trunc('day', ${sales.soldAt})`)
+      .orderBy(sql`date_trunc('day', ${sales.soldAt})`)) as Array<{
+      date: string;
+      soldValue: number;
+    }>;
+
+    const [producedSummary] = (await this.database
+      .select({
+        producedValue: sql<number>`coalesce(sum(((${inventoryMovements.qty})::numeric * (${products.price})::numeric)), 0)`,
+      })
+      .from(inventoryMovements)
+      .innerJoin(products, eq(inventoryMovements.entityId, products.id))
+      .where(combineWhere(...movementConditions))) as Array<{
+      producedValue: number;
+    }>;
+
+    const topProduced = (await this.database
+      .select({
+        productId: products.id,
+        productName: products.name,
+        qty: sql<number>`coalesce(sum(${inventoryMovements.qty}), 0)`,
+        value: sql<number>`coalesce(sum(((${inventoryMovements.qty})::numeric * (${products.price})::numeric)), 0)`,
+      })
+      .from(inventoryMovements)
+      .innerJoin(products, eq(inventoryMovements.entityId, products.id))
+      .where(combineWhere(...movementConditions))
+      .groupBy(products.id, products.name)
+      .orderBy(desc(sql<number>`coalesce(sum(((${inventoryMovements.qty})::numeric * (${products.price})::numeric)), 0)`))
+      .limit(5)) as Array<{
+      productId: number;
+      productName: string;
+      qty: number;
+      value: number;
+    }>;
+
+    const producedChartRows = (await this.database
+      .select({
+        date: sql<string>`to_char(date_trunc('day', ${inventoryMovements.createdAt}), 'YYYY-MM-DD')`,
+        producedValue: sql<number>`coalesce(sum(((${inventoryMovements.qty})::numeric * (${products.price})::numeric)), 0)`,
+      })
+      .from(inventoryMovements)
+      .innerJoin(products, eq(inventoryMovements.entityId, products.id))
+      .where(combineWhere(...movementConditions))
+      .groupBy(sql`date_trunc('day', ${inventoryMovements.createdAt})`)
+      .orderBy(sql`date_trunc('day', ${inventoryMovements.createdAt})`)) as Array<{
+      date: string;
+      producedValue: number;
+    }>;
+
+    const productStock = (await this.database
+      .select({
+        productId: producedProductStocks.productId,
+        productName: products.name,
+        stockQty: producedProductStocks.stockQty,
+      })
+      .from(producedProductStocks)
+      .innerJoin(products, eq(producedProductStocks.productId, products.id))
+      .where(stockWhere)
+      .orderBy(desc(producedProductStocks.stockQty), asc(products.name))
+      .limit(8)) as Array<{
+      productId: number;
+      productName: string;
+      stockQty: number;
+    }>;
+
+    const chartMap = new Map<string, { date: string; producedValue: number; soldValue: number }>();
+    for (const row of producedChartRows) {
+      const current = chartMap.get(row.date) ?? { date: row.date, producedValue: 0, soldValue: 0 };
+      current.producedValue += Number(row.producedValue);
+      chartMap.set(row.date, current);
+    }
+    for (const row of soldChartRows) {
+      const current = chartMap.get(row.date) ?? { date: row.date, producedValue: 0, soldValue: 0 };
+      current.soldValue += Number(row.soldValue);
+      chartMap.set(row.date, current);
+    }
+
+    return {
+      producedValue: Number(producedSummary?.producedValue ?? 0),
+      soldValue: Number(salesSummary?.totalRevenue ?? 0),
+      distinctSaleCount: Number(salesSummary?.distinctSaleCount ?? 0),
+      openOrdersCount: Number(openOrdersCountRow?.count ?? 0),
+      topProduced,
+      topSold,
+      chartSeries: Array.from(chartMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+      openOrders: openOrders.map((order) => ({
+        id: order.id,
+        productName: order.productName,
+        qtyPlanned: order.qtyPlanned,
+        createdAt: order.createdAt.toISOString(),
+      })),
+      productStock,
+    };
   }
 
   async createInventoryMovement(movement: CreateInventoryMovementData): Promise<InventoryMovement> {

@@ -6,12 +6,11 @@ import {
   CalendarIcon,
   Factory,
   Banknote,
-  Hammer,
-  TrendingUp,
   PackageOpen,
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { StatCard } from "@/components/StatCard";
+import { PageHeader } from "@/components/PageHeader";
 import { useDashboardReport } from "@/hooks/use-erp";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -103,8 +102,6 @@ export default function Dashboard() {
 
   const producedValue = report?.producedValue ?? 0;
   const soldValue = report?.soldValue ?? 0;
-  const avgTicket =
-    (report?.distinctSaleCount ?? 0) > 0 ? soldValue / report!.distinctSaleCount : 0;
   const openOrdersCount = report?.openOrdersCount ?? 0;
   const isEmptyState =
     Boolean(report) &&
@@ -122,25 +119,10 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      {/* Header */}
-      <div className="space-y-8">
-        <section className="rounded-xl border bg-card/60 px-4 py-6 min-h-[104px] flex flex-col justify-center">
-          <p className="text-base font-semibold text-primary tracking-tight">
-            Bem-vindo ao Pinale ERP
-          </p>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Aqui você acompanha produção, estoque e vendas do ateliê.
-          </p>
-        </section>
-
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground">Visão Geral</h2>
-            <p className="text-sm text-muted-foreground">
-              Indicadores, tendências e alertas do período selecionado.
-            </p>
-          </div>
-
+      <PageHeader
+        title="Visão geral"
+        description="Indicadores, tendências e alertas do período selecionado."
+        actions={
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -165,8 +147,8 @@ export default function Dashboard() {
               />
             </PopoverContent>
           </Popover>
-        </div>
-      </div>
+        }
+      />
 
       {error ? (
         <Alert variant="destructive">
@@ -183,7 +165,7 @@ export default function Dashboard() {
       ) : null}
 
       {!isLoading && !error && isEmptyState ? (
-        <Card className="border-0 shadow-sm">
+        <Card className="border-border/70 bg-card/90 shadow-none">
           <CardHeader>
             <CardTitle>Sem dados para mostrar ainda</CardTitle>
             <CardDescription>
@@ -200,7 +182,7 @@ export default function Dashboard() {
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="rounded-2xl border-0 bg-card shadow-sm p-6">
+            <div key={index} className="rounded-2xl border border-border/70 bg-card/90 p-6 shadow-none">
               <div className="flex items-center justify-between">
                 <Skeleton className="h-3 w-24" />
                 <Skeleton className="h-10 w-10 rounded-xl" />
@@ -226,28 +208,14 @@ export default function Dashboard() {
             value={brl(soldValue)}
             icon={<Banknote className="w-5 h-5" />}
             description="Faturamento total líquido"
-            iconClassName="bg-emerald-50 text-emerald-600"
+            iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
           />
-          {/* <StatCard
-            title="OPs em Aberto"
-            value={openOrdersCount}
-            icon={<Hammer className="w-5 h-5" />}
-            description="Ordens de produção ativas"
-            iconClassName="bg-amber-50 text-amber-600"
-          />
-          <StatCard
-            title="Ticket Médio"
-            value={brl(avgTicket)}
-            icon={<TrendingUp className="w-5 h-5" />}
-            description="Por pedido faturado"
-            iconClassName="bg-slate-100 text-slate-600"
-          /> */}
         </div>
       )}
 
       {/* Chart + Top Vendidos */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2 border-0 shadow-sm">
+        <Card className="lg:col-span-2 border border-border/70 bg-card/90 shadow-none">
           <CardHeader>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -295,7 +263,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="border border-border/70 bg-card/90 shadow-none">
           <CardHeader>
             <CardTitle className="text-base">Top Produtos Vendidos</CardTitle>
             <CardDescription>Por faturamento no período.</CardDescription>
@@ -323,7 +291,7 @@ export default function Dashboard() {
 
       {/* Estoque Pronto + Produção Ativa */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border-0 shadow-sm">
+        <Card className="border border-border/70 bg-card/90 shadow-none">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Estoque de Produtos Acabados</CardTitle>
@@ -359,7 +327,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="border border-border/70 bg-card/90 shadow-none">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Produção Ativa</CardTitle>
