@@ -39,7 +39,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, ChevronLeft, ChevronRight, Factory, Loader2, Package, Plus, Trash2 } from "lucide-react";
+import { CalendarIcon, ChevronLeft, ChevronRight, Factory, GripVertical, Info, Loader2, Package, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatQty } from "@/lib/format";
 import { useAuthz } from "@/hooks/use-authz";
@@ -292,11 +292,13 @@ function ProductionCardBody({
   moveControls,
   orderActions,
   statusHint,
+  showDragHint,
 }: {
   order: ProductionOrderWithProduct;
   moveControls?: ReactNode;
   orderActions?: ReactNode;
   statusHint?: ReactNode;
+  showDragHint?: boolean;
 }) {
   const dueDate = order.dueAt ? new Date(order.dueAt as any) : null;
   const daysToDue = dueDate ? differenceInCalendarDays(startOfDay(dueDate), startOfDay(new Date())) : null;
@@ -307,13 +309,25 @@ function ProductionCardBody({
   const paymentStatus = getPaymentStatus(order);
   const isEncomenda = order.orderType === "ENCOMENDA";
   const showPaymentBadge = paymentStatus !== null && (!isEncomenda || paymentStatus !== "PENDING");
+  const statusLabel = columnMeta[order.status].title;
 
   return (
     <>
-      <div className="mb-2 flex items-start justify-between gap-3 sm:mb-3">
-        <div className="space-y-1">
-          <div className="text-xs font-semibold sm:text-sm">OP #{order.id}</div>
+      <div className="mb-3 flex items-start justify-between gap-3 sm:mb-4">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-xs font-semibold sm:text-sm">OP #{order.id}</div>
+            <Badge variant="outline" className="border-border/60 bg-background/80 px-2 py-0.5 text-[10px] text-muted-foreground sm:text-xs">
+              {statusLabel}
+            </Badge>
+          </div>
           <div className="text-xs text-muted-foreground sm:text-sm">{order.product.name}</div>
+          {showDragHint ? (
+            <div className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+              <GripVertical className="h-3.5 w-3.5" />
+              Arraste para mover
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-1.5 sm:gap-2">
           <div className="flex flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
@@ -342,27 +356,43 @@ function ProductionCardBody({
         </div>
       </div>
 
-      <div className="space-y-2 text-xs sm:text-sm">
+      <div className="space-y-2 text-xs sm:space-y-3 sm:text-sm">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Package className="h-4 w-4" />
           <span>{order.qtyPlanned} unidade(s)</span>
         </div>
         {description ? (
-          <div className="text-muted-foreground">
-            <strong>Descrição:</strong> {description}
+          <div className="rounded-xl border border-border/50 bg-muted/25 p-3 text-muted-foreground">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">Descrição</div>
+            <div
+              className="mt-1"
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {description}
+            </div>
           </div>
         ) : null}
         {isEncomenda ? (
           <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-muted-foreground">
-            <div>
-              <strong>Valor do produto:</strong> {formatCurrency(Number(order.product.price ?? 0) * Number(order.qtyPlanned ?? 0))}
-            </div>
-            <div>
-              <strong>Pago:</strong> {formatCurrency(Number(order.amountPaid ?? 0))}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">Valor</div>
+                <div className="font-medium text-foreground">{formatCurrency(Number(order.product.price ?? 0) * Number(order.qtyPlanned ?? 0))}</div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">Pago</div>
+                <div className="font-medium text-foreground">{formatCurrency(Number(order.amountPaid ?? 0))}</div>
+              </div>
             </div>
             {order.deliveredAt ? (
-              <div>
-                <strong>Entregue em:</strong> {format(new Date(order.deliveredAt as any), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+              <div className="mt-2 text-sm">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">Entregue em</span>{" "}
+                {format(new Date(order.deliveredAt as any), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
               </div>
             ) : null}
           </div>
@@ -419,7 +449,7 @@ function ProductionCard({
     <article
       ref={setNodeRef}
       style={style}
-      className={`min-h-[92px] shrink-0 rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${onClick ? "cursor-pointer" : ""} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`min-h-[92px] shrink-0 rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${onClick ? "cursor-pointer" : ""} ${isDragging ? "scale-[0.99] opacity-90 shadow-xl ring-2 ring-primary/30" : ""}`}
       aria-label={`OP ${order.id}`}
       {...dragProps}
       onClick={onClick}
@@ -429,6 +459,7 @@ function ProductionCard({
         moveControls={moveControls}
         orderActions={orderActions}
         statusHint={statusHint}
+        showDragHint={!dragDisabled}
       />
     </article>
   );
@@ -454,18 +485,20 @@ function ColumnDropZone({
   return (
     <section
       ref={setNodeRef}
-      className={`flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border p-2.5 transition-colors sm:max-h-[calc(100dvh-18rem)] sm:p-4 ${
+      className={`flex max-h-[72vh] flex-col overflow-hidden rounded-2xl border p-2.5 shadow-sm transition-all sm:max-h-[calc(100dvh-18rem)] sm:p-4 ${
         isMobile
           ? "min-h-[260px] w-[82vw] max-w-[420px] flex-none snap-start sm:min-h-[360px]"
           : "min-h-[360px] w-[360px] max-w-[420px] min-w-[320px] flex-none"
-      } ${theme.shell} ${isOver || isActiveTarget ? "border-primary shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] ring-2 ring-primary/20" : ""}`}
+      } ${theme.shell} ${isOver || isActiveTarget ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "hover:border-border/90"}`}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
+      <div className={`mb-4 flex items-start justify-between gap-3 rounded-2xl border px-3 py-3 backdrop-blur-sm ${isOver || isActiveTarget ? "border-primary/20 bg-background/90" : "border-border/50 bg-background/70"}`}>
         <div>
           <div className={`mb-2 h-1.5 w-14 rounded-full ${theme.accent}`} />
-          <h2 className="text-sm font-semibold sm:text-base">{columnMeta[status].title}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold sm:text-base">{columnMeta[status].title}</h2>
+            {isActiveTarget ? <Badge className="border-transparent bg-primary text-[10px] text-primary-foreground">Soltar aqui</Badge> : null}
+          </div>
           <p className="text-xs text-muted-foreground sm:text-sm">{columnMeta[status].description}</p>
-          {isActiveTarget ? <p className="mt-1 text-[11px] font-medium text-primary">Solte aqui</p> : null}
         </div>
         <Badge className={theme.badge}>{visibleOrders.length}</Badge>
       </div>
@@ -475,8 +508,11 @@ function ColumnDropZone({
           {visibleOrders.length > 0 ? (
             children
           ) : (
-            <div className={`flex flex-1 items-center justify-center rounded-xl border border-dashed p-4 text-xs sm:p-6 sm:text-sm ${theme.empty}`}>
-              Nenhuma OP nesta etapa.
+            <div className={`flex flex-1 items-center justify-center rounded-xl border border-dashed p-4 text-center text-xs sm:p-6 sm:text-sm ${theme.empty}`}>
+              <div className="space-y-1">
+                <div className="font-medium text-foreground/80">Nenhuma OP nesta etapa</div>
+                <div className="text-muted-foreground">Arraste uma ordem para começar a preenchê-la.</div>
+              </div>
             </div>
           )}
         </div>
@@ -556,6 +592,15 @@ export default function Production() {
   );
   const selectedProduct = selectedProductForForm;
   const activeOrder = activeOrderId !== null ? findOrder(boardState, activeOrderId) : null;
+  const boardStats = useMemo(
+    () => [
+      { label: "Total de OPs", value: orders?.length ?? 0, hint: "Cadastros visíveis no quadro" },
+      { label: "Backlog", value: boardState.BACKLOG.length, hint: "Aguardando início" },
+      { label: "Em produção", value: boardState.IN_PROGRESS.length, hint: "Em execução" },
+      { label: "Concluídas", value: boardState.DONE.length, hint: "Enviadas ao estoque" },
+    ],
+    [boardState, orders],
+  );
   const interactionsDisabled =
     moveMutation.isPending ||
     concludeMutation.isPending ||
@@ -1212,14 +1257,19 @@ export default function Production() {
       {isOrdersLoading ? (
         <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
           {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="min-w-[240px] flex-none rounded-2xl sm:min-w-[320px]">
-              <CardHeader>
-                <CardTitle><Skeleton className="h-4 w-24" /></CardTitle>
-                <UiCardDescription><Skeleton className="h-3 w-48" /></UiCardDescription>
+            <Card key={index} className="min-w-[240px] flex-none rounded-2xl border-border/70 bg-card/90 shadow-sm sm:min-w-[320px]">
+              <CardHeader className="space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <CardTitle><Skeleton className="h-4 w-24" /></CardTitle>
+                    <UiCardDescription><Skeleton className="h-3 w-48" /></UiCardDescription>
+                  </div>
+                  <Skeleton className="h-6 w-10 rounded-full" />
+                </div>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {Array.from({ length: 4 }).map((__, rowIndex) => (
-                  <Skeleton key={rowIndex} className="h-16 w-full rounded-xl" />
+              <CardContent className="space-y-3">
+                {Array.from({ length: 3 }).map((__, rowIndex) => (
+                  <Skeleton key={rowIndex} className="h-24 w-full rounded-xl" />
                 ))}
               </CardContent>
             </Card>
@@ -1227,6 +1277,37 @@ export default function Production() {
         </div>
       ) : orders ? (
         <>
+          <Card className="mb-4 border-border/70 bg-card/90 shadow-sm">
+            <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Info className="h-4 w-4 text-primary" />
+                  Dicas rápidas
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Clique em uma OP para editar, arraste para mover entre etapas e use as setas do card quando quiser uma mudança rápida.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="border-border/60 bg-background/80 text-xs">Clique para editar</Badge>
+                <Badge variant="outline" className="border-border/60 bg-background/80 text-xs">Arraste para mover</Badge>
+                <Badge variant="outline" className="border-border/60 bg-background/80 text-xs">Setas para avanço rápido</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {boardStats.map((stat) => (
+              <Card key={stat.label} className="border-border/70 bg-card/90 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{stat.label}</div>
+                  <div className="mt-2 text-3xl font-bold tracking-tight">{stat.value}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{stat.hint}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
           {orders.length === 0 ? (
             <Card className="mb-4">
               <CardHeader>
