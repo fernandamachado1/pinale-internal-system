@@ -158,6 +158,8 @@ export const sales = pgTable("sales", {
   salesChannel: productionOrderSalesChannelEnum("sales_channel").notNull().default("ONLINE"),
   soldAt: timestamp("sold_at").notNull().defaultNow(),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
+  // Legacy column kept for backward compatibility with existing databases.
+  machineFeeAmount: numeric("machine_fee_amount", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
