@@ -155,6 +155,19 @@ export const api = {
       path: "/api/push/public-key" as const,
       responses: { 200: z.object({ publicKey: z.string() }), 400: errorSchemas.badRequest },
     },
+    test: {
+      method: "POST" as const,
+      path: "/api/push/test" as const,
+      input: z.object({}).passthrough(),
+      responses: {
+        200: z.object({
+          attempted: z.number(),
+          sent: z.number(),
+          failed: z.number(),
+        }),
+        400: errorSchemas.validation,
+      },
+    },
     subscribe: {
       method: "POST" as const,
       path: "/api/push/subscribe" as const,

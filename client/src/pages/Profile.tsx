@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { AtSign, Camera, Link2, Save, UploadCloud, User, UserRound, X } from "lucide-react";
 import { hasSupabaseEnv, supabase } from "@/lib/supabase";
-import { disablePush, enablePush, getIsSubscribed, isPushSupported } from "@/lib/push";
+import { disablePush, enablePush, getIsSubscribed, isPushSupported, testPush } from "@/lib/push";
 
 export default function Profile() {
   const { toast } = useToast();
@@ -37,6 +37,7 @@ export default function Profile() {
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
+  const [pushTesting, setPushTesting] = useState(false);
 
   const initials = useMemo(() => {
     const value = (profile?.displayName ?? profile?.email ?? "").trim();
@@ -424,26 +425,50 @@ export default function Profile() {
                     </p>
                   </div>
                   {pushEnabled ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-xl"
-                      disabled={pushBusy}
-                      onClick={async () => {
-                        setPushBusy(true);
-                        try {
-                          await disablePush();
-                          setPushEnabled(false);
-                          toast({ title: "Ok", description: "Notificações desativadas." });
-                        } catch (err: any) {
-                          toast({ title: "Erro", description: err?.message ?? "Não foi possível desativar.", variant: "destructive" });
-                        } finally {
-                          setPushBusy(false);
-                        }
-                      }}
-                    >
-                      {pushBusy ? "Aguarde…" : "Desativar"}
-                    </Button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl"
+                        disabled={pushBusy || pushTesting}
+                        onClick={async () => {
+                          setPushBusy(true);
+                          try {
+                            await disablePush();
+                            setPushEnabled(false);
+                            toast({ title: "Ok", description: "Notificações desativadas." });
+                          } catch (err: any) {
+                            toast({ title: "Erro", description: err?.message ?? "Não foi possível desativar.", variant: "destructive" });
+                          } finally {
+                            setPushBusy(false);
+                          }
+                        }}
+                      >
+                        {pushBusy ? "Aguarde…" : "Desativar"}
+                      </Button>
+                      <Button
+                        type="button"
+                        className="rounded-xl"
+                        variant="secondary"
+                        disabled={pushBusy || pushTesting}
+                        onClick={async () => {
+                          setPushTesting(true);
+                          try {
+                            const result = await testPush();
+                            toast({
+                              title: "Teste enviado",
+                              description: `Tentados: ${result.attempted} · Enviados: ${result.sent} · Falhas: ${result.failed}`,
+                            });
+                          } catch (err: any) {
+                            toast({ title: "Erro no teste", description: err?.message ?? "Não foi possível enviar o teste.", variant: "destructive" });
+                          } finally {
+                            setPushTesting(false);
+                          }
+                        }}
+                      >
+                        {pushTesting ? "Testando…" : "Enviar teste"}
+                      </Button>
+                    </div>
                   ) : (
                     <Button
                       type="button"

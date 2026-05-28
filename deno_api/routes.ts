@@ -286,7 +286,12 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     }
 
     // Push notifications: any active user can opt-in/out.
-    if (path === api.push.publicKey.path || path === api.push.subscribe.path || path === api.push.unsubscribe.path) {
+    if (
+      path === api.push.publicKey.path ||
+      path === api.push.test.path ||
+      path === api.push.subscribe.path ||
+      path === api.push.unsubscribe.path
+    ) {
       return await next();
     }
 
@@ -311,6 +316,50 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
   app.get(api.push.publicKey.path, (c) => {
     try {
       return c.json({ publicKey: getVapidPublicKey() }, 200);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.post(api.push.test.path, async (c) => {
+    try {
+      const profile = c.get("profile");
+      const { db } = await initDb();
+      const subs = await db
+        .select({
+          id: pushSubscriptions.id,
+          subscription: pushSubscriptions.subscription,
+        })
+        .from(pushSubscriptions)
+        .where(and(eq(pushSubscriptions.orgId, profile.orgId), eq(pushSubscriptions.profileId, profile.id)));
+
+      if (subs.length === 0) {
+        return c.json({ attempted: 0, sent: 0, failed: 0 }, 200);
+      }
+
+      const payload = {
+        title: "Teste de notificação",
+        body: "Se você viu isto, o push está funcionando neste dispositivo.",
+        data: { url: "/profile", kind: "test" },
+      };
+
+      let sent = 0;
+      let failed = 0;
+      for (const row of subs) {
+        const result = await sendWebPush(row.subscription as WebPushSubscription, payload);
+        if (result.ok) {
+          sent += 1;
+        } else {
+          failed += 1;
+          console.error("[push] test notification failed", { endpoint: row.subscription?.endpoint, statusCode: result.statusCode });
+          if (result.statusCode === 404 || result.statusCode === 410) {
+            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, row.id));
+          }
+        }
+      }
+
+      return c.json({ attempted: subs.length, sent, failed }, 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);

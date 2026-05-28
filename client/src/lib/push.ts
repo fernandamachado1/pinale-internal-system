@@ -71,3 +71,15 @@ export async function disablePush(): Promise<void> {
   }).catch(() => {});
 }
 
+export async function testPush(): Promise<{ attempted: number; sent: number; failed: number }> {
+  const res = await apiFetch(api.push.test.path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message ?? "Falha ao enviar notificação de teste");
+  }
+  return (await res.json()) as { attempted: number; sent: number; failed: number };
+}
