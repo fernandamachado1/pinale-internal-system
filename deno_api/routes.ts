@@ -6,8 +6,8 @@ import { initDb } from "./db.ts";
 import { getSupabaseConfig, requireSupabaseUser } from "./auth.ts";
 import { ensureProfile, requireRole } from "./authz.ts";
 import { ApiError, toErrorResponse } from "./errors.ts";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { profiles, pushSubscriptions, type Profile, type UserRole } from "../shared/schema.ts";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { profiles, pushSubscriptions, type Profile, type PurchaseOrderWithItems, type UserRole } from "../shared/schema.ts";
 import { getVapidPublicKey, isPushConfigured, sendWebPush, type WebPushSubscription } from "./push.ts";
 import {
   CreateMaterialUseCase,
@@ -72,7 +72,46 @@ async function repositoryForOrg(orgId: string): Promise<DrizzleErpRepository> {
   return new DrizzleErpRepository(db, orgId);
 }
 
-async function notifyPurchaseOrderCreated(orgId: string, purchaseOrder: any): Promise<void> {
+type PurchaseOrderNotificationKind = "created" | "partial_received" | "received" | "canceled";
+
+function buildPurchaseOrderNotification(
+  purchaseOrder: PurchaseOrderWithItems,
+  kind: PurchaseOrderNotificationKind,
+): { title: string; body: string } {
+  const totalItems = purchaseOrder.items.length;
+  const receivedItems = purchaseOrder.items.filter((item) => Number(item.qtyReceived) > 0).length;
+
+  switch (kind) {
+    case "created":
+      return {
+        title: "Novo pedido de compra",
+        body: `Pedido #${purchaseOrder.id} criado (${totalItems} ${totalItems === 1 ? "item" : "itens"})`,
+      };
+    case "partial_received":
+      return {
+        title: "Pedido de compra parcialmente recebido",
+        body: `Pedido #${purchaseOrder.id} recebeu ${receivedItems}/${totalItems} ${totalItems === 1 ? "item" : "itens"}`,
+      };
+    case "received":
+      return {
+        title: "Pedido de compra recebido",
+        body: `Pedido #${purchaseOrder.id} foi recebido por completo`,
+      };
+    case "canceled":
+      return {
+        title: "Pedido de compra cancelado",
+        body: `Pedido #${purchaseOrder.id} foi cancelado`,
+      };
+    default:
+      throw new Error(`Unsupported purchase order notification kind: ${String(kind)}`);
+  }
+}
+
+async function notifyPurchaseOrderEvent(
+  orgId: string,
+  purchaseOrder: PurchaseOrderWithItems,
+  kind: PurchaseOrderNotificationKind,
+): Promise<void> {
   if (!isPushConfigured()) return;
 
   const { db } = await initDb();
@@ -87,17 +126,15 @@ async function notifyPurchaseOrderCreated(orgId: string, purchaseOrder: any): Pr
       and(
         eq(pushSubscriptions.orgId, orgId),
         eq(profiles.isActive, true),
-        inArray(profiles.role, ["ADMIN", "STAFF"]),
       ),
     );
 
   if (subs.length === 0) return;
 
-  const itemCount = Array.isArray(purchaseOrder?.items) ? purchaseOrder.items.length : 0;
+  const message = buildPurchaseOrderNotification(purchaseOrder, kind);
   const payload = {
-    title: "Novo pedido de compra",
-    body: `Pedido #${purchaseOrder?.id ?? "—"} criado (${itemCount} ${itemCount === 1 ? "item" : "itens"})`,
-    data: { url: "/purchase-orders", purchaseOrderId: purchaseOrder?.id },
+    ...message,
+    data: { url: "/purchase-orders", purchaseOrderId: purchaseOrder.id, event: kind },
   };
 
   await Promise.allSettled(
@@ -826,7 +863,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       const input = api.purchaseOrders.create.input.parse(await c.req.json());
       const useCase = new CreatePurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
       const created = await useCase.execute(input);
-      notifyPurchaseOrderCreated(c.get("profile").orgId, created).catch((err) => {
+      await notifyPurchaseOrderEvent(c.get("profile").orgId, created, "created").catch((err) => {
         console.error("[push] purchase order created notification failed", err);
       });
       return c.json(created, 201);
@@ -851,7 +888,12 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
     try {
       const input = api.purchaseOrders.receive.input.parse(await c.req.json());
       const useCase = new ReceivePurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
-      return c.json(await useCase.execute(Number(c.req.param("id")), input), 200);
+      const updated = await useCase.execute(Number(c.req.param("id")), input);
+      const notificationKind: PurchaseOrderNotificationKind = updated.status === "RECEIVED" ? "received" : "partial_received";
+      await notifyPurchaseOrderEvent(c.get("profile").orgId, updated, notificationKind).catch((err) => {
+        console.error("[push] purchase order receive notification failed", err);
+      });
+      return c.json(updated, 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);
@@ -860,8 +902,14 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
   app.delete(api.purchaseOrders.cancel.path, async (c) => {
     try {
-      const useCase = new CancelPurchaseOrderUseCase(await repositoryForOrg(c.get("profile").orgId));
-      await useCase.execute(Number(c.req.param("id")));
+      const repository = await repositoryForOrg(c.get("profile").orgId);
+      const purchaseOrderId = Number(c.req.param("id"));
+      const current = await new GetPurchaseOrderUseCase(repository).execute(purchaseOrderId);
+      const useCase = new CancelPurchaseOrderUseCase(repository);
+      await useCase.execute(purchaseOrderId);
+      await notifyPurchaseOrderEvent(c.get("profile").orgId, current, "canceled").catch((err) => {
+        console.error("[push] purchase order canceled notification failed", err);
+      });
       return c.body(null, 204);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
