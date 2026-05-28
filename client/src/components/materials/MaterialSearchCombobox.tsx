@@ -12,6 +12,8 @@ interface MaterialSearchComboboxProps {
   value?: number;
   onSelect: (material: Material) => void;
   placeholder?: string;
+  error?: boolean;
+  className?: string;
 }
 
 export function MaterialSearchCombobox({
@@ -19,6 +21,8 @@ export function MaterialSearchCombobox({
   value,
   onSelect,
   placeholder = "Pesquisar material",
+  error = false,
+  className,
 }: MaterialSearchComboboxProps) {
   const [open, setOpen] = useState(false);
 
@@ -30,7 +34,17 @@ export function MaterialSearchCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between">
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            "w-full justify-between",
+            error && "border-destructive text-destructive focus-visible:ring-destructive/20",
+            className,
+          )}
+        >
           <span className="truncate">{selectedMaterial?.name ?? placeholder}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>

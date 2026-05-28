@@ -262,41 +262,14 @@ function normalizeDestinationOrderedIds(
   return normalized;
 }
 
-function computeStartStockShortages(
-  input: {
-    productBomItems: Array<{ materialId: number; qtyPerUnit: unknown }>;
-    qtyPlanned: number;
-    materialById: Map<number, { name: string; stockQty: unknown; reservedQty?: unknown | null; stockTracked?: boolean | null }>;
-  },
-): Array<{ name: string; needed: number; available: number }> {
-  const shortages: Array<{ name: string; needed: number; available: number }> = [];
-  for (const bomItem of input.productBomItems) {
-    const material = input.materialById.get(bomItem.materialId);
-    if (!material) continue;
-    if (material.stockTracked === false) continue;
-    const perUnit = Number(bomItem.qtyPerUnit);
-    if (!Number.isFinite(perUnit) || perUnit <= 0) continue;
-    const needed = perUnit * input.qtyPlanned;
-    const stockQty = Number(material.stockQty);
-    const reservedQty = Number(material.reservedQty ?? 0);
-    const available = (Number.isFinite(stockQty) ? stockQty : 0) - (Number.isFinite(reservedQty) ? reservedQty : 0);
-    if (needed - available > 1e-9) {
-      shortages.push({ name: material.name, needed, available: Math.max(0, available) });
-    }
-  }
-  return shortages;
-}
-
 function ProductionCardBody({
   order,
   moveControls,
   orderActions,
-  statusHint,
 }: {
   order: ProductionOrderWithProduct;
   moveControls?: ReactNode;
   orderActions?: ReactNode;
-  statusHint?: ReactNode;
 }) {
   const dueDate = order.dueAt ? new Date(order.dueAt as any) : null;
   const daysToDue = dueDate ? differenceInCalendarDays(startOfDay(dueDate), startOfDay(new Date())) : null;
@@ -367,7 +340,6 @@ function ProductionCardBody({
             ) : null}
           </div>
         ) : null}
-        {statusHint ? <div>{statusHint}</div> : null}
         {orderActions ? <div className="pt-1">{orderActions}</div> : null}
         <div className="text-[11px] text-muted-foreground">
           <span className="sm:hidden">Criada {format(new Date(order.createdAt), "dd/MM", { locale: ptBR })}</span>
@@ -386,14 +358,12 @@ function ProductionCard({
   moveControls,
   orderActions,
   onClick,
-  statusHint,
 }: {
   order: ProductionOrderWithProduct;
   dragDisabled: boolean;
   moveControls?: ReactNode;
   orderActions?: ReactNode;
   onClick?: () => void;
-  statusHint?: ReactNode;
 }) {
   const theme = columnTheme[order.status];
   const {
@@ -419,7 +389,7 @@ function ProductionCard({
     <article
       ref={setNodeRef}
       style={style}
-      className={`min-h-[92px] shrink-0 rounded-xl border p-2.5 shadow-sm transition-[transform,box-shadow,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${onClick ? "cursor-pointer" : ""} ${isDragging ? "shadow-xl ring-2 ring-primary/30" : ""}`}
+      className={`min-h-[84px] shrink-0 rounded-xl border p-2.5 transition-[transform,border-color,background-color] sm:min-h-0 sm:p-4 ${theme.card} ${dragDisabled ? "" : "cursor-grab active:cursor-grabbing"} ${onClick ? "cursor-pointer" : ""} ${isDragging ? "ring-2 ring-primary/30" : ""}`}
       aria-label={`OP ${order.id}`}
       {...dragProps}
       onClick={onClick}
@@ -428,7 +398,6 @@ function ProductionCard({
         order={order}
         moveControls={moveControls}
         orderActions={orderActions}
-        statusHint={statusHint}
       />
     </article>
   );
@@ -568,14 +537,8 @@ export default function Production() {
 
   const productById = useMemo(() => new Map((products ?? []).map((product) => [product.id, product])), [products]);
   const materialById = useMemo(() => new Map((materials ?? []).map((material) => [material.id, material])), [materials]);
-  const selectedProductBomCount = selectedProduct?.bomItems?.length ?? 0;
   const selectedProductIdValue = Number(productId);
   const qtyPlannedValue = Number(qtyPlanned);
-  const isCoreOrderChange =
-    editingOrder === null ||
-    editingOrder.productId !== selectedProductIdValue ||
-    editingOrder.qtyPlanned !== qtyPlannedValue ||
-    editingOrder.orderType !== orderType;
 
   const resetCreateForm = () => {
     setOrderType("NORMAL");
@@ -618,15 +581,6 @@ export default function Production() {
       toast({ title: "Dados inválidos", description: "Informe uma quantidade planejada maior que zero.", variant: "destructive" });
       return;
     }
-    if (isCoreOrderChange && selectedProductBomCount === 0) {
-      toast({
-        title: "Produto sem ficha técnica",
-        description: "Não é possível criar OP sem uma ficha técnica ativa para este produto.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const paidValue = amountPaid.trim() ? parseCurrencyInput(amountPaid) : 0;
     if (orderType === "ENCOMENDA") {
       if (!Number.isFinite(paidValue) || paidValue < 0) {
@@ -636,27 +590,6 @@ export default function Production() {
       const productValue = Number(selectedProduct?.price ?? 0) * qtyValue;
       if (paidValue - productValue > 1e-9) {
         toast({ title: "Dados inválidos", description: "O sinal não pode ser maior que o valor do produto.", variant: "destructive" });
-        return;
-      }
-    }
-
-    if (isCoreOrderChange) {
-      const shortages = computeStartStockShortages({
-        productBomItems: selectedProduct?.bomItems ?? [],
-        qtyPlanned: qtyValue,
-        materialById,
-      });
-      if (shortages.length > 0) {
-        const head = shortages
-          .slice(0, 3)
-          .map((s) => `${s.name}: precisa ${formatQty(s.needed)}, disponível ${formatQty(s.available)}`)
-          .join(" · ");
-        const tail = shortages.length > 3 ? ` · +${shortages.length - 3} material(is)` : "";
-        toast({
-          title: "Estoque insuficiente",
-          description: `${head}${tail}`,
-          variant: "destructive",
-        });
         return;
       }
     }
@@ -747,16 +680,6 @@ export default function Production() {
 
     const order = findOrder(boardState, orderId);
     if (!order) return;
-
-    const productBomCount = productById.get(order.productId)?.bomItems?.length ?? 0;
-    if (destinationStatus === "IN_PROGRESS" && productBomCount === 0) {
-      toast({
-        title: "Produto sem ficha técnica",
-        description: "Este produto ainda não possui ficha técnica ativa. Adicione a ficha antes de iniciar a produção.",
-        variant: "destructive",
-      });
-      return;
-    }
 
     const result = moveOrderOnBoard(boardState, orderId, destinationStatus);
     if (!result) return;
@@ -863,30 +786,6 @@ export default function Production() {
   const handleStartConfirm = () => {
     if (!pendingStart) return;
     const orderId = pendingStart.orderId;
-
-    const movingOrder = findOrder(pendingStart.nextBoard, orderId);
-    if (movingOrder) {
-      const product = productById.get(movingOrder.productId);
-      const bomItems = product?.bomItems ?? [];
-      const shortages = computeStartStockShortages({
-        productBomItems: bomItems,
-        qtyPlanned: movingOrder.qtyPlanned,
-        materialById,
-      });
-
-      if (shortages.length > 0) {
-        toast({
-          title: "Estoque insuficiente",
-          description: shortages
-            .slice(0, 3)
-            .map((s) => `${s.name}: precisa ${formatQty(s.needed)}, disponível ${formatQty(s.available)}`)
-            .join(" · "),
-          variant: "destructive",
-        });
-        handleStartCancel();
-        return;
-      }
-    }
 
     moveMutation.mutate(
       {
@@ -1012,7 +911,7 @@ export default function Production() {
               <ResponsiveDialogDescription className="text-sm text-foreground/75">
                 {editingOrder
                   ? "Ajuste os dados da OP. Enquanto estiver em produção, produto, quantidade e tipo ficam travados."
-                  : "A nova OP entra no backlog. Os materiais serão reservados ao mover para Em produção e consumidos ao concluir."}
+                  : "A nova OP entra no backlog. Se houver ficha técnica, os materiais serão considerados ao concluir."}
               </ResponsiveDialogDescription>
             </ResponsiveDialogHeader>
 
@@ -1122,28 +1021,6 @@ export default function Production() {
                   </div>
                 </div>
 
-                {selectedProduct ? (
-                  <div className="space-y-1 rounded-xl border border-border p-3 text-sm">
-                    <div><strong>Entrada inicial:</strong> Backlog</div>
-                    <div><strong>Reserva de materiais:</strong> ao mover para Em produção, exceto itens sem controle</div>
-                    <div><strong>Materiais na ficha:</strong> {selectedProductBomCount}</div>
-                    {selectedProductBomCount === 0 ? (
-                      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-700">
-                        Este produto não pode gerar OP até ter uma ficha técnica ativa.
-                      </div>
-                    ) : null}
-                    <div><strong>Tipo:</strong> {orderType === "ENCOMENDA" ? "Encomenda" : "Normal"}</div>
-                    <div><strong>Quantidade planejada:</strong> {qtyPlanned}</div>
-                    {orderType === "ENCOMENDA" ? (
-                      <>
-                        <div><strong>Valor do produto:</strong> {selectedProduct ? formatCurrency(Number(selectedProduct.price ?? 0) * Number(qtyPlanned || 0)) : "-"}</div>
-                        <div><strong>Sinal:</strong> {amountPaid.trim() ? formatCurrencyFromInput(amountPaid) : "-"}</div>
-                      </>
-                    ) : null}
-                    <div><strong>Descrição:</strong> {customizationNotes.trim() || "-"}</div>
-                    <div><strong>Prazo:</strong> {dueAt ? format(dueAt, "dd/MM/yyyy", { locale: ptBR }) : "-"}</div>
-                  </div>
-                ) : null}
               </div>
               <ResponsiveDialogFooter className="justify-between gap-2 border-t border-border px-4 py-4 md:px-6">
                 <div className="flex items-center gap-2">
@@ -1180,8 +1057,7 @@ export default function Production() {
                     disabled={
                       createMutation.isPending ||
                       updateOrderMutation.isPending ||
-                      !productId ||
-                      (isCoreOrderChange && selectedProductBomCount === 0)
+                      !productId
                     }
                   >
                     {createMutation.isPending || updateOrderMutation.isPending ? (
@@ -1264,18 +1140,6 @@ export default function Production() {
                           if (shouldInsertBefore) {
                             items.push(renderInsertionMarker(`${status}-before-${order.id}`));
                           }
-                          const bomWarning = (productById.get(order.productId)?.bomItems?.length ?? 0) === 0;
-
-                          const hintBlocks: ReactNode[] = [];
-                          if (bomWarning) {
-                            hintBlocks.push(
-                              <span key="bom-warning" className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                                Sem ficha técnica
-                              </span>,
-                            );
-                          }
-                          const statusHint = hintBlocks.length ? <div className="space-y-2">{hintBlocks}</div> : undefined;
-
                           const previousStatus = order.status === "IN_PROGRESS" ? "BACKLOG" : null;
                           const nextStatus = order.status === "BACKLOG" ? "IN_PROGRESS" : order.status === "IN_PROGRESS" ? "DONE" : null;
                           const arrowControls =
@@ -1353,7 +1217,6 @@ export default function Production() {
                                 if (suppressCardClickRef.current) return;
                                 openEditForm(order);
                               }}
-                              statusHint={statusHint}
                             />,
                           );
                           if (index === columnOrders.length - 1 && activeOverIsColumn) {
@@ -1387,8 +1250,8 @@ export default function Production() {
           <AlertDialogHeader>
             <AlertDialogTitle>Iniciar produção da OP #{pendingStart?.orderId}</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingStart ? (
-                (() => {
+                      {pendingStart ? (
+                        (() => {
                   const order = findOrder(pendingStart.nextBoard, pendingStart.orderId);
                   if (!order) return null;
 
@@ -1399,7 +1262,7 @@ export default function Production() {
                   return (
                     <div className="space-y-2">
                       <div>
-                        Ao mover para <strong>Em produção</strong>, os materiais serão reservados do estoque (o consumo acontece ao concluir).
+                        Ao mover para <strong>Em produção</strong>, a OP apenas muda de status. Se houver ficha técnica, o consumo será considerado ao concluir.
                       </div>
                       <div className="text-sm">
                         <strong>{order.product.name}</strong> — {qty} unidade(s)

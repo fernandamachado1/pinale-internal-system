@@ -11,12 +11,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogFooter, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
-import { MaterialSelectField } from "@/components/materials/MaterialSelectField";
+import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
 import { ClipboardList, GripVertical, Loader2, MoreVertical, Plus, Truck, X } from "lucide-react";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { useToast } from "@/hooks/use-toast";
@@ -76,7 +75,7 @@ function formatDate(value: unknown): string {
 }
 
 function createEmptyItem(): PurchaseOrderFormItem {
-  return { clientId: nanoid(), materialId: null, materialName: "", description: "", qtyOrdered: "1" };
+  return { clientId: nanoid(), materialId: null, materialName: "", description: "", qtyOrdered: "0" };
 }
 
 function SortablePurchaseOrderRow({
@@ -205,15 +204,19 @@ function SortableFormItem({
   index,
   canWrite,
   activeMaterials,
+  error,
   onPatch,
   onRemove,
+  onCreateMaterial,
 }: {
   item: PurchaseOrderFormItem;
   index: number;
   canWrite: boolean;
   activeMaterials: Material[];
+  error?: string;
   onPatch: (patch: Partial<PurchaseOrderFormItem>) => void;
   onRemove: () => void;
+  onCreateMaterial: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.clientId,
@@ -253,12 +256,41 @@ function SortableFormItem({
 
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
         <div className="space-y-2">
-          <Label>Material</Label>
-          <MaterialSelectField
-            materials={activeMaterials}
-            value={{ materialId: item.materialId ?? null, materialName: item.materialName }}
-            onChange={(next) => onPatch({ materialId: next.materialId, materialName: next.materialName })}
-          />
+          <Label className={error ? "text-destructive" : undefined}>Material</Label>
+          {activeMaterials.length > 0 ? (
+            <>
+              <MaterialSearchCombobox
+                materials={activeMaterials}
+                value={item.materialId ?? undefined}
+                onSelect={(material) => onPatch({ materialId: material.id, materialName: material.name })}
+                placeholder="Selecionar material"
+                error={Boolean(error)}
+              />
+              <Button
+                type="button"
+                onClick={onCreateMaterial}
+                disabled={!canWrite}
+                variant="outline"
+                className="h-11 w-full justify-center rounded-xl border-dashed border-border bg-muted/20 px-4 text-sm font-medium text-foreground shadow-none hover:bg-muted/30"
+              >
+                <Plus className="h-4 w-4" />
+                Criar material
+              </Button>
+              {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
+            </>
+          ) : (
+            <div className="space-y-2 rounded-xl border border-dashed border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+              <p>Nenhum material cadastrado ainda.</p>
+              <button
+                type="button"
+                onClick={onCreateMaterial}
+                disabled={!canWrite}
+                className="text-left text-xs font-medium text-foreground underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Criar material agora
+              </button>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Descrição (opcional)</Label>
             <Input
@@ -270,31 +302,9 @@ function SortableFormItem({
             />
           </div>
         </div>
-
-        <div className="space-y-2">
-          <Label>Qtd pedida (opcional)</Label>
-          <Input
-            inputMode="decimal"
-            value={toPtBrDecimal(item.qtyOrdered)}
-            onChange={(e) => onPatch({ qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
-            placeholder="0,000"
-            className="h-11 rounded-xl border-border bg-card px-4"
-          />
-        </div>
       </div>
-
-      {!item.materialId ? (
-        <p className="text-xs text-muted-foreground">
-          Dica: digite no campo acima e selecione “Usar …” para texto livre.
-        </p>
-      ) : null}
     </div>
   );
-}
-
-function isStockTrackedMaterial(materials: Material[] | undefined, materialId: number | null | undefined): boolean {
-  if (!materialId) return true;
-  return materials?.find((material) => material.id === materialId)?.stockTracked !== false;
 }
 
 export default function PurchaseOrders() {
@@ -314,15 +324,17 @@ export default function PurchaseOrders() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrderWithItems | null>(null);
   const [formItems, setFormItems] = useState<PurchaseOrderFormItem[]>([createEmptyItem()]);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [orderedOrders, setOrderedOrders] = useState<PurchaseOrderWithItems[]>([]);
   const [bulkCreating, setBulkCreating] = useState(false);
 
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receivingOrder, setReceivingOrder] = useState<PurchaseOrderWithItems | null>(null);
   const [receiveLines, setReceiveLines] = useState<ReceiveLine[]>([]);
-  const [confirmReceiveWithoutStockOpen, setConfirmReceiveWithoutStockOpen] = useState(false);
+  const [receiveErrors, setReceiveErrors] = useState<Record<number, { material?: string; quantity?: string }>>({});
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
   const [materialDialogName, setMaterialDialogName] = useState("");
+  const [materialDialogTargetFormClientId, setMaterialDialogTargetFormClientId] = useState<string | null>(null);
   const [materialDialogTargetItemId, setMaterialDialogTargetItemId] = useState<number | null>(null);
   const [materialDialogHideInitialStockField, setMaterialDialogHideInitialStockField] = useState(false);
   const [cancelingOrderId, setCancelingOrderId] = useState<number | null>(null);
@@ -337,6 +349,7 @@ export default function PurchaseOrders() {
     if (!dialogOpen) return;
     if (!editingOrder) {
       setFormItems([createEmptyItem()]);
+      setFormErrors({});
       return;
     }
 
@@ -350,6 +363,7 @@ export default function PurchaseOrders() {
         qtyOrdered: String(item.qtyOrdered),
       })),
     );
+    setFormErrors({});
   }, [dialogOpen, editingOrder]);
 
   useEffect(() => {
@@ -363,6 +377,7 @@ export default function PurchaseOrders() {
         qtyOrdered: String(item.qtyOrdered),
       })),
     );
+    setReceiveErrors({});
   }, [receiveOpen, receivingOrder]);
 
   const openCreateDialog = () => {
@@ -383,8 +398,35 @@ export default function PurchaseOrders() {
     setReceiveOpen(true);
   };
 
+  const openMaterialDialogForFormItem = (item: PurchaseOrderFormItem) => {
+    if (!canWrite) return;
+    setMaterialDialogTargetFormClientId(item.clientId);
+    setMaterialDialogTargetItemId(null);
+    setMaterialDialogName(item.materialName);
+    setMaterialDialogHideInitialStockField(true);
+    setMaterialDialogOpen(true);
+  };
+
+  const openMaterialDialogForReceiveItem = (itemId: number, materialName: string) => {
+    if (!canWrite) return;
+    setMaterialDialogTargetItemId(itemId);
+    setMaterialDialogTargetFormClientId(null);
+    setMaterialDialogName(materialName);
+    setMaterialDialogHideInitialStockField(true);
+    setMaterialDialogOpen(true);
+  };
+
   const updateFormItem = (index: number, patch: Partial<PurchaseOrderFormItem>) => {
     setFormItems((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    setFormErrors((current) => {
+      const target = formItems[index];
+      if (!target) return current;
+      const hasMaterialPatch = Object.prototype.hasOwnProperty.call(patch, "materialId");
+      if (!hasMaterialPatch) return current;
+      const next = { ...current };
+      delete next[target.clientId];
+      return next;
+    });
   };
 
   const addFormItem = () => setFormItems((current) => [...current, createEmptyItem()]);
@@ -396,6 +438,18 @@ export default function PurchaseOrders() {
     event.preventDefault();
     if (!canWrite) {
       toast({ title: "Sem permissão", description: "Seu usuário não pode criar/editar ordens de compra.", variant: "destructive" });
+      return;
+    }
+
+    const nextFormErrors = formItems.reduce<Record<string, string>>((acc, item) => {
+      if (!item.materialId) {
+        acc[item.clientId] = "Escolha um material para continuar.";
+      }
+      return acc;
+    }, {});
+    setFormErrors(nextFormErrors);
+    if (Object.keys(nextFormErrors).length > 0) {
+      toast({ title: "Campos obrigatórios", description: "Escolha um material em cada item antes de salvar.", variant: "destructive" });
       return;
     }
 
@@ -515,22 +569,78 @@ export default function PurchaseOrders() {
 
   const updateReceiveLine = (itemId: number, patch: Partial<ReceiveLine>) => {
     setReceiveLines((current) => current.map((line) => (line.id === itemId ? { ...line, ...patch } : line)));
+    setReceiveErrors((current) => {
+      const hasMaterialPatch = Object.prototype.hasOwnProperty.call(patch, "materialId");
+      const hasQuantityPatch = Object.prototype.hasOwnProperty.call(patch, "qtyReceiveNow");
+      if (!hasMaterialPatch && !hasQuantityPatch) return current;
+      const next = { ...current };
+      const currentError = next[itemId];
+      if (!currentError) return current;
+      const nextError = {
+        material: hasMaterialPatch ? undefined : currentError.material,
+        quantity: hasQuantityPatch ? undefined : currentError.quantity,
+      };
+      if (!nextError.material && !nextError.quantity) {
+        delete next[itemId];
+      } else {
+        next[itemId] = nextError;
+      }
+      return next;
+    });
   };
 
-  const hasReceiveWithoutStock = useMemo(() => {
-    if (!receivingOrder) return false;
-    return receiveLines.some((line) => {
-      const orderItem = receivingOrder.items.find((i) => i.id === line.id);
-      if (!orderItem) return false;
-      const effectiveMaterialId = orderItem.materialId ?? line.materialId ?? null;
-      const material = materialById.get(effectiveMaterialId ?? -1);
-      const isTracked = material?.stockTracked !== false;
-      const qty = Number(line.qtyReceiveNow);
-      if (!qty || qty <= 0) return false;
-      if (!isTracked) return false;
-      return !effectiveMaterialId;
-    });
-  }, [materialById, receiveLines, receivingOrder]);
+  const buildReceiveSubmission = () => {
+    if (!receivingOrder) return null;
+
+    const nextErrors: Record<number, { material?: string; quantity?: string }> = {};
+
+    const items = receiveLines
+      .map((line) => {
+        const orderItem = receivingOrder.items.find((item) => item.id === line.id);
+        if (!orderItem) return null;
+
+        const effectiveMaterialId = orderItem.materialId ?? line.materialId ?? null;
+        const material = effectiveMaterialId ? materialById.get(effectiveMaterialId) : undefined;
+        const isTracked = material?.stockTracked !== false;
+        const qtyReceiveNow = line.qtyReceiveNow?.trim();
+        const qtyOrdered = line.qtyOrdered?.trim() ? line.qtyOrdered.trim() : qtyReceiveNow ?? "";
+
+        const materialError = !effectiveMaterialId || !material
+          ? "Selecione um material para continuar."
+          : undefined;
+        const quantityError = isTracked && (!qtyReceiveNow || Number(qtyReceiveNow) <= 0)
+          ? "Informe a quantidade recebida."
+          : undefined;
+        if (materialError || quantityError) {
+          nextErrors[line.id] = { material: materialError, quantity: quantityError };
+        }
+
+        return {
+          id: line.id,
+          materialId: effectiveMaterialId,
+          materialName: line.materialName?.trim() ? line.materialName.trim() : orderItem.materialName,
+          qtyReceiveNow: isTracked ? qtyReceiveNow : undefined,
+          qtyOrdered,
+          isTracked,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: number;
+        materialId: number | null;
+        materialName: string;
+        qtyReceiveNow?: string;
+        qtyOrdered: string;
+        isTracked: boolean;
+      }>;
+
+    setReceiveErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      return null;
+    }
+
+    return items;
+  };
 
   const submitReceive = () => {
     if (!canWrite) {
@@ -539,31 +649,22 @@ export default function PurchaseOrders() {
     }
     if (!receivingOrder) return;
 
-    const linesToSend = receiveLines
-      .map((line) => {
-        const orderItem = receivingOrder.items.find((item) => item.id === line.id);
-        const effectiveMaterialId = orderItem?.materialId ?? line.materialId ?? null;
-        const isTracked = isStockTrackedMaterial(materials, effectiveMaterialId);
-        const qtyReceiveNow = line.qtyReceiveNow?.trim();
-        return {
-          ...line,
-          qtyReceiveNow: qtyReceiveNow ? qtyReceiveNow : isTracked ? "" : undefined,
-          materialName: line.materialName?.trim() ? line.materialName.trim() : undefined,
-          qtyOrdered: line.qtyOrdered?.trim() ? line.qtyOrdered.trim() : undefined,
-          isTracked,
-        };
-      })
-      .filter((line) => line.isTracked ? Number(line.qtyReceiveNow) > 0 : true);
-
-    if (linesToSend.length === 0) return;
-
-    if (hasReceiveWithoutStock) {
-      setConfirmReceiveWithoutStockOpen(true);
-      return;
-    }
+    const linesToSend = buildReceiveSubmission();
+    if (!linesToSend) return;
 
     receiveMutation.mutate(
-      { id: receivingOrder.id, data: { items: linesToSend.map((l) => ({ id: l.id, qtyReceiveNow: l.isTracked ? l.qtyReceiveNow : undefined, materialId: l.materialId ?? null, materialName: l.materialName, qtyOrdered: l.qtyOrdered })) } },
+      {
+        id: receivingOrder.id,
+        data: {
+          items: linesToSend.map((line) => ({
+            id: line.id,
+            qtyReceiveNow: line.isTracked ? line.qtyReceiveNow : undefined,
+            materialId: line.materialId ?? null,
+            materialName: line.materialName,
+            qtyOrdered: line.qtyOrdered,
+          })),
+        },
+      },
       {
         onSuccess: () => {
           setReceiveOpen(false);
@@ -571,55 +672,37 @@ export default function PurchaseOrders() {
         },
       },
     );
-  };
-
-  const confirmReceiveWithoutStock = () => {
-    if (!receivingOrder) return;
-
-    const linesToSend = receiveLines
-      .map((line) => {
-        const orderItem = receivingOrder.items.find((item) => item.id === line.id);
-        const effectiveMaterialId = orderItem?.materialId ?? line.materialId ?? null;
-        const isTracked = isStockTrackedMaterial(materials, effectiveMaterialId);
-        const qtyReceiveNow = line.qtyReceiveNow?.trim();
-        return {
-          ...line,
-          qtyReceiveNow: qtyReceiveNow ? qtyReceiveNow : isTracked ? "" : undefined,
-          materialName: line.materialName?.trim() ? line.materialName.trim() : undefined,
-          qtyOrdered: line.qtyOrdered?.trim() ? line.qtyOrdered.trim() : undefined,
-          isTracked,
-        };
-      })
-      .filter((line) => line.isTracked ? Number(line.qtyReceiveNow) > 0 : true);
-
-    receiveMutation.mutate(
-      { id: receivingOrder.id, data: { items: linesToSend.map((l) => ({ id: l.id, qtyReceiveNow: l.isTracked ? l.qtyReceiveNow : undefined, materialId: l.materialId ?? null, materialName: l.materialName, qtyOrdered: l.qtyOrdered })) } },
-      {
-        onSuccess: () => {
-          setConfirmReceiveWithoutStockOpen(false);
-          setReceiveOpen(false);
-          setReceivingOrder(null);
-        },
-        onSettled: () => setConfirmReceiveWithoutStockOpen(false),
-      },
-    );
-  };
-
-  const openCreateMaterialForReceiveItem = (item: { id: number; materialName: string }) => {
-    setMaterialDialogTargetItemId(item.id);
-    setMaterialDialogName(item.materialName);
-    setMaterialDialogHideInitialStockField(true);
-    setMaterialDialogOpen(true);
   };
 
   const onMaterialCreated = (created: Material[]) => {
     const first = created[0];
-    if (!first || materialDialogTargetItemId === null) return;
-    updateReceiveLine(materialDialogTargetItemId, { materialId: first.id, materialName: first.name });
-    toast({
-      title: "Material criado",
-      description: `Material ${first.name} vinculado ao item da ordem.`,
-    });
+    if (!first) return;
+
+    if (materialDialogTargetFormClientId !== null) {
+      const targetClientId = materialDialogTargetFormClientId;
+      setFormItems((current) => current.map((item) => (item.clientId === targetClientId ? { ...item, materialId: first.id, materialName: first.name } : item)));
+      setFormErrors((current) => {
+        const next = { ...current };
+        delete next[targetClientId];
+        return next;
+      });
+      toast({
+        title: "Material criado",
+        description: `Material ${first.name} vinculado ao item da ordem.`,
+      });
+      setMaterialDialogTargetFormClientId(null);
+      setMaterialDialogHideInitialStockField(false);
+      return;
+    }
+
+    if (materialDialogTargetItemId !== null) {
+      updateReceiveLine(materialDialogTargetItemId, { materialId: first.id, materialName: first.name });
+      toast({
+        title: "Material criado",
+        description: `Material ${first.name} vinculado ao item da ordem.`,
+      });
+      setMaterialDialogTargetItemId(null);
+    }
     setMaterialDialogHideInitialStockField(false);
   };
 
@@ -772,11 +855,6 @@ export default function PurchaseOrders() {
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{editingOrder ? `Editar OC #${editingOrder.id}` : "Nova Ordem de Compra"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription className="text-sm text-foreground/75">
-              {editingOrder
-                ? "Edite o item e a quantidade. Selecione um material ou informe o nome livre."
-                : "Adicione um ou mais itens. Ao salvar, cada item vira uma ordem separada na lista para edição individual."}
-            </ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
           <form onSubmit={submitOrder} className="flex min-h-[320px] flex-col gap-4">
@@ -790,8 +868,10 @@ export default function PurchaseOrders() {
                       index={index}
                       canWrite={canWrite}
                       activeMaterials={activeMaterials}
+                      error={formErrors[item.clientId]}
                       onPatch={(patch) => updateFormItem(index, patch)}
                       onRemove={() => removeFormItem(index)}
+                      onCreateMaterial={() => openMaterialDialogForFormItem(item)}
                     />
                   ))}
                 </SortableContext>
@@ -826,7 +906,6 @@ export default function PurchaseOrders() {
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
             <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{receivingOrder ? `Receber itens da OC #${receivingOrder.id}` : "Receber ordem de compra"}</ResponsiveDialogTitle>
-            <ResponsiveDialogDescription className="text-sm text-foreground/75">Informe “Receber agora”. Para itens sem material, você pode vincular/criar um material antes de confirmar.</ResponsiveDialogDescription>
           </ResponsiveDialogHeader>
 
           <div className="flex min-h-[320px] flex-col gap-4">
@@ -834,86 +913,67 @@ export default function PurchaseOrders() {
               <div className="flex-1 space-y-4 overflow-y-auto pr-1">
                 {receivingOrder.items.map((item) => {
                   const line = receiveLines.find((l) => l.id === item.id);
-                  const remaining = Number(item.qtyOrdered) - Number(item.qtyReceived);
                   const currentMaterialId = item.materialId ?? line?.materialId ?? null;
-                  const currentMaterialName = item.materialId ? item.materialName : line?.materialName ?? item.materialName;
                   const currentMaterial = currentMaterialId ? materialById.get(currentMaterialId) : undefined;
                   const isTracked = currentMaterial?.stockTracked !== false;
+                  const lineErrors = receiveErrors[item.id] ?? {};
                   return (
                     <div key={item.id} className="space-y-3 rounded-none border-0 p-0 md:rounded-lg md:border md:p-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <div className="text-sm font-semibold">{item.materialName}</div>
-                          <div className="text-xs text-muted-foreground">
-                            Pedido: {item.qtyOrdered} · Já recebido: {item.qtyReceived} · Restante: {remaining.toFixed(3)}
-                          </div>
-                          {!isTracked ? (
-                            <div className="mt-1 text-xs font-medium text-muted-foreground">
-                              Sem controle de estoque: recebimento sem quantidade.
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
-                        <div className="space-y-2">
-                          <Label>Material</Label>
-                          <MaterialSelectField
-                            materials={activeMaterials}
-                            value={{ materialId: currentMaterialId, materialName: currentMaterialName }}
-                            onChange={(next) => updateReceiveLine(item.id, { materialId: next.materialId, materialName: next.materialName })}
-                            placeholder="Buscar ou digitar"
-                          />
-
-                          {!currentMaterialId ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openCreateMaterialForReceiveItem({ id: item.id, materialName: currentMaterialName })}
-                            >
-                              Criar material
-                            </Button>
-                          ) : null}
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Receber agora</Label>
-                          {isTracked ? (
-                            <Input
-                              inputMode="decimal"
-                              value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
-                              onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
-                              placeholder="0,000"
-                              className="h-11 rounded-xl border-border bg-card px-4"
-                            />
-                          ) : (
-                            <div className="rounded-xl border-0 bg-muted/20 px-4 py-3 text-sm text-muted-foreground md:border md:border-dashed md:border-border">
-                              Não é necessário informar quantidade.
-                            </div>
-                          )}
                         </div>
                       </div>
 
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className="space-y-2">
-                          <Label>Qtd pedida (opcional)</Label>
+                          <Label className={lineErrors.material ? "text-destructive" : undefined}>Material</Label>
+                          {currentMaterialId ? (
+                            <div className="flex h-11 items-center justify-between gap-3 rounded-xl border border-border bg-card px-4">
+                              <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{currentMaterial?.name ?? item.materialName}</p>
+                              <span className="shrink-0 text-xs text-muted-foreground">Vinculado</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <MaterialSearchCombobox
+                                materials={activeMaterials}
+                                value={line?.materialId ?? undefined}
+                                onSelect={(material) => updateReceiveLine(item.id, { materialId: material.id, materialName: material.name })}
+                                placeholder="Selecionar material"
+                                error={Boolean(lineErrors.material)}
+                                className="h-11 rounded-xl"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openMaterialDialogForReceiveItem(item.id, item.materialName)}
+                                className="h-auto w-fit px-0 text-xs font-medium text-muted-foreground hover:text-foreground"
+                              >
+                                Criar material
+                              </Button>
+                            </div>
+                          )}
+                          {lineErrors.material ? (
+                            <p className="text-xs font-medium text-destructive">{lineErrors.material}</p>
+                          ) : null}
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className={lineErrors.quantity ? "text-destructive" : undefined}>
+                            Quantidade recebida <span aria-hidden="true">*</span>
+                          </Label>
                           <Input
                             inputMode="decimal"
-                            value={toPtBrDecimal(line?.qtyOrdered ?? String(item.qtyOrdered))}
-                            onChange={(e) => updateReceiveLine(item.id, { qtyOrdered: fromPtBrDecimal(e.target.value, 3) })}
+                            required={isTracked}
+                            value={toPtBrDecimal(line?.qtyReceiveNow ?? "")}
+                            onChange={(e) => updateReceiveLine(item.id, { qtyReceiveNow: fromPtBrDecimal(e.target.value, 3) })}
                             placeholder="0,000"
-                            className="h-11 rounded-xl border-border bg-card px-4"
+                            className={`h-11 rounded-xl bg-card px-4 ${lineErrors.quantity ? "border-destructive focus-visible:ring-destructive/20" : "border-border"}`}
                           />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Nome (opcional)</Label>
-                          <Input
-                            value={line?.materialName ?? item.materialName}
-                            onChange={(e) => updateReceiveLine(item.id, { materialName: e.target.value })}
-                            disabled={Boolean(currentMaterialId)}
-                            className="h-11 rounded-xl border-border bg-card px-4"
-                          />
+                          {lineErrors.quantity ? (
+                            <p className="text-xs font-medium text-destructive">{lineErrors.quantity}</p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -936,30 +996,12 @@ export default function PurchaseOrders() {
         </ResponsiveDialogContent>
       </ResponsiveDialog>
 
-      <AlertDialog open={confirmReceiveWithoutStockOpen} onOpenChange={setConfirmReceiveWithoutStockOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Receber sem atualizar estoque?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Existem itens recebidos que não estão vinculados a nenhum material. Se continuar, o recebimento será registrado, mas o estoque não será atualizado para esses itens.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Voltar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmReceiveWithoutStock} disabled={receiveMutation.isPending}>
-              {receiveMutation.isPending ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...</>
-              ) : "Continuar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <MaterialDialog
         open={materialDialogOpen}
         onOpenChange={(open) => {
           setMaterialDialogOpen(open);
           if (!open) {
+            setMaterialDialogTargetFormClientId(null);
             setMaterialDialogTargetItemId(null);
             setMaterialDialogHideInitialStockField(false);
           }
