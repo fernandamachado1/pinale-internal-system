@@ -335,7 +335,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
         .where(and(eq(pushSubscriptions.orgId, profile.orgId), eq(pushSubscriptions.profileId, profile.id)));
 
       if (subs.length === 0) {
-        return c.json({ attempted: 0, sent: 0, failed: 0 }, 200);
+        return c.json({ attempted: 0, sent: 0, failed: 0, failureStatusCodes: [] }, 200);
       }
 
       const payload = {
@@ -346,12 +346,14 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
 
       let sent = 0;
       let failed = 0;
+      const failureStatusCodes: number[] = [];
       for (const row of subs) {
         const result = await sendWebPush(row.subscription as WebPushSubscription, payload);
         if (result.ok) {
           sent += 1;
         } else {
           failed += 1;
+          if (typeof result.statusCode === "number") failureStatusCodes.push(result.statusCode);
           console.error("[push] test notification failed", { endpoint: row.subscription?.endpoint, statusCode: result.statusCode });
           if (result.statusCode === 404 || result.statusCode === 410) {
             await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, row.id));
@@ -359,7 +361,7 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
         }
       }
 
-      return c.json({ attempted: subs.length, sent, failed }, 200);
+      return c.json({ attempted: subs.length, sent, failed, failureStatusCodes }, 200);
     } catch (err) {
       const { status, body } = toErrorResponse(err);
       return c.json(body, status);
