@@ -456,9 +456,10 @@ export default function Profile() {
                           try {
                             const result = await testPush();
                             const codes = result.failureStatusCodes.length ? ` · Erros: ${result.failureStatusCodes.join(", ")}` : "";
+                            const reasons = result.failureReasons.length ? ` · Motivos: ${result.failureReasons.join(" | ")}` : "";
                             toast({
                               title: "Teste enviado",
-                              description: `Tentados: ${result.attempted} · Enviados: ${result.sent} · Falhas: ${result.failed}${codes}`,
+                              description: `Tentados: ${result.attempted} · Enviados: ${result.sent} · Falhas: ${result.failed}${codes}${reasons}`,
                             });
                           } catch (err: any) {
                             toast({ title: "Erro no teste", description: err?.message ?? "Não foi possível enviar o teste.", variant: "destructive" });

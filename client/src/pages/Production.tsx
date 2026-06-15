@@ -676,7 +676,7 @@ export default function Production() {
 
   const moveOrderWithConfirmation = (orderId: number, destinationStatus: ActiveProductionKanbanStatus | "DONE") => {
     const sourceStatus = findStatusByOrderId(boardState, orderId);
-    if (!sourceStatus || sourceStatus === "DONE") return;
+    if (!sourceStatus) return;
 
     const order = findOrder(boardState, orderId);
     if (!order) return;
@@ -689,22 +689,27 @@ export default function Production() {
 
     setBoardState(nextBoard);
 
-    if (destinationStatus === "DONE") {
+    if (sourceStatus !== "DONE" && destinationStatus === "DONE") {
       setPendingCompletion({ orderId, previousBoard, nextBoard });
       return;
     }
+
+    const orderedIds =
+      destinationStatus === "DONE"
+        ? nextBoard.DONE.map((order) => order.id)
+        : normalizeDestinationOrderedIds(
+            orders,
+            destinationStatus,
+            orderId,
+            nextBoard[destinationStatus].map((order) => order.id),
+          );
 
     if (sourceStatus === "BACKLOG" && destinationStatus === "IN_PROGRESS") {
       setPendingStart({
         orderId,
         previousBoard,
         nextBoard,
-        orderedIds: normalizeDestinationOrderedIds(
-          orders,
-          destinationStatus,
-          orderId,
-          nextBoard[destinationStatus].map((order) => order.id),
-        ),
+        orderedIds,
       });
       return;
     }
@@ -714,12 +719,7 @@ export default function Production() {
         id: orderId,
         data: {
           status: destinationStatus,
-          orderedIds: normalizeDestinationOrderedIds(
-            orders,
-            destinationStatus,
-            orderId,
-            nextBoard[destinationStatus].map((order) => order.id),
-          ),
+          orderedIds,
         },
       },
       {
@@ -745,7 +745,7 @@ export default function Production() {
     if (Number.isNaN(activeId)) return;
 
     const sourceStatus = findStatusByOrderId(boardState, activeId);
-    if (!sourceStatus || sourceStatus === "DONE") return;
+    if (!sourceStatus) return;
     const destinationStatus = resolveDropTargetStatus(boardState, String(over.id));
     if (!destinationStatus) return;
 
@@ -1140,10 +1140,15 @@ export default function Production() {
                           if (shouldInsertBefore) {
                             items.push(renderInsertionMarker(`${status}-before-${order.id}`));
                           }
-                          const previousStatus = order.status === "IN_PROGRESS" ? "BACKLOG" : null;
+                          const previousStatus =
+                            order.status === "IN_PROGRESS"
+                              ? "BACKLOG"
+                              : order.status === "DONE"
+                                ? "IN_PROGRESS"
+                                : null;
                           const nextStatus = order.status === "BACKLOG" ? "IN_PROGRESS" : order.status === "IN_PROGRESS" ? "DONE" : null;
                           const arrowControls =
-                            canWrite && order.status !== "DONE" ? (
+                            canWrite ? (
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -1210,7 +1215,7 @@ export default function Production() {
                             <ProductionCard
                               key={order.id}
                               order={order}
-                              dragDisabled={interactionsDisabled || order.status === "DONE" || isMobile}
+                              dragDisabled={interactionsDisabled || isMobile}
                               moveControls={arrowControls}
                               orderActions={orderActions}
                               onClick={() => {

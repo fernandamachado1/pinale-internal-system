@@ -71,7 +71,13 @@ export async function disablePush(): Promise<void> {
   }).catch(() => {});
 }
 
-export async function testPush(): Promise<{ attempted: number; sent: number; failed: number; failureStatusCodes: number[] }> {
+export async function testPush(): Promise<{
+  attempted: number;
+  sent: number;
+  failed: number;
+  failureStatusCodes: number[];
+  failureReasons: string[];
+}> {
   const res = await apiFetch(api.push.test.path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -81,5 +87,11 @@ export async function testPush(): Promise<{ attempted: number; sent: number; fai
     const payload = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message ?? "Falha ao enviar notificação de teste");
   }
-  return (await res.json()) as { attempted: number; sent: number; failed: number; failureStatusCodes: number[] };
+  return (await res.json()) as {
+    attempted: number;
+    sent: number;
+    failed: number;
+    failureStatusCodes: number[];
+    failureReasons: string[];
+  };
 }

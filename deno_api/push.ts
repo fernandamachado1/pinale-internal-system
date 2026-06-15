@@ -32,14 +32,22 @@ export function configureWebPush(): void {
   didConfigure = true;
 }
 
-export async function sendWebPush(subscription: WebPushSubscription, payload: unknown): Promise<{ ok: true } | { ok: false; statusCode?: number }> {
+export async function sendWebPush(
+  subscription: WebPushSubscription,
+  payload: unknown,
+): Promise<{ ok: true } | { ok: false; statusCode?: number; reason?: string }> {
   try {
     configureWebPush();
     await webpush.sendNotification(subscription as any, JSON.stringify(payload));
     return { ok: true };
   } catch (err: any) {
     const statusCode = typeof err?.statusCode === "number" ? err.statusCode : undefined;
-    return { ok: false, statusCode };
+    const reason =
+      typeof err?.message === "string" && err.message.trim()
+        ? err.message.trim()
+        : typeof err?.name === "string" && err.name.trim()
+          ? err.name.trim()
+          : undefined;
+    return { ok: false, statusCode, reason };
   }
 }
-

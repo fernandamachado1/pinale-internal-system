@@ -384,7 +384,7 @@ export const markProductionOrderDeliveredSchema = z.object({
 });
 
 export const moveProductionOrderSchema = z.object({
-  status: z.enum(["BACKLOG", "IN_PROGRESS"]),
+  status: z.enum(["BACKLOG", "IN_PROGRESS", "DONE"]),
   orderedIds: z.array(z.number().int().positive()).min(1),
 });
 

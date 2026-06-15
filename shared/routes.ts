@@ -165,6 +165,7 @@ export const api = {
           sent: z.number(),
           failed: z.number(),
           failureStatusCodes: z.array(z.number()),
+          failureReasons: z.array(z.string()),
         }),
         400: errorSchemas.validation,
       },

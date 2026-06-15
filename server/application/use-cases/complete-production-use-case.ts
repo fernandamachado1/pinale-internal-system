@@ -40,9 +40,10 @@ export class CompleteProductionUseCase {
         );
 
         const materialsMap = new Map<number, Material>();
+        const consumedSpecs: Array<{ materialId: number; qty: number }> = [];
         for (const spec of specs) {
           const materialRecord = await txRepository.getMaterial(spec.materialId);
-          if (!materialRecord) throw new NotFoundDomainError(`Material ${spec.materialId} not found`);
+          if (!materialRecord) continue;
           materialsMap.set(
             spec.materialId,
             new Material({
@@ -64,7 +65,11 @@ export class CompleteProductionUseCase {
           const material = materialsMap.get(spec.materialId);
           if (!material) continue;
           if (!material.stockTracked) continue;
-          material.consumeStock(spec.calculateFixedConsumption(orderRecord.qtyPlanned));
+          const consumption = spec.calculateFixedConsumption(orderRecord.qtyPlanned);
+          const availableStock = Number(material.toPersistence().stockQty);
+          if (availableStock < consumption) continue;
+          material.consumeStock(consumption);
+          consumedSpecs.push({ materialId: spec.materialId, qty: consumption });
         }
 
         for (const material of Array.from(materialsMap.values())) {
@@ -72,14 +77,14 @@ export class CompleteProductionUseCase {
           await txRepository.updateMaterialStockQty(material.id, material.toPersistence().stockQty);
         }
 
-        for (const spec of specs) {
-          const material = materialsMap.get(spec.materialId);
+        for (const consumed of consumedSpecs) {
+          const material = materialsMap.get(consumed.materialId);
           if (!material?.stockTracked) continue;
           const movement = InventoryMovement.create({
             entityType: "MATERIAL",
-            entityId: spec.materialId,
+            entityId: consumed.materialId,
             direction: "OUT",
-            qty: spec.calculateFixedConsumption(orderRecord.qtyPlanned),
+            qty: consumed.qty,
             reason: "PRODUCTION_CONSUMPTION",
             referenceType: "OP",
             referenceId: orderId,

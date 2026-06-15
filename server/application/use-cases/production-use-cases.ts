@@ -155,7 +155,6 @@ export class MoveProductionOrderUseCase {
   async execute(id: number, input: MoveProductionOrderInput): Promise<ProductionOrderWithProduct> {
     const order = await this.repository.getProductionOrder(id);
     if (!order) throw new NotFoundDomainError("Production order not found");
-    if (order.status === "DONE") throw new InvalidOperationDomainError("Done production orders cannot be moved");
 
     const orders = await this.repository.getProductionOrders();
     const destinationIds = orders

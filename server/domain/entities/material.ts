@@ -21,7 +21,6 @@ export class Material {
     if (!props.name.trim()) throw new ValidationDomainError("Material name is required");
     if (props.stockQty < 0) throw new ValidationDomainError("Material stock quantity cannot be negative");
     if (props.reservedQty < 0) throw new ValidationDomainError("Material reserved quantity cannot be negative");
-    if (props.reservedQty > props.stockQty) throw new ValidationDomainError("Material reserved quantity cannot exceed stock");
     if (props.purchasePrice < 0) throw new ValidationDomainError("Material purchase price cannot be negative");
     if (props.category === "RAW_MATERIAL" && (props.pricePerSquareMeter === undefined || props.pricePerSquareMeter === null || props.pricePerSquareMeter < 0)) {
       throw new ValidationDomainError("Raw material must define price per square meter");
