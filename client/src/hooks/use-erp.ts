@@ -10,6 +10,7 @@ import type {
   ReceivePurchaseOrderInput,
   InsertSale,
   ProductionOrderWithProduct,
+  PurchaseOrderWithItems,
   UpdateProductionOrderFinancialsInput,
   UpdatePurchaseOrderInput,
 } from "@shared/schema";
@@ -122,6 +123,49 @@ function useCrudToast() {
     toast({ title: "Erro", description: err.message, variant: "destructive" });
   };
   return { success, error };
+}
+
+function updatePurchaseOrderListCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  updater: (current: PurchaseOrderWithItems[] | undefined, includeArchived: boolean) => PurchaseOrderWithItems[] | undefined,
+) {
+  const cachedLists = queryClient.getQueriesData<PurchaseOrderWithItems[]>({ queryKey: [api.purchaseOrders.list.path] });
+  for (const [queryKey, current] of cachedLists) {
+    const includeArchived = queryKey[1] === "archived";
+    const next = updater(current, includeArchived);
+    queryClient.setQueryData(queryKey, next);
+  }
+}
+
+function reorderByIds(orders: PurchaseOrderWithItems[], orderedIds: number[]) {
+  const orderRank = new Map(orderedIds.map((id, index) => [id, index]));
+  return [...orders].sort((left, right) => {
+    const leftRank = orderRank.get(left.id);
+    const rightRank = orderRank.get(right.id);
+    if (leftRank !== undefined && rightRank !== undefined && leftRank !== rightRank) return leftRank - rightRank;
+    if (leftRank !== undefined) return -1;
+    if (rightRank !== undefined) return 1;
+    return 0;
+  });
+}
+
+function mergePurchaseOrderIntoList(
+  current: PurchaseOrderWithItems[] | undefined,
+  updatedOrder: PurchaseOrderWithItems,
+  includeArchived: boolean,
+) {
+  if (!current) return current;
+  const exists = current.some((order) => order.id === updatedOrder.id);
+  if (!includeArchived && updatedOrder.isActive !== 1) {
+    return current.filter((order) => order.id !== updatedOrder.id);
+  }
+
+  if (!exists) {
+    if (includeArchived || updatedOrder.isActive === 1) return [updatedOrder, ...current];
+    return current;
+  }
+
+  return current.map((order) => (order.id === updatedOrder.id ? updatedOrder : order));
 }
 
 export function useMaterials() {
@@ -255,10 +299,11 @@ export function useAdjustProducedStock() {
   });
 }
 
-export function usePurchaseOrders() {
+export function usePurchaseOrders(options?: { includeArchived?: boolean }) {
+  const cacheScope = options?.includeArchived ? "archived" : "active";
   return useQuery({
-    queryKey: [api.purchaseOrders.list.path],
-    queryFn: () => getPurchaseOrdersUseCase.execute(),
+    queryKey: [api.purchaseOrders.list.path, cacheScope],
+    queryFn: () => getPurchaseOrdersUseCase.execute(options),
   });
 }
 
@@ -268,8 +313,10 @@ export function useReorderPurchaseOrders() {
 
   return useMutation({
     mutationFn: (data: ReorderPurchaseOrdersInput) => reorderPurchaseOrdersUseCase.execute(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+    onSuccess: (voidResult, variables) => {
+      updatePurchaseOrderListCaches(queryClient, (current) =>
+        current ? reorderByIds(current, variables.orderedIds) : current,
+      );
     },
     onError: message.error,
   });
@@ -308,8 +355,10 @@ export function useReceivePurchaseOrder() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: ReceivePurchaseOrderInput }) => receivePurchaseOrderUseCase.execute(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+    onSuccess: (updatedOrder) => {
+      updatePurchaseOrderListCaches(queryClient, (current, includeArchived) =>
+        mergePurchaseOrderIntoList(current, updatedOrder, includeArchived),
+      );
       queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
       message.success("Recebimento registrado com sucesso.");
     },
@@ -323,8 +372,12 @@ export function useCancelPurchaseOrder() {
 
   return useMutation({
     mutationFn: (id: number) => cancelPurchaseOrderUseCase.execute(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+    onSuccess: (_voidResult, id) => {
+      updatePurchaseOrderListCaches(queryClient, (current, includeArchived) => {
+        if (!current) return current;
+        if (!includeArchived) return current.filter((order) => order.id !== id);
+        return current.map((order) => (order.id === id ? { ...order, isActive: 0, status: "CANCELED" } : order));
+      });
       message.success("Ordem de compra cancelada com sucesso.");
     },
     onError: message.error,

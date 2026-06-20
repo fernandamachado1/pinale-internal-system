@@ -714,6 +714,8 @@ export default function Production() {
       return;
     }
 
+    if (destinationStatus === "DONE") return;
+
     moveMutation.mutate(
       {
         id: orderId,

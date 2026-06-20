@@ -1,24 +1,36 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-
-import Dashboard from "@/pages/Dashboard";
-import Materials from "@/pages/Materials";
-import MaterialFormPage from "@/pages/MaterialFormPage";
-import Products from "@/pages/Products";
-import ProducedStock from "@/pages/ProducedStock";
-import Production from "@/pages/Production";
-import Sales from "@/pages/Sales";
-import Movements from "@/pages/Movements";
-import PurchaseOrders from "@/pages/PurchaseOrders";
-import Login from "@/pages/Login";
-import Profile from "@/pages/Profile";
-import AdminUsers from "@/pages/AdminUsers";
 import { AuthGate } from "@/components/AuthGate";
 import { ThemeProvider } from "@/components/theme-provider";
+
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Materials = lazy(() => import("@/pages/Materials"));
+const MaterialFormPage = lazy(() => import("@/pages/MaterialFormPage"));
+const Products = lazy(() => import("@/pages/Products"));
+const ProducedStock = lazy(() => import("@/pages/ProducedStock"));
+const Production = lazy(() => import("@/pages/Production"));
+const Sales = lazy(() => import("@/pages/Sales"));
+const Movements = lazy(() => import("@/pages/Movements"));
+const PurchaseOrders = lazy(() => import("@/pages/PurchaseOrders"));
+const Login = lazy(() => import("@/pages/Login"));
+const Profile = lazy(() => import("@/pages/Profile"));
+const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-6">
+      <div className="space-y-2 text-center">
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-border border-t-foreground" />
+        <p className="text-sm text-muted-foreground">Carregando tela...</p>
+      </div>
+    </div>
+  );
+}
 
 function Router() {
   return (
@@ -48,7 +60,9 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <AuthGate>
-            <Router />
+            <Suspense fallback={<RouteFallback />}>
+              <Router />
+            </Suspense>
           </AuthGate>
         </TooltipProvider>
       </QueryClientProvider>

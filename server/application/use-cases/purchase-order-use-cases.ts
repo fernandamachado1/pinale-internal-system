@@ -47,23 +47,16 @@ function parseOptionalNonNegativeQty(label: string, raw: string | undefined): nu
   return qty;
 }
 
-function computeStatus(order: PurchaseOrderWithItems): "OPEN" | "PARTIALLY_RECEIVED" | "RECEIVED" {
+function computeStatus(order: PurchaseOrderWithItems): "OPEN" | "RECEIVED" {
   const anyReceived = order.items.some((item) => Number(item.qtyReceived) > 0);
-  const allHaveOrderedQty = order.items.length > 0 && order.items.every((item) => Number(item.qtyOrdered) > 0);
-  const allReceived =
-    allHaveOrderedQty && order.items.every((item) => Number(item.qtyReceived) >= Number(item.qtyOrdered));
-  if (allReceived) return "RECEIVED";
-  if (anyReceived) return "PARTIALLY_RECEIVED";
+  if (anyReceived) return "RECEIVED";
   return "OPEN";
 }
 
 export class ListPurchaseOrdersUseCase {
   constructor(private readonly repository: IErpRepository) {}
-  async execute(): Promise<PurchaseOrderWithItems[]> {
-    return await this.repository.withTransaction(async (tx) => {
-      await tx.splitOpenPurchaseOrdersIntoSingleItemOrders();
-      return await tx.getPurchaseOrders();
-    });
+  async execute(input?: { includeArchived?: boolean }): Promise<PurchaseOrderWithItems[]> {
+    return this.repository.getPurchaseOrders(input?.includeArchived ?? false);
   }
 }
 
@@ -292,6 +285,7 @@ export class ReceivePurchaseOrderUseCase {
       const nextStatus = computeStatus(afterItemsUpdate);
       await tx.updatePurchaseOrderBase(id, {
         status: nextStatus,
+        isActive: nextStatus === "RECEIVED" ? 0 : current.isActive,
         receivedAt: nextStatus === "RECEIVED" ? new Date() : null,
       });
 

@@ -60,7 +60,7 @@ export interface IErpGateway {
 
   getInventoryMovements(): Promise<MovementWithDetails[]>;
 
-  getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
+  getPurchaseOrders(input?: { includeArchived?: boolean }): Promise<PurchaseOrderWithItems[]>;
   reorderPurchaseOrders(data: ReorderPurchaseOrdersInput): Promise<void>;
   createPurchaseOrder(data: CreatePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
   updatePurchaseOrder(id: number, data: UpdatePurchaseOrderInput): Promise<PurchaseOrderWithItems>;

@@ -268,8 +268,11 @@ export class HttpErpGateway implements IErpGateway {
     return parseJsonResponse<MovementWithDetails[]>(res, "Falha ao carregar movimentações de estoque");
   }
 
-  async getPurchaseOrders(): Promise<PurchaseOrderWithItems[]> {
-    const res = await apiFetch(api.purchaseOrders.list.path);
+  async getPurchaseOrders(input?: { includeArchived?: boolean }): Promise<PurchaseOrderWithItems[]> {
+    const params = new URLSearchParams();
+    if (input?.includeArchived) params.set("includeArchived", "true");
+    const url = params.toString() ? `${api.purchaseOrders.list.path}?${params.toString()}` : api.purchaseOrders.list.path;
+    const res = await apiFetch(url);
     return parseJsonResponse<PurchaseOrderWithItems[]>(res, "Falha ao carregar ordens de compra");
   }
 

@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClipboardList, GripVertical, Loader2, MoreVertical, Plus, Truck, X } from "lucide-react";
 import { fromPtBrDecimal, toPtBrDecimal } from "@/lib/ptbr-number";
 import { useToast } from "@/hooks/use-toast";
@@ -45,7 +46,7 @@ type ReceiveLine = {
 
 const statusLabels: Record<PurchaseOrderStatus, string> = {
   OPEN: "Aberta",
-  PARTIALLY_RECEIVED: "Recebida parcial",
+  PARTIALLY_RECEIVED: "Recebida",
   RECEIVED: "Recebida",
   CANCELED: "Cancelada",
 };
@@ -81,6 +82,7 @@ function createEmptyItem(): PurchaseOrderFormItem {
 function SortablePurchaseOrderRow({
   order,
   canWrite,
+  canReorder,
   cancelMutation,
   cancelingOrderId,
   setCancelingOrderId,
@@ -89,19 +91,21 @@ function SortablePurchaseOrderRow({
 }: {
   order: PurchaseOrderWithItems;
   canWrite: boolean;
+  canReorder: boolean;
   cancelMutation: ReturnType<typeof useCancelPurchaseOrder>;
   cancelingOrderId: number | null;
   setCancelingOrderId: (id: number | null) => void;
   openEditDialog: (order: PurchaseOrderWithItems) => void;
   openReceiveDialog: (order: PurchaseOrderWithItems) => void;
 }) {
-  const canEdit = order.status !== "RECEIVED" && order.status !== "CANCELED";
-  const canReceive = order.status !== "RECEIVED" && order.status !== "CANCELED";
-  const canCancel = order.status !== "RECEIVED" && order.status !== "CANCELED";
+  const isArchived = order.isActive === 0;
+  const canEdit = !isArchived && order.status !== "RECEIVED" && order.status !== "CANCELED";
+  const canReceive = !isArchived && order.status !== "RECEIVED" && order.status !== "CANCELED";
+  const canCancel = !isArchived && order.status !== "RECEIVED" && order.status !== "CANCELED";
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(order.id),
-    disabled: !canWrite,
+    disabled: !canReorder,
   });
 
   const style = {
@@ -118,11 +122,11 @@ function SortablePurchaseOrderRow({
       <TableCell className="w-10 px-0 sm:px-2">
         <button
           type="button"
-          className={`touch-none inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 ${canWrite ? "cursor-grab active:cursor-grabbing" : "cursor-not-allowed opacity-50"}`}
+          className={`touch-none inline-flex h-9 w-9 items-center justify-center rounded-md bg-black/5 text-muted-foreground hover:bg-black/10 active:bg-black/15 ${canReorder ? "cursor-grab active:cursor-grabbing" : "cursor-not-allowed opacity-50"}`}
           aria-label="Reordenar ordem de compra"
           {...attributes}
           {...listeners}
-          disabled={!canWrite}
+          disabled={!canReorder}
         >
           <GripVertical className="h-4 w-4" />
         </button>
@@ -131,7 +135,12 @@ function SortablePurchaseOrderRow({
       <TableCell className="whitespace-normal">
         {renderOrderItemsCell(order.items)}
       </TableCell>
-      <TableCell>{statusLabels[order.status]}</TableCell>
+      <TableCell>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{statusLabels[order.status]}</Badge>
+          {isArchived ? <Badge variant="outline">Arquivada</Badge> : null}
+        </div>
+      </TableCell>
       <TableCell className="hidden md:table-cell">{formatDate(order.createdAt)}</TableCell>
       <TableCell className="hidden md:table-cell">{formatDate(order.receivedAt)}</TableCell>
       <TableCell className="text-right">
@@ -307,8 +316,176 @@ function SortableFormItem({
   );
 }
 
+function OrdersList({
+  orders,
+  canWrite,
+  canReorder,
+  sensors,
+  onDragEnd,
+  cancelMutation,
+  cancelingOrderId,
+  setCancelingOrderId,
+  openEditDialog,
+  openReceiveDialog,
+}: {
+  orders: PurchaseOrderWithItems[];
+  canWrite: boolean;
+  canReorder: boolean;
+  sensors: ReturnType<typeof useSensors>;
+  onDragEnd: (event: DragEndEvent) => void;
+  cancelMutation: ReturnType<typeof useCancelPurchaseOrder>;
+  cancelingOrderId: number | null;
+  setCancelingOrderId: (id: number | null) => void;
+  openEditDialog: (order: PurchaseOrderWithItems) => void;
+  openReceiveDialog: (order: PurchaseOrderWithItems) => void;
+}) {
+  return (
+    <>
+      <div className="space-y-3 md:hidden">
+        {orders.map((order) => {
+          const itemNames = (order.items ?? []).map((item) => item.materialName).filter(Boolean);
+          const isArchived = order.isActive === 0 || order.status !== "OPEN";
+          const canEdit = !isArchived && order.status !== "RECEIVED" && order.status !== "CANCELED";
+          const canReceive = !isArchived && order.status !== "RECEIVED" && order.status !== "CANCELED";
+          const canCancel = !isArchived && order.status !== "RECEIVED" && order.status !== "CANCELED";
+
+          return (
+            <Card key={order.id} className="border-border/70 bg-card/90 shadow-none">
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs text-muted-foreground">OC #{order.id}</p>
+                    <p className="line-clamp-2 text-sm font-semibold text-foreground">
+                      {itemNames.length ? itemNames.join(", ") : "Sem itens informados"}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <Badge variant="secondary" className="shrink-0">
+                      {statusLabels[order.status]}
+                    </Badge>
+                    {isArchived ? <Badge variant="outline">Arquivada</Badge> : null}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-xl bg-muted/40 px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">Criada</p>
+                    <p className="font-medium text-foreground">{formatDate(order.createdAt)}</p>
+                  </div>
+                  <div className="rounded-xl bg-muted/40 px-3 py-2">
+                    <p className="text-[11px] text-muted-foreground">Recebida</p>
+                    <p className="font-medium text-foreground">{formatDate(order.receivedAt)}</p>
+                  </div>
+                </div>
+
+                {canWrite ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
+                      Editar
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
+                      Receber
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={!canCancel || cancelMutation.isPending}
+                      onClick={() => {
+                        setCancelingOrderId(order.id);
+                        cancelMutation.mutate(order.id, {
+                          onSettled: () => setCancelingOrderId(null),
+                        });
+                      }}
+                    >
+                      {cancelMutation.isPending && cancelingOrderId === order.id ? "..." : "Cancelar"}
+                    </Button>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="hidden md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-10" aria-label="Ordenação" />
+              <TableHead>Itens</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="hidden md:table-cell">Criada em</TableHead>
+              <TableHead className="hidden md:table-cell">Recebida em</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={orders.map((o) => String(o.id))} strategy={verticalListSortingStrategy}>
+              <TableBody>
+                {orders.map((order) => (
+                  <SortablePurchaseOrderRow
+                    key={order.id}
+                    order={order}
+                    canWrite={canWrite}
+                    canReorder={canReorder}
+                    cancelMutation={cancelMutation}
+                    cancelingOrderId={cancelingOrderId}
+                    setCancelingOrderId={setCancelingOrderId}
+                    openEditDialog={openEditDialog}
+                    openReceiveDialog={openReceiveDialog}
+                  />
+                ))}
+              </TableBody>
+            </SortableContext>
+          </DndContext>
+        </Table>
+      </div>
+    </>
+  );
+}
+
+function EmptyOrdersState({
+  activeTab,
+  onCreate,
+  onGoActive,
+  canWrite,
+  isSavingOrder,
+}: {
+  activeTab: "active" | "archived";
+  onCreate: () => void;
+  onGoActive: () => void;
+  canWrite: boolean;
+  isSavingOrder: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{activeTab === "archived" ? "Nenhuma ordem arquivada encontrada" : "Comece criando sua primeira ordem de compra"}</CardTitle>
+        <CardDescription>
+          {activeTab === "archived"
+            ? "Ordens recebidas, canceladas ou arquivadas aparecem aqui, inclusive as antigas já recebidas."
+            : "Crie itens por material ou texto livre e registre recebimentos sem perder o histórico."
+          }
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {activeTab === "active" ? (
+          <Button onClick={onCreate} disabled={!canWrite || isSavingOrder}>
+            <Plus className="mr-2 h-4 w-4" /> Nova Ordem
+          </Button>
+        ) : (
+          <Button variant="outline" onClick={onGoActive}>
+            Ver ativas
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PurchaseOrders() {
-  const { data: orders, isLoading, error, refetch } = usePurchaseOrders();
+  const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
+  const { data: orders, isLoading, error, refetch } = usePurchaseOrders({ includeArchived: true });
   const { data: materials } = useMaterials();
   const createMutation = useCreatePurchaseOrder();
   const updateMutation = useUpdatePurchaseOrder();
@@ -320,6 +497,16 @@ export default function PurchaseOrders() {
 
   const activeMaterials = useMemo(() => (materials ?? []).filter((m) => m.isActive === 1), [materials]);
   const materialById = useMemo(() => new Map((materials ?? []).map((material) => [material.id, material])), [materials]);
+  const activeOrders = useMemo(
+    () => (orders ?? []).filter((order) => order.isActive !== 0 && order.status === "OPEN"),
+    [orders],
+  );
+  const archivedOrders = useMemo(
+    () => (orders ?? []).filter((order) => order.isActive === 0 || order.status !== "OPEN"),
+    [orders],
+  );
+  const visibleOrders = activeTab === "archived" ? archivedOrders : activeOrders;
+  const canReorder = canWrite && !reorderMutation.isPending && activeTab === "active";
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<PurchaseOrderWithItems | null>(null);
@@ -342,8 +529,8 @@ export default function PurchaseOrders() {
   const isSavingOrder = bulkCreating || createMutation.isPending || updateMutation.isPending;
 
   useEffect(() => {
-    setOrderedOrders(orders ?? []);
-  }, [orders]);
+    setOrderedOrders(visibleOrders);
+  }, [visibleOrders]);
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -547,7 +734,7 @@ export default function PurchaseOrders() {
   };
 
   const handleOrdersDragEnd = (event: DragEndEvent) => {
-    if (!canWrite) return;
+    if (!canReorder) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -708,15 +895,22 @@ export default function PurchaseOrders() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-3">
-          <ClipboardList className="w-8 h-8 text-primary" />
-          Ordens de Compra
-        </h1>
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-2">
+          <h1 className="flex items-center gap-3 text-3xl font-bold">
+            <ClipboardList className="h-8 w-8 text-primary" />
+            Ordens de Compra
+          </h1>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Acompanhe ordens ativas e arquivadas, receba itens com atualização imediata e reorganize sem esperar a tela refazer.
+          </p>
+        </div>
 
-        <Button onClick={openCreateDialog} disabled={!canWrite || isSavingOrder}>
-          <Plus className="w-4 h-4 mr-2" /> Nova Ordem
-        </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Button onClick={openCreateDialog} disabled={!canWrite || isSavingOrder}>
+            <Plus className="mr-2 h-4 w-4" /> Nova Ordem
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -742,119 +936,81 @@ export default function PurchaseOrders() {
             ))}
           </div>
         </div>
-      ) : orderedOrders.length ? (
-        <>
-          <div className="space-y-3 md:hidden">
-            {orderedOrders.map((order) => {
-              const itemNames = (order.items ?? []).map((item) => item.materialName).filter(Boolean);
-              const canEdit = order.status !== "RECEIVED" && order.status !== "CANCELED";
-              const canReceive = order.status !== "RECEIVED" && order.status !== "CANCELED";
-              const canCancel = order.status !== "RECEIVED" && order.status !== "CANCELED";
+      ) : null}
 
-              return (
-                <Card key={order.id} className="border-border/70 bg-card/90 shadow-none">
-                  <CardContent className="space-y-3 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-1">
-                        <p className="text-xs text-muted-foreground">OC #{order.id}</p>
-                        <p className="line-clamp-2 text-sm font-semibold text-foreground">
-                          {itemNames.length ? itemNames.join(", ") : "Sem itens informados"}
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className="shrink-0">{statusLabels[order.status]}</Badge>
-                    </div>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "active" | "archived")} className="space-y-4">
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="active" className="gap-2">
+            Ativas
+            <Badge variant="secondary" className="ml-1">
+              {activeOrders.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="archived" className="gap-2">
+            Arquivadas
+            <Badge variant="secondary" className="ml-1">
+              {archivedOrders.length}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
 
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="rounded-xl bg-muted/40 px-3 py-2">
-                        <p className="text-[11px] text-muted-foreground">Criada</p>
-                        <p className="font-medium text-foreground">{formatDate(order.createdAt)}</p>
-                      </div>
-                      <div className="rounded-xl bg-muted/40 px-3 py-2">
-                        <p className="text-[11px] text-muted-foreground">Recebida</p>
-                        <p className="font-medium text-foreground">{formatDate(order.receivedAt)}</p>
-                      </div>
-                    </div>
+        <TabsContent value="active" className="mt-0">
+          {orderedOrders.length ? (
+            <OrdersList
+              orders={orderedOrders}
+              canWrite={canWrite}
+              canReorder={canReorder}
+              sensors={sensors}
+              onDragEnd={handleOrdersDragEnd}
+              cancelMutation={cancelMutation}
+              cancelingOrderId={cancelingOrderId}
+              setCancelingOrderId={setCancelingOrderId}
+              openEditDialog={openEditDialog}
+              openReceiveDialog={openReceiveDialog}
+            />
+          ) : (
+            <EmptyOrdersState
+              activeTab="active"
+              onCreate={openCreateDialog}
+              onGoActive={() => setActiveTab("active")}
+              canWrite={canWrite}
+              isSavingOrder={isSavingOrder}
+            />
+          )}
+        </TabsContent>
 
-                    {canWrite ? (
-                      <div className="grid grid-cols-3 gap-2">
-                        <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
-                          Editar
-                        </Button>
-                        <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
-                          Receber
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={!canCancel || cancelMutation.isPending}
-                          onClick={() => {
-                            setCancelingOrderId(order.id);
-                            cancelMutation.mutate(order.id, {
-                              onSettled: () => setCancelingOrderId(null),
-                            });
-                          }}
-                        >
-                          {cancelMutation.isPending && cancelingOrderId === order.id ? "..." : "Cancelar"}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          <div className="hidden md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10" aria-label="Ordenação" />
-                  <TableHead>Itens</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Criada em</TableHead>
-                  <TableHead className="hidden md:table-cell">Recebida em</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleOrdersDragEnd}>
-                <SortableContext items={orderedOrders.map((o) => String(o.id))} strategy={verticalListSortingStrategy}>
-                  <TableBody>
-                    {orderedOrders.map((order) => (
-                      <SortablePurchaseOrderRow
-                        key={order.id}
-                        order={order}
-                        canWrite={canWrite && !reorderMutation.isPending}
-                        cancelMutation={cancelMutation}
-                        cancelingOrderId={cancelingOrderId}
-                        setCancelingOrderId={setCancelingOrderId}
-                        openEditDialog={openEditDialog}
-                        openReceiveDialog={openReceiveDialog}
-                      />
-                    ))}
-                  </TableBody>
-                </SortableContext>
-              </DndContext>
-            </Table>
-          </div>
-        </>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Comece criando sua primeira ordem de compra</CardTitle>
-            <CardDescription>Crie itens por material ou texto livre e registre recebimentos parciais.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={openCreateDialog} disabled={!canWrite || isSavingOrder}>
-              <Plus className="w-4 h-4 mr-2" /> Nova Ordem
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+        <TabsContent value="archived" className="mt-0">
+          {orderedOrders.length ? (
+            <OrdersList
+              orders={orderedOrders}
+              canWrite={canWrite}
+              canReorder={canReorder}
+              sensors={sensors}
+              onDragEnd={handleOrdersDragEnd}
+              cancelMutation={cancelMutation}
+              cancelingOrderId={cancelingOrderId}
+              setCancelingOrderId={setCancelingOrderId}
+              openEditDialog={openEditDialog}
+              openReceiveDialog={openReceiveDialog}
+            />
+          ) : (
+            <EmptyOrdersState
+              activeTab="archived"
+              onCreate={openCreateDialog}
+              onGoActive={() => setActiveTab("active")}
+              canWrite={canWrite}
+              isSavingOrder={isSavingOrder}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
 
       <ResponsiveDialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{editingOrder ? `Editar OC #${editingOrder.id}` : "Nova Ordem de Compra"}</ResponsiveDialogTitle>
+            <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">
+              {editingOrder ? `Editar OC #${editingOrder.id}` : "Nova Ordem de Compra"}
+            </ResponsiveDialogTitle>
           </ResponsiveDialogHeader>
 
           <form onSubmit={submitOrder} className="flex min-h-[320px] flex-col gap-4">
@@ -894,8 +1050,14 @@ export default function PurchaseOrders() {
               </Button>
               <Button type="submit" disabled={!canWrite || isSavingOrder}>
                 {isSavingOrder ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {editingOrder ? "Salvando..." : "Criando..."}</>
-                ) : (editingOrder ? "Salvar" : "Criar")}
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {editingOrder ? "Salvando..." : "Criando..."}
+                  </>
+                ) : editingOrder ? (
+                  "Salvar"
+                ) : (
+                  "Criar"
+                )}
               </Button>
             </ResponsiveDialogFooter>
           </form>
@@ -905,7 +1067,9 @@ export default function PurchaseOrders() {
       <ResponsiveDialog open={receiveOpen} onOpenChange={setReceiveOpen}>
         <ResponsiveDialogContent className="max-w-3xl">
           <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">{receivingOrder ? `Receber itens da OC #${receivingOrder.id}` : "Receber ordem de compra"}</ResponsiveDialogTitle>
+            <ResponsiveDialogTitle className="text-lg font-extrabold tracking-tight text-foreground md:text-xl">
+              {receivingOrder ? `Receber itens da OC #${receivingOrder.id}` : "Receber ordem de compra"}
+            </ResponsiveDialogTitle>
           </ResponsiveDialogHeader>
 
           <div className="flex min-h-[320px] flex-col gap-4">
@@ -930,7 +1094,9 @@ export default function PurchaseOrders() {
                           <Label className={lineErrors.material ? "text-destructive" : undefined}>Material</Label>
                           {currentMaterialId ? (
                             <div className="flex h-11 items-center justify-between gap-3 rounded-xl border border-border bg-card px-4">
-                              <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{currentMaterial?.name ?? item.materialName}</p>
+                              <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                                {currentMaterial?.name ?? item.materialName}
+                              </p>
                               <span className="shrink-0 text-xs text-muted-foreground">Vinculado</span>
                             </div>
                           ) : (
@@ -938,7 +1104,9 @@ export default function PurchaseOrders() {
                               <MaterialSearchCombobox
                                 materials={activeMaterials}
                                 value={line?.materialId ?? undefined}
-                                onSelect={(material) => updateReceiveLine(item.id, { materialId: material.id, materialName: material.name })}
+                                onSelect={(material) =>
+                                  updateReceiveLine(item.id, { materialId: material.id, materialName: material.name })
+                                }
                                 placeholder="Selecionar material"
                                 error={Boolean(lineErrors.material)}
                                 className="h-11 rounded-xl"
@@ -954,9 +1122,7 @@ export default function PurchaseOrders() {
                               </Button>
                             </div>
                           )}
-                          {lineErrors.material ? (
-                            <p className="text-xs font-medium text-destructive">{lineErrors.material}</p>
-                          ) : null}
+                          {lineErrors.material ? <p className="text-xs font-medium text-destructive">{lineErrors.material}</p> : null}
                         </div>
 
                         <div className="space-y-2">
@@ -971,9 +1137,7 @@ export default function PurchaseOrders() {
                             placeholder="0,000"
                             className={`h-11 rounded-xl bg-card px-4 ${lineErrors.quantity ? "border-destructive focus-visible:ring-destructive/20" : "border-border"}`}
                           />
-                          {lineErrors.quantity ? (
-                            <p className="text-xs font-medium text-destructive">{lineErrors.quantity}</p>
-                          ) : null}
+                          {lineErrors.quantity ? <p className="text-xs font-medium text-destructive">{lineErrors.quantity}</p> : null}
                         </div>
                       </div>
                     </div>
@@ -988,8 +1152,12 @@ export default function PurchaseOrders() {
               </Button>
               <Button type="button" onClick={submitReceive} disabled={!canWrite || receiveMutation.isPending}>
                 {receiveMutation.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirmando...</>
-                ) : "Confirmar recebimento"}
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirmando...
+                  </>
+                ) : (
+                  "Confirmar recebimento"
+                )}
               </Button>
             </ResponsiveDialogFooter>
           </div>

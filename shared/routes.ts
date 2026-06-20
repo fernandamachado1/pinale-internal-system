@@ -84,6 +84,9 @@ const catalogProductsQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 const purchaseOrderWithItemsSchema = purchaseOrderSchema.and(z.object({ items: z.array(purchaseOrderItemSchema) }));
+const purchaseOrdersListQuerySchema = z.object({
+  includeArchived: z.preprocess((value) => value === true || value === "true", z.boolean()).default(false),
+});
 
 const reportProductionSchema = z.object({
   totalOps: z.number(),
@@ -337,7 +340,12 @@ export const api = {
   },
 
   purchaseOrders: {
-    list: { method: "GET" as const, path: "/api/purchase-orders" as const, responses: { 200: z.array(purchaseOrderWithItemsSchema) } },
+    list: {
+      method: "GET" as const,
+      path: "/api/purchase-orders" as const,
+      query: purchaseOrdersListQuerySchema,
+      responses: { 200: z.array(purchaseOrderWithItemsSchema) },
+    },
     get: {
       method: "GET" as const,
       path: "/api/purchase-orders/:id" as const,

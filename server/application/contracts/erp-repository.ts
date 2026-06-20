@@ -86,7 +86,7 @@ export interface IErpRepository extends ISalesRepository {
 
   getDashboardReport(period: { from?: Date; to?: Date }): Promise<DashboardReport>;
 
-  getPurchaseOrders(): Promise<PurchaseOrderWithItems[]>;
+  getPurchaseOrders(includeArchived?: boolean): Promise<PurchaseOrderWithItems[]>;
   getPurchaseOrder(id: number): Promise<PurchaseOrderWithItems | undefined>;
   splitOpenPurchaseOrdersIntoSingleItemOrders(): Promise<void>;
   reorderPurchaseOrders(input: ReorderPurchaseOrdersInput): Promise<void>;

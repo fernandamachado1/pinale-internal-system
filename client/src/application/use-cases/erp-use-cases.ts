@@ -216,8 +216,8 @@ export class DeleteSaleUseCase {
 
 export class GetPurchaseOrdersUseCase {
   constructor(private readonly gateway: IErpGateway) {}
-  execute(): Promise<PurchaseOrderWithItems[]> {
-    return this.gateway.getPurchaseOrders();
+  execute(input?: { includeArchived?: boolean }): Promise<PurchaseOrderWithItems[]> {
+    return this.gateway.getPurchaseOrders(input);
   }
 }
 

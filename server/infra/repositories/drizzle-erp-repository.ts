@@ -157,9 +157,11 @@ export class DrizzleErpRepository implements IErpRepository {
     const bomsWhere = and(eq(boms.isActive, 1), ...(this.orgId ? [eq(boms.orgId, this.orgId)] : []));
     const bomItemsWhere = this.orgId ? eq(bomItems.orgId, this.orgId) : undefined;
 
-    const allProducts = (await this.database.select().from(products).where(productsWhere).orderBy(products.name)) as Product[];
-    const activeBoms = (await this.database.select().from(boms).where(bomsWhere)) as Array<typeof boms.$inferSelect>;
-    const allBomItems = (await this.database.select().from(bomItems).where(bomItemsWhere)) as BomItem[];
+    const [allProducts, activeBoms, allBomItems] = await Promise.all([
+      this.database.select().from(products).where(productsWhere).orderBy(products.name),
+      this.database.select().from(boms).where(bomsWhere),
+      this.database.select().from(bomItems).where(bomItemsWhere),
+    ]) as [Product[], Array<typeof boms.$inferSelect>, BomItem[]];
     const activeBomByProductId = new Map(activeBoms.map((bom) => [bom.productId, bom.id]));
     const bomItemsByBomId = new Map<number, BomItem[]>();
     for (const item of allBomItems) {
@@ -187,19 +189,18 @@ export class DrizzleErpRepository implements IErpRepository {
     ];
     const productsWhere = filters.length > 0 ? and(...filters) : undefined;
 
-    const [totalRow] = (await this.database
-      .select({ count: sql<number>`count(*)` })
-      .from(products)
-      .where(productsWhere)) as Array<{ count: number }>;
+    const [totalResult, pageProducts] = await Promise.all([
+      this.database.select({ count: sql<number>`count(*)` }).from(products).where(productsWhere),
+      this.database
+        .select()
+        .from(products)
+        .where(productsWhere)
+        .orderBy(products.name)
+        .limit(input.pageSize)
+        .offset(offset),
+    ]) as [Array<{ count: number }>, Product[]];
+    const [totalRow] = totalResult;
     const total = Number(totalRow?.count ?? 0);
-
-    const pageProducts = (await this.database
-      .select()
-      .from(products)
-      .where(productsWhere)
-      .orderBy(products.name)
-      .limit(input.pageSize)
-      .offset(offset)) as Product[];
 
     if (pageProducts.length === 0) return { items: [], total };
 
@@ -286,13 +287,16 @@ export class DrizzleErpRepository implements IErpRepository {
   async getProduct(id: number): Promise<ProductWithBom | undefined> {
     const productConditions = [eq(products.id, id)];
     if (this.orgId) productConditions.push(eq(products.orgId, this.orgId));
-    const [product] = (await this.database.select().from(products).where(and(...productConditions))) as Product[];
+    const [productResult, activeBomResult] = await Promise.all([
+      this.database.select().from(products).where(and(...productConditions)),
+      this.database
+        .select()
+        .from(boms)
+        .where(and(eq(boms.productId, id), eq(boms.isActive, 1), ...(this.orgId ? [eq(boms.orgId, this.orgId)] : []))),
+    ]) as [Product[], Array<typeof boms.$inferSelect>];
+    const [product] = productResult;
     if (!product) return undefined;
-
-    const [activeBom] = (await this.database
-      .select()
-      .from(boms)
-      .where(and(eq(boms.productId, id), eq(boms.isActive, 1)))) as Array<typeof boms.$inferSelect>;
+    const [activeBom] = activeBomResult;
 
     const items =
       activeBom === undefined
@@ -348,12 +352,10 @@ export class DrizzleErpRepository implements IErpRepository {
   async getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]> {
     const stocksWhere = this.orgId ? eq(producedProductStocks.orgId, this.orgId) : undefined;
     const productsWhere = this.orgId ? eq(products.orgId, this.orgId) : undefined;
-    const allStocks = (await this.database
-      .select()
-      .from(producedProductStocks)
-      .where(stocksWhere)
-      .orderBy(producedProductStocks.productId)) as ProducedProductStock[];
-    const allProducts = (await this.database.select().from(products).where(productsWhere).orderBy(products.name)) as Product[];
+    const [allStocks, allProducts] = await Promise.all([
+      this.database.select().from(producedProductStocks).where(stocksWhere).orderBy(producedProductStocks.productId),
+      this.database.select().from(products).where(productsWhere).orderBy(products.name),
+    ]) as [ProducedProductStock[], Product[]];
     const productsById = new Map(allProducts.map((product) => [product.id, product]));
 
     return allStocks
@@ -373,27 +375,30 @@ export class DrizzleErpRepository implements IErpRepository {
       ...(this.orgId ? [eq(inventoryMovements.orgId, this.orgId)] : []),
     );
 
-    const allProducts = (await this.database
-      .select({ id: products.id })
-      .from(products)
-      .where(productsWhere)) as Array<{ id: number }>;
-    const allStocks = (await this.database
-      .select({ productId: producedProductStocks.productId, stockQty: producedProductStocks.stockQty })
-      .from(producedProductStocks)
-      .where(stocksWhere)) as Array<{ productId: number; stockQty: number }>;
-    const movementTotals = (await this.database
-      .select({
-        productId: inventoryMovements.entityId,
-        direction: inventoryMovements.direction,
-        qty: sql<number>`coalesce(sum((${inventoryMovements.qty})::numeric), 0)`,
-      })
-      .from(inventoryMovements)
-      .where(movementsWhere)
-      .groupBy(inventoryMovements.entityId, inventoryMovements.direction)) as Array<{
-      productId: number | null;
-      direction: "IN" | "OUT";
-      qty: number;
-    }>;
+    const [allProducts, allStocks, movementTotals] = await Promise.all([
+      this.database.select({ id: products.id }).from(products).where(productsWhere),
+      this.database
+        .select({ productId: producedProductStocks.productId, stockQty: producedProductStocks.stockQty })
+        .from(producedProductStocks)
+        .where(stocksWhere),
+      this.database
+        .select({
+          productId: inventoryMovements.entityId,
+          direction: inventoryMovements.direction,
+          qty: sql<number>`coalesce(sum((${inventoryMovements.qty})::numeric), 0)`,
+        })
+        .from(inventoryMovements)
+        .where(movementsWhere)
+        .groupBy(inventoryMovements.entityId, inventoryMovements.direction),
+    ]) as [
+      Array<{ id: number }>,
+      Array<{ productId: number; stockQty: number }>,
+      Array<{
+        productId: number | null;
+        direction: "IN" | "OUT";
+        qty: number;
+      }>,
+    ];
 
     const stockByProductId = new Map(allStocks.map((row) => [row.productId, Number(row.stockQty)]));
     const inByProductId = new Map<number, number>();
@@ -567,12 +572,14 @@ export class DrizzleErpRepository implements IErpRepository {
       orderConditions.push(inArray(productionOrders.status, filters.status));
     }
     this.applyDateRange(orderConditions, productionOrders.createdAt, filters?.from, filters?.to);
-    const allOrders = (await this.database
-      .select()
-      .from(productionOrders)
-      .where(orderConditions.length > 0 ? and(...orderConditions) : undefined)
-      .orderBy(asc(productionOrders.sortOrder), desc(productionOrders.createdAt), desc(productionOrders.id))) as ProductionOrder[];
-    const allProducts = (await this.database.select().from(products).where(productsWhere)) as Product[];
+    const [allOrders, allProducts] = await Promise.all([
+      this.database
+        .select()
+        .from(productionOrders)
+        .where(orderConditions.length > 0 ? and(...orderConditions) : undefined)
+        .orderBy(asc(productionOrders.sortOrder), desc(productionOrders.createdAt), desc(productionOrders.id)),
+      this.database.select().from(products).where(productsWhere),
+    ]) as [ProductionOrder[], Product[]];
     const productsById = new Map(allProducts.map((product) => [product.id, product]));
     const statusOrder = new Map([
       ["BACKLOG", 0],
@@ -1130,13 +1137,14 @@ export class DrizzleErpRepository implements IErpRepository {
     return created;
   }
 
-  async getPurchaseOrders(): Promise<PurchaseOrderWithItems[]> {
-    const conditions = [eq(purchaseOrders.isActive, 1)];
+  async getPurchaseOrders(includeArchived = false): Promise<PurchaseOrderWithItems[]> {
+    const conditions = includeArchived ? [] : [eq(purchaseOrders.isActive, 1)];
     if (this.orgId) conditions.push(eq(purchaseOrders.orgId, this.orgId));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
     const orders = (await this.database
       .select()
       .from(purchaseOrders)
-      .where(and(...conditions))
+      .where(whereClause)
       .orderBy(asc(purchaseOrders.sortOrder), desc(purchaseOrders.id))) as PurchaseOrder[];
 
     if (orders.length === 0) return [];

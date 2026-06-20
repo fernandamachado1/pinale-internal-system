@@ -276,8 +276,9 @@ export class ErpController {
     res.json(await this.listInventoryMovementsUseCase.execute());
   }
 
-  async listPurchaseOrders(_req: Request, res: Response): Promise<void> {
-    res.json(await this.listPurchaseOrdersUseCase.execute());
+  async listPurchaseOrders(req: Request, res: Response): Promise<void> {
+    const query = api.purchaseOrders.list.query.parse(req.query);
+    res.json(await this.listPurchaseOrdersUseCase.execute(query));
   }
 
   async getPurchaseOrder(req: Request, res: Response): Promise<void> {
