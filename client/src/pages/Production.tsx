@@ -15,6 +15,7 @@ import {
   useMoveProductionOrder,
   useProducts,
   useProductionOrders,
+  useSales,
   useUpdateProductionOrder,
   useUpdateProductionOrderFinancials,
 } from "@/hooks/use-erp";
@@ -264,10 +265,12 @@ function normalizeDestinationOrderedIds(
 
 function ProductionCardBody({
   order,
+  hasLinkedSale,
   moveControls,
   orderActions,
 }: {
   order: ProductionOrderWithProduct;
+  hasLinkedSale?: boolean;
   moveControls?: ReactNode;
   orderActions?: ReactNode;
 }) {
@@ -280,6 +283,7 @@ function ProductionCardBody({
   const paymentStatus = getPaymentStatus(order);
   const isEncomenda = order.orderType === "ENCOMENDA";
   const showPaymentBadge = paymentStatus !== null && (!isEncomenda || paymentStatus !== "PENDING");
+  const showLinkedSaleBadge = Boolean(hasLinkedSale);
 
   return (
     <>
@@ -307,6 +311,11 @@ function ProductionCardBody({
               }`}
             >
               {paymentStatus === "PAID" ? "Pago" : paymentStatus === "PARTIAL" ? "Parcial" : "Pendente"}
+            </Badge>
+          ) : null}
+          {showLinkedSaleBadge ? (
+            <Badge className="border-transparent bg-emerald-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">
+              Venda gerada
             </Badge>
           ) : null}
           {isOverdue ? <Badge className="border-transparent bg-red-600 px-2 py-0.5 text-[10px] text-white sm:px-2.5 sm:py-1 sm:text-xs">Vencida</Badge> : null}
@@ -354,12 +363,14 @@ function ProductionCardBody({
 
 function ProductionCard({
   order,
+  hasLinkedSale,
   dragDisabled,
   moveControls,
   orderActions,
   onClick,
 }: {
   order: ProductionOrderWithProduct;
+  hasLinkedSale?: boolean;
   dragDisabled: boolean;
   moveControls?: ReactNode;
   orderActions?: ReactNode;
@@ -396,6 +407,7 @@ function ProductionCard({
     >
       <ProductionCardBody
         order={order}
+        hasLinkedSale={hasLinkedSale}
         moveControls={moveControls}
         orderActions={orderActions}
       />
@@ -457,6 +469,7 @@ function ColumnDropZone({
 export default function Production() {
   const { toast } = useToast();
   const { data: orders, isLoading: isOrdersLoading, error: ordersError, refetch: refetchOrders } = useProductionOrders();
+  const { data: sales } = useSales();
   const { data: products } = useProducts();
   const { data: materials } = useMaterials();
   const createMutation = useCreateProductionOrder();
@@ -537,6 +550,16 @@ export default function Production() {
 
   const productById = useMemo(() => new Map((products ?? []).map((product) => [product.id, product])), [products]);
   const materialById = useMemo(() => new Map((materials ?? []).map((material) => [material.id, material])), [materials]);
+  const linkedSaleByProductionOrderId = useMemo(() => {
+    const linkedSales = new Map<number, boolean>();
+    for (const saleItem of sales ?? []) {
+      const originProductionOrderId = saleItem.sale.originProductionOrderId;
+      if (originProductionOrderId !== null && originProductionOrderId !== undefined) {
+        linkedSales.set(originProductionOrderId, true);
+      }
+    }
+    return linkedSales;
+  }, [sales]);
   const selectedProductIdValue = Number(productId);
   const qtyPlannedValue = Number(qtyPlanned);
 
@@ -1217,6 +1240,7 @@ export default function Production() {
                             <ProductionCard
                               key={order.id}
                               order={order}
+                              hasLinkedSale={linkedSaleByProductionOrderId.has(order.id)}
                               dragDisabled={interactionsDisabled || isMobile}
                               moveControls={arrowControls}
                               orderActions={orderActions}
@@ -1236,13 +1260,13 @@ export default function Production() {
               })}
             </div>
 
-            <DragOverlay>
-              {activeOrder ? (
-                <article className={`rounded-xl border p-3 shadow-xl ring-2 ring-primary/30 sm:p-4 ${columnTheme[activeOrder.status].card} opacity-95`}>
-                  <ProductionCardBody order={activeOrder} />
-                </article>
-              ) : null}
-            </DragOverlay>
+                <DragOverlay>
+                  {activeOrder ? (
+                    <article className={`rounded-xl border p-3 shadow-xl ring-2 ring-primary/30 sm:p-4 ${columnTheme[activeOrder.status].card} opacity-95`}>
+                  <ProductionCardBody order={activeOrder} hasLinkedSale={linkedSaleByProductionOrderId.has(activeOrder.id)} />
+                    </article>
+                  ) : null}
+                </DragOverlay>
           </DndContext>
         </>
       ) : null}

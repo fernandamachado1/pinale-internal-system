@@ -448,6 +448,11 @@ export function useCreateProductionOrder() {
     mutationFn: (data: InsertProductionOrder) => createProductionOrderUseCase.execute(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      queryClient.invalidateQueries({ queryKey: [api.reports.dashboard.path] });
       message.success("Ordem de produção criada com sucesso.");
     },
     onError: message.error,
@@ -463,6 +468,11 @@ export function useUpdateProductionOrder() {
       updateProductionOrderUseCase.execute(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      queryClient.invalidateQueries({ queryKey: [api.reports.dashboard.path] });
       message.success("Ordem de produção atualizada com sucesso.");
     },
     onError: message.error,
@@ -497,6 +507,11 @@ export function useUpdateProductionOrderFinancials() {
         current?.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)),
       );
       queryClient.invalidateQueries({ queryKey: [api.productionOrders.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
+      queryClient.invalidateQueries({ queryKey: [api.inventory.movements.path] });
+      queryClient.invalidateQueries({ queryKey: [api.reports.dashboard.path] });
       message.success("Dados financeiros atualizados com sucesso.");
     },
     onError: message.error,

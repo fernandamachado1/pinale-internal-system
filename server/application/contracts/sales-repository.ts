@@ -17,6 +17,7 @@ export interface ISalesRepository {
   updateProducedProductStockQty(productId: number, stockQty: number): Promise<void>;
 
   createSale(data: {
+    originProductionOrderId?: number | null;
     paymentMethod: string;
     installments?: number | null;
     description?: string | null;
@@ -27,6 +28,7 @@ export interface ISalesRepository {
   updateSale(
     id: number,
     data: {
+      originProductionOrderId?: number | null;
       paymentMethod: string;
       installments?: number | null;
       description?: string | null;
@@ -35,6 +37,7 @@ export interface ISalesRepository {
       soldAt?: string | null;
     },
   ): Promise<void>;
+  getSaleByOriginProductionOrderId(originProductionOrderId: number): Promise<Sale | undefined>;
   createSaleItems(
     saleId: number,
     items: Array<{ productId: number; qty: number; discountType: "PERCENT" | "AMOUNT"; discountValue: string; unitPrice: string; totalPrice: string }>,

@@ -152,6 +152,7 @@ export const productionOrders = pgTable("production_orders", {
 export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
   orgId: uuid("org_id").notNull(),
+  originProductionOrderId: integer("origin_production_order_id"),
   paymentMethod: text("payment_method").notNull(),
   installments: integer("installments"),
   description: text("description"),
@@ -161,7 +162,9 @@ export const sales = pgTable("sales", {
   // Legacy column kept for backward compatibility with existing databases.
   machineFeeAmount: numeric("machine_fee_amount", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  originProductionOrderIdIdx: uniqueIndex("sales_origin_production_order_id_unique").on(table.originProductionOrderId),
+}));
 
 export const saleItems = pgTable("sale_items", {
   id: serial("id").primaryKey(),

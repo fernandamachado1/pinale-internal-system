@@ -1,4 +1,5 @@
 import type {
+  InsertSale,
   InsertProductionOrder,
   MoveProductionOrderInput,
   ProductionOrderWithProduct,
@@ -7,6 +8,43 @@ import type {
 } from "@shared/schema.ts";
 import type { IErpRepository } from "../contracts/erp-repository.ts";
 import { InvalidOperationDomainError, NotFoundDomainError, ValidationDomainError } from "../../domain/errors/domain-error.ts";
+import { createSaleTransaction } from "./create-sale-use-case.ts";
+
+function getEncomendaSaleInput(order: ProductionOrderWithProduct): InsertSale {
+  return {
+    paymentMethod: "ENCOMENDA",
+    installments: null,
+    description: `Encomenda #${order.id}`,
+    salesChannel: order.salesChannel,
+    soldAt: new Date().toISOString(),
+    items: [
+      {
+        productId: order.productId,
+        qty: order.qtyPlanned,
+        discountType: "PERCENT",
+        discountValue: 0,
+      },
+    ],
+  };
+}
+
+export async function ensureEncomendaSale(order: ProductionOrderWithProduct, repository: IErpRepository): Promise<void> {
+  if (order.orderType !== "ENCOMENDA") return;
+
+  const totalDue = Number(order.product.price ?? 0) * Number(order.qtyPlanned ?? 0);
+  const amountPaid = Number(order.amountPaid ?? 0);
+  if (totalDue <= 0 || amountPaid + 1e-9 < totalDue) return;
+
+  const producedStock = await repository.getProducedProductStockByProductId(order.productId);
+  if (!producedStock || Number(producedStock.stockQty) < Number(order.qtyPlanned ?? 0)) return;
+
+  const existingSale = await repository.getSaleByOriginProductionOrderId(order.id);
+  if (existingSale) return;
+
+  await createSaleTransaction(repository, getEncomendaSaleInput(order), {
+    originProductionOrderId: order.id,
+  });
+}
 
 export class ListProductionOrdersUseCase {
   constructor(private readonly repository: IErpRepository) {}
@@ -37,6 +75,10 @@ export class CreateProductionOrderUseCase {
 
     const product = await this.repository.getProduct(input.productId);
     if (!product) throw new NotFoundDomainError("Product not found");
+    const totalDue = Number(product.price ?? 0) * Number(input.qtyPlanned ?? 0);
+    if (input.orderType === "ENCOMENDA" && Number(input.amountPaid ?? 0) - totalDue > 1e-9) {
+      throw new ValidationDomainError("amountPaid cannot be greater than the total product value");
+    }
 
     return this.repository.withTransaction(async (txRepository) => {
       const activeBom = await txRepository.getActiveBomByProductId(input.productId);
@@ -47,6 +89,7 @@ export class CreateProductionOrderUseCase {
 
       const order = await txRepository.getProductionOrder(created.id);
       if (!order) throw new NotFoundDomainError("Production order not found after creation");
+      await ensureEncomendaSale(order, txRepository);
       return order;
     });
   }
@@ -89,10 +132,13 @@ export class UpdateProductionOrderUseCase {
       throw new ValidationDomainError("amountPaid cannot be greater than the total product value");
     }
 
-    await this.repository.updateProductionOrder(id, input);
-    const updated = await this.repository.getProductionOrder(id);
-    if (!updated) throw new NotFoundDomainError("Production order not found after update");
-    return updated;
+    return this.repository.withTransaction(async (txRepository) => {
+      await txRepository.updateProductionOrder(id, input);
+      const updated = await txRepository.getProductionOrder(id);
+      if (!updated) throw new NotFoundDomainError("Production order not found after update");
+      await ensureEncomendaSale(updated, txRepository);
+      return updated;
+    });
   }
 }
 
@@ -106,10 +152,13 @@ export class UpdateProductionOrderFinancialsUseCase {
       throw new InvalidOperationDomainError("Only encomenda production orders can update financials");
     }
 
-    await this.repository.updateProductionOrderFinancials(id, input);
-    const updated = await this.repository.getProductionOrder(id);
-    if (!updated) throw new NotFoundDomainError("Production order not found after update");
-    return updated;
+    return this.repository.withTransaction(async (txRepository) => {
+      await txRepository.updateProductionOrderFinancials(id, input);
+      const updated = await txRepository.getProductionOrder(id);
+      if (!updated) throw new NotFoundDomainError("Production order not found after update");
+      await ensureEncomendaSale(updated, txRepository);
+      return updated;
+    });
   }
 }
 

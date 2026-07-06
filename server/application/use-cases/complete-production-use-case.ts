@@ -6,6 +6,7 @@ import { ProductionOrder } from "../../domain/entities/production-order.ts";
 import { InvalidOperationDomainError, NotFoundDomainError } from "../../domain/errors/domain-error.ts";
 import { TechnicalSpecItem } from "../../domain/entities/technical-spec-item.ts";
 import type { IErpRepository } from "../contracts/erp-repository.ts";
+import { ensureEncomendaSale } from "./production-use-cases.ts";
 
 export interface ConcludeProductionOrderOutput {
   orderId: number;
@@ -129,6 +130,7 @@ export class CompleteProductionUseCase {
 
       const completedAt = order.markDone();
       await txRepository.markProductionOrderDone(orderId, completedAt);
+      await ensureEncomendaSale(orderRecord, txRepository);
 
       return { orderId };
     });

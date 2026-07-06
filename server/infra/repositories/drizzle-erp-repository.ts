@@ -748,6 +748,7 @@ export class DrizzleErpRepository implements IErpRepository {
   }
 
   async createSale(data: {
+    originProductionOrderId?: number | null;
     paymentMethod: string;
     installments?: number | null;
     description?: string | null;
@@ -759,6 +760,7 @@ export class DrizzleErpRepository implements IErpRepository {
       .insert(sales)
       .values({
         orgId: this.orgIdValue(),
+        originProductionOrderId: data.originProductionOrderId ?? null,
         paymentMethod: data.paymentMethod,
         installments: data.installments ?? null,
         description: data.description ?? null,
@@ -773,6 +775,7 @@ export class DrizzleErpRepository implements IErpRepository {
   async updateSale(
     id: number,
     data: {
+      originProductionOrderId?: number | null;
       paymentMethod: string;
       installments?: number | null;
       description?: string | null;
@@ -786,6 +789,7 @@ export class DrizzleErpRepository implements IErpRepository {
     await this.database
       .update(sales)
       .set({
+        ...(data.originProductionOrderId !== undefined ? { originProductionOrderId: data.originProductionOrderId } : {}),
         paymentMethod: data.paymentMethod,
         installments: data.installments ?? null,
         description: data.description ?? null,
@@ -794,6 +798,13 @@ export class DrizzleErpRepository implements IErpRepository {
         soldAt: data.soldAt ? new Date(data.soldAt) : new Date(),
       } as any)
       .where(and(...conditions));
+  }
+
+  async getSaleByOriginProductionOrderId(originProductionOrderId: number): Promise<Sale | undefined> {
+    const conditions = [eq(sales.originProductionOrderId, originProductionOrderId)];
+    if (this.orgId) conditions.push(eq(sales.orgId, this.orgId));
+    const [sale] = (await this.database.select().from(sales).where(and(...conditions))) as Sale[];
+    return sale;
   }
 
   async createSaleItems(
