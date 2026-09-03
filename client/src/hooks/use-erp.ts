@@ -31,6 +31,7 @@ import {
   DeleteSaleUseCase,
   DeleteMaterialUseCase,
   DeleteProductUseCase,
+  DeletePurchaseOrderUseCase,
   GetDashboardReportUseCase,
   GetInventoryMovementsUseCase,
   GetMaterialsUseCase,
@@ -97,6 +98,7 @@ const createPurchaseOrderUseCase = new CreatePurchaseOrderUseCase(gateway);
 const updatePurchaseOrderUseCase = new UpdatePurchaseOrderUseCase(gateway);
 const receivePurchaseOrderUseCase = new ReceivePurchaseOrderUseCase(gateway);
 const cancelPurchaseOrderUseCase = new CancelPurchaseOrderUseCase(gateway);
+const deletePurchaseOrderUseCase = new DeletePurchaseOrderUseCase(gateway);
 
 function useCrudToast() {
   const { toast } = useToast();
@@ -225,7 +227,7 @@ export function useDeleteMaterial() {
     mutationFn: (id: number) => deleteMaterialUseCase.execute(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.materials.list.path] });
-      message.success("Material inativado com sucesso.");
+      message.success("Material excluído com sucesso.");
     },
     onError: message.error,
   });
@@ -384,6 +386,20 @@ export function useCancelPurchaseOrder() {
   });
 }
 
+export function useDeletePurchaseOrder() {
+  const queryClient = useQueryClient();
+  const message = useCrudToast();
+
+  return useMutation({
+    mutationFn: (id: number) => deletePurchaseOrderUseCase.execute(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.purchaseOrders.list.path] });
+      message.success("Ordem de compra excluída com sucesso.");
+    },
+    onError: message.error,
+  });
+}
+
 export function useCreateProduct() {
   const queryClient = useQueryClient();
   const message = useCrudToast();
@@ -427,7 +443,7 @@ export function useDeleteProduct() {
       queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.products.catalog.path] });
       queryClient.invalidateQueries({ queryKey: [api.producedProductStocks.summary.path] });
-      message.success("Produto inativado com sucesso.");
+      message.success("Produto excluído com sucesso.");
     },
     onError: message.error,
   });

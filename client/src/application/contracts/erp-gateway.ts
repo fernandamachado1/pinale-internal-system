@@ -66,6 +66,7 @@ export interface IErpGateway {
   updatePurchaseOrder(id: number, data: UpdatePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
   receivePurchaseOrder(id: number, data: ReceivePurchaseOrderInput): Promise<PurchaseOrderWithItems>;
   cancelPurchaseOrder(id: number): Promise<void>;
+  deletePurchaseOrder(id: number): Promise<void>;
 
   getDashboardReport(from?: Date, to?: Date): Promise<DashboardReport>;
 }

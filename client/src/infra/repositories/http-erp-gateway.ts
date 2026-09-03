@@ -317,6 +317,11 @@ export class HttpErpGateway implements IErpGateway {
     await throwIfNotOk(res, "Falha ao cancelar ordem de compra");
   }
 
+  async deletePurchaseOrder(id: number): Promise<void> {
+    const res = await apiFetch(buildUrl(api.purchaseOrders.delete.path, { id }), { method: "DELETE" });
+    await throwIfNotOk(res, "Falha ao excluir ordem de compra");
+  }
+
   async getDashboardReport(from?: Date, to?: Date): Promise<DashboardReport> {
     const params = new URLSearchParams();
     if (from) params.set("from", from.toISOString());

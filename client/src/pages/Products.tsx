@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CatalogProduct, ProductAttachment, ProductCategory, ProductColorVariant } from "@shared/schema";
 import { Layout } from "@/components/Layout";
 import { PageHeader } from "@/components/PageHeader";
-import { useCatalogProducts, useCreateProduct, useMaterials, useUpdateProduct } from "@/hooks/use-erp";
+import { useCatalogProducts, useCreateProduct, useDeleteProduct, useMaterials, useUpdateProduct } from "@/hooks/use-erp";
 import { MaterialDialog } from "@/components/materials/MaterialDialog";
 import { MaterialSearchCombobox } from "@/components/materials/MaterialSearchCombobox";
 import { AdjustProducedStockDialog } from "@/components/produced-stock/AdjustProducedStockDialog";
@@ -212,6 +212,7 @@ export default function Products() {
   const { data: materials } = useMaterials();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
+  const deleteMutation = useDeleteProduct();
   const { canWrite } = useAuthz();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -357,6 +358,12 @@ export default function Products() {
     if (!canWrite) return;
     setEditingProduct(product);
     setProductDialogOpen(true);
+  };
+
+  const confirmDeleteProduct = (product: CatalogProduct) => {
+    if (window.confirm(`Excluir definitivamente o produto "${product.name}"? Fichas técnicas, estoque produzido, movimentações e registros relacionados também serão apagados.`)) {
+      deleteMutation.mutate(product.id, { onSuccess: () => refetchProducts() });
+    }
   };
 
   const handleCreateNewMaterialFromSpec = () => {
@@ -590,6 +597,10 @@ export default function Products() {
                         <PencilLine className="mr-2 h-4 w-4" />
                         Editar
                       </Button>
+                      <Button type="button" variant="destructive" className="w-full" onClick={() => confirmDeleteProduct(item)} disabled={deleteMutation.isPending}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir
+                      </Button>
                     </div>
                   ) : null}
                 </CardContent>
@@ -662,6 +673,18 @@ export default function Products() {
                               title="Editar"
                             >
                               <PencilLine className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="destructive"
+                              className="ml-2 h-9 w-9"
+                              onClick={() => confirmDeleteProduct(item)}
+                              disabled={deleteMutation.isPending}
+                              aria-label={`Excluir ${item.name}`}
+                              title="Excluir"
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         ) : (

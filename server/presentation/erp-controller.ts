@@ -42,6 +42,7 @@ import { DashboardReportUseCase, LeatherConsumptionReportUseCase, ProductionRepo
 import {
   CancelPurchaseOrderUseCase,
   CreatePurchaseOrderUseCase,
+  DeletePurchaseOrderUseCase,
   GetPurchaseOrderUseCase as GetPurchaseOrderEntityUseCase,
   ListPurchaseOrdersUseCase,
   ReorderPurchaseOrdersUseCase,
@@ -88,6 +89,7 @@ export class ErpController {
   private readonly updatePurchaseOrderUseCase: UpdatePurchaseOrderUseCase;
   private readonly receivePurchaseOrderUseCase: ReceivePurchaseOrderUseCase;
   private readonly cancelPurchaseOrderUseCase: CancelPurchaseOrderUseCase;
+  private readonly deletePurchaseOrderUseCase: DeletePurchaseOrderUseCase;
 
   private readonly productionReportUseCase: ProductionReportUseCase;
   private readonly leatherConsumptionReportUseCase: LeatherConsumptionReportUseCase;
@@ -133,6 +135,7 @@ export class ErpController {
     this.updatePurchaseOrderUseCase = new UpdatePurchaseOrderUseCase(repository);
     this.receivePurchaseOrderUseCase = new ReceivePurchaseOrderUseCase(repository);
     this.cancelPurchaseOrderUseCase = new CancelPurchaseOrderUseCase(repository);
+    this.deletePurchaseOrderUseCase = new DeletePurchaseOrderUseCase(repository);
 
     this.productionReportUseCase = new ProductionReportUseCase(repository);
     this.leatherConsumptionReportUseCase = new LeatherConsumptionReportUseCase(repository);
@@ -308,6 +311,11 @@ export class ErpController {
 
   async cancelPurchaseOrder(req: Request, res: Response): Promise<void> {
     await this.cancelPurchaseOrderUseCase.execute(Number(req.params.id));
+    res.status(204).send();
+  }
+
+  async deletePurchaseOrder(req: Request, res: Response): Promise<void> {
+    await this.deletePurchaseOrderUseCase.execute(Number(req.params.id));
     res.status(204).send();
   }
 

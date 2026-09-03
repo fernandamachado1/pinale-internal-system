@@ -49,6 +49,7 @@ import { CompleteProductionUseCase } from "../server/application/use-cases/compl
 import {
   CancelPurchaseOrderUseCase,
   CreatePurchaseOrderUseCase,
+  DeletePurchaseOrderUseCase,
   GetPurchaseOrderUseCase,
   ListPurchaseOrdersUseCase,
   ReorderPurchaseOrdersUseCase,
@@ -963,6 +964,17 @@ export function registerApiRoutes(app: Hono<{ Variables: AppVariables }>) {
       await notifyPurchaseOrderEvent(c.get("profile").orgId, current, "canceled").catch((err) => {
         console.error("[push] purchase order canceled notification failed", err);
       });
+      return c.body(null, 204);
+    } catch (err) {
+      const { status, body } = toErrorResponse(err);
+      return c.json(body, status);
+    }
+  });
+
+  app.delete(api.purchaseOrders.delete.path, async (c) => {
+    try {
+      const repository = await repositoryForOrg(c.get("profile").orgId);
+      await new DeletePurchaseOrderUseCase(repository).execute(Number(c.req.param("id")));
       return c.body(null, 204);
     } catch (err) {
       const { status, body } = toErrorResponse(err);

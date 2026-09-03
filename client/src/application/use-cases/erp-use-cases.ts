@@ -256,6 +256,13 @@ export class CancelPurchaseOrderUseCase {
   }
 }
 
+export class DeletePurchaseOrderUseCase {
+  constructor(private readonly gateway: IErpGateway) {}
+  execute(id: number): Promise<void> {
+    return this.gateway.deletePurchaseOrder(id);
+  }
+}
+
 export class GetInventoryMovementsUseCase {
   constructor(private readonly gateway: IErpGateway) {}
   execute(): Promise<MovementWithDetails[]> {

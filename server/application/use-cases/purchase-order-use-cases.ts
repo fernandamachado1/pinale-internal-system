@@ -309,3 +309,15 @@ export class CancelPurchaseOrderUseCase {
     });
   }
 }
+
+export class DeletePurchaseOrderUseCase {
+  constructor(private readonly repository: IErpRepository) {}
+
+  async execute(id: number): Promise<void> {
+    await this.repository.withTransaction(async (tx) => {
+      const current = await tx.getPurchaseOrder(id);
+      if (!current) throw new NotFoundDomainError("Purchase order not found");
+      await tx.deletePurchaseOrder(id);
+    });
+  }
+}

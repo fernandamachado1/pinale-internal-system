@@ -64,6 +64,12 @@ export default function Materials() {
     setEditingMaterial(item);
   };
 
+  const confirmDelete = (item: Material) => {
+    if (window.confirm(`Excluir definitivamente o material "${item.name}"? Dados relacionados, como fichas técnicas e movimentações, também serão apagados.`)) {
+      deleteMutation.mutate(item.id);
+    }
+  };
+
   return (
     <Layout>
       <PageHeader
@@ -164,9 +170,9 @@ export default function Materials() {
                               variant="destructive"
                               className="w-full"
                               disabled={deleteMutation.isPending}
-                              onClick={() => deleteMutation.mutate(item.id)}
+                              onClick={() => confirmDelete(item)}
                             >
-                              Inativar
+                              Excluir
                             </Button>
                           </div>
                         ) : null}
@@ -239,7 +245,7 @@ export default function Materials() {
                                     size="sm"
                                     variant="destructive"
                                     disabled={deleteMutation.isPending}
-                                    onClick={() => deleteMutation.mutate(item.id)}
+                                    onClick={() => confirmDelete(item)}
                                   >
                                     Inativar
                                   </Button>
@@ -257,9 +263,9 @@ export default function Materials() {
                                       <DropdownMenuItem
                                         className="text-destructive focus:text-destructive"
                                         disabled={deleteMutation.isPending}
-                                        onSelect={() => deleteMutation.mutate(item.id)}
+                                        onSelect={() => confirmDelete(item)}
                                       >
-                                        Inativar
+                                        Excluir
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>

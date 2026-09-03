@@ -216,6 +216,8 @@ export class DeleteProductUseCase {
   async execute(id: number): Promise<void> {
     const product = await this.repository.getProduct(id);
     if (!product) throw new NotFoundDomainError("Product not found");
-    await this.repository.deactivateProduct(id);
+    await this.repository.withTransaction(async (tx) => {
+      await tx.deleteProduct(id);
+    });
   }
 }

@@ -119,6 +119,8 @@ export class DeleteMaterialUseCase {
   async execute(id: number): Promise<void> {
     const material = await this.repository.getMaterial(id);
     if (!material) throw new NotFoundDomainError("Material not found");
-    await this.repository.deactivateMaterial(id);
+    await this.repository.withTransaction(async (tx) => {
+      await tx.deleteMaterial(id);
+    });
   }
 }

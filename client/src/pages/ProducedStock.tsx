@@ -48,7 +48,7 @@ export default function ProducedStock() {
           stockQty: Number(stock?.stockQty ?? 0),
           updatedAt: stock?.updatedAt ?? null,
         };
-      }),
+      }).filter((row) => row.stockQty > 0),
     [products, stockByProductId, summaryByProductId],
   );
 
@@ -62,7 +62,7 @@ export default function ProducedStock() {
           <Boxes className="h-8 w-8 text-primary" />
           Estoque Produzido
         </h1>
-        <p className="text-muted-foreground">Cada produto do catálogo mostra entradas, saídas e saldo final de itens acabados.</p>
+        <p className="text-muted-foreground">Veja os produtos acabados que estão disponíveis para venda.</p>
       </div>
 
       {hasError ? (
@@ -206,11 +206,11 @@ export default function ProducedStock() {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Nenhum produto cadastrado</CardTitle>
-            <CardDescription>Cadastre itens no catálogo para controlar o estoque produzido.</CardDescription>
+            <CardTitle>Nenhum produto em estoque</CardTitle>
+            <CardDescription>Quando um produto for produzido, ele aparecerá aqui com a quantidade disponível.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => (window.location.href = "/products")}>Ir para Catálogo</Button>
+            <Button onClick={() => (window.location.href = "/production")}>Ir para Produção</Button>
           </CardContent>
         </Card>
       )}

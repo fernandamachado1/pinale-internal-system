@@ -35,7 +35,7 @@ export interface IErpRepository extends ISalesRepository {
   createMaterial(material: InsertMaterial): Promise<Material>;
   createManyMaterials(input: CreateManyMaterialsInput): Promise<Material[]>;
   updateMaterial(id: number, updates: UpdateMaterialRequest): Promise<Material>;
-  deactivateMaterial(id: number): Promise<void>;
+  deleteMaterial(id: number): Promise<void>;
   updateMaterialStockQty(id: number, stockQty: string): Promise<void>;
   updateMaterialReservedQty(id: number, reservedQty: string): Promise<void>;
   updateMaterialQuantities(id: number, quantities: { stockQty: string; reservedQty: string }): Promise<void>;
@@ -46,7 +46,7 @@ export interface IErpRepository extends ISalesRepository {
   getProductByName(name: string): Promise<Product | undefined>;
   createProduct(product: InsertProduct): Promise<Product>;
   updateProductBase(id: number, input: UpdateProductInput["product"]): Promise<Product>;
-  deactivateProduct(id: number): Promise<void>;
+  deleteProduct(id: number): Promise<void>;
   getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]>;
   getProducedProductStockSummary(): Promise<ProducedProductStockSummary[]>;
   getProducedProductStockByProductId(productId: number): Promise<ProducedProductStockWithProduct | undefined>;
@@ -104,6 +104,7 @@ export interface IErpRepository extends ISalesRepository {
     input: Partial<Pick<PurchaseOrderItem, "materialId" | "materialName" | "description" | "qtyOrdered" | "qtyReceived" | "sortOrder">>,
   ): Promise<PurchaseOrderItem>;
   deletePurchaseOrderItem(id: number): Promise<void>;
+  deletePurchaseOrder(id: number): Promise<void>;
 
   withTransaction<T>(callback: (repository: IErpRepository) => Promise<T>): Promise<T>;
 }

@@ -140,10 +140,22 @@ export class DrizzleErpRepository implements IErpRepository {
     return updated;
   }
 
-  async deactivateMaterial(id: number): Promise<void> {
-    const conditions = [eq(materials.id, id)];
-    if (this.orgId) conditions.push(eq(materials.orgId, this.orgId));
-    await this.database.update(materials).set({ isActive: 0, updatedAt: new Date() }).where(and(...conditions));
+  async deleteMaterial(id: number): Promise<void> {
+    const orgId = this.orgIdValue();
+    await this.database.execute(sql`delete from inventory_movements where org_id = ${orgId} and entity_type = 'MATERIAL' and entity_id = ${id}`);
+    await this.database.execute(sql`delete from purchase_order_items where org_id = ${orgId} and material_id = ${id}`);
+    await this.database.execute(sql`
+      with deleted_items as (
+        delete from bom_items
+        where org_id = ${orgId} and material_id = ${id}
+        returning bom_id
+      )
+      delete from boms
+      where org_id = ${orgId}
+        and id in (select bom_id from deleted_items)
+        and not exists (select 1 from bom_items where bom_items.bom_id = boms.id)
+    `);
+    await this.database.delete(materials).where(and(eq(materials.id, id), eq(materials.orgId, orgId)));
   }
 
   async updateMaterialStockQty(id: number, stockQty: string): Promise<void> {
@@ -343,10 +355,27 @@ export class DrizzleErpRepository implements IErpRepository {
     return updated;
   }
 
-  async deactivateProduct(id: number): Promise<void> {
-    const conditions = [eq(products.id, id)];
-    if (this.orgId) conditions.push(eq(products.orgId, this.orgId));
-    await this.database.update(products).set({ isActive: 0, updatedAt: new Date() }).where(and(...conditions));
+  async deleteProduct(id: number): Promise<void> {
+    const orgId = this.orgIdValue();
+    await this.database.execute(sql`
+      with target_sales as (
+        select distinct sale_id
+        from sale_items
+        where org_id = ${orgId} and product_id = ${id}
+      ), deleted_items as (
+        delete from sale_items
+        where org_id = ${orgId} and sale_id in (select sale_id from target_sales)
+        returning sale_id
+      )
+      delete from sales
+      where org_id = ${orgId} and id in (select sale_id from deleted_items)
+    `);
+    await this.database.execute(sql`delete from inventory_movements where org_id = ${orgId} and entity_type = 'PRODUCT' and entity_id = ${id}`);
+    await this.database.execute(sql`delete from production_orders where org_id = ${orgId} and product_id = ${id}`);
+    await this.database.execute(sql`delete from bom_items where org_id = ${orgId} and bom_id in (select id from boms where org_id = ${orgId} and product_id = ${id})`);
+    await this.database.execute(sql`delete from boms where org_id = ${orgId} and product_id = ${id}`);
+    await this.database.delete(producedProductStocks).where(and(eq(producedProductStocks.productId, id), eq(producedProductStocks.orgId, orgId)));
+    await this.database.delete(products).where(and(eq(products.id, id), eq(products.orgId, orgId)));
   }
 
   async getProducedProductStocks(): Promise<ProducedProductStockWithProduct[]> {
@@ -1377,5 +1406,15 @@ export class DrizzleErpRepository implements IErpRepository {
     const conditions = [eq(purchaseOrderItems.id, id)];
     if (this.orgId) conditions.push(eq(purchaseOrderItems.orgId, this.orgId));
     await this.database.delete(purchaseOrderItems).where(and(...conditions));
+  }
+
+  async deletePurchaseOrder(id: number): Promise<void> {
+    const conditions = [eq(purchaseOrderItems.purchaseOrderId, id)];
+    if (this.orgId) conditions.push(eq(purchaseOrderItems.orgId, this.orgId));
+    await this.database.delete(purchaseOrderItems).where(and(...conditions));
+
+    const orderConditions = [eq(purchaseOrders.id, id)];
+    if (this.orgId) orderConditions.push(eq(purchaseOrders.orgId, this.orgId));
+    await this.database.delete(purchaseOrders).where(and(...orderConditions));
   }
 }

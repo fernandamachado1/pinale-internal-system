@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import type { PurchaseOrderWithItems, Material } from "@shared/schema";
 import { nanoid } from "nanoid";
 import { Layout } from "@/components/Layout";
-import { useCancelPurchaseOrder, useCreatePurchaseOrder, useMaterials, usePurchaseOrders, useReceivePurchaseOrder, useReorderPurchaseOrders, useUpdatePurchaseOrder } from "@/hooks/use-erp";
+import { useCancelPurchaseOrder, useCreatePurchaseOrder, useDeletePurchaseOrder, useMaterials, usePurchaseOrders, useReceivePurchaseOrder, useReorderPurchaseOrders, useUpdatePurchaseOrder } from "@/hooks/use-erp";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +88,8 @@ function SortablePurchaseOrderRow({
   setCancelingOrderId,
   openEditDialog,
   openReceiveDialog,
+  deleteMutation,
+  onDelete,
 }: {
   order: PurchaseOrderWithItems;
   canWrite: boolean;
@@ -97,6 +99,8 @@ function SortablePurchaseOrderRow({
   setCancelingOrderId: (id: number | null) => void;
   openEditDialog: (order: PurchaseOrderWithItems) => void;
   openReceiveDialog: (order: PurchaseOrderWithItems) => void;
+  deleteMutation: ReturnType<typeof useDeletePurchaseOrder>;
+  onDelete: (order: PurchaseOrderWithItems) => void;
 }) {
   const isArchived = order.isActive === 0;
   const canEdit = !isArchived && order.status !== "RECEIVED" && order.status !== "CANCELED";
@@ -153,20 +157,8 @@ function SortablePurchaseOrderRow({
               <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
                 <Truck className="w-4 h-4 mr-2" /> Receber
               </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={!canCancel || cancelMutation.isPending}
-                onClick={() => {
-                  setCancelingOrderId(order.id);
-                  cancelMutation.mutate(order.id, {
-                    onSettled: () => setCancelingOrderId(null),
-                  });
-                }}
-              >
-                {cancelMutation.isPending && cancelingOrderId === order.id ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cancelando...</>
-                ) : "Cancelar"}
+              <Button size="sm" variant="destructive" disabled={deleteMutation.isPending} onClick={() => onDelete(order)}>
+                Excluir
               </Button>
             </div>
 
@@ -184,17 +176,8 @@ function SortablePurchaseOrderRow({
                   <DropdownMenuItem disabled={!canReceive} onSelect={() => openReceiveDialog(order)}>
                     Receber
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    disabled={!canCancel || cancelMutation.isPending}
-                    onSelect={() => {
-                      setCancelingOrderId(order.id);
-                      cancelMutation.mutate(order.id, {
-                        onSettled: () => setCancelingOrderId(null),
-                      });
-                    }}
-                  >
-                    Cancelar
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" disabled={deleteMutation.isPending} onSelect={() => onDelete(order)}>
+                    Excluir
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -327,6 +310,8 @@ function OrdersList({
   setCancelingOrderId,
   openEditDialog,
   openReceiveDialog,
+  deleteMutation,
+  onDelete,
 }: {
   orders: PurchaseOrderWithItems[];
   canWrite: boolean;
@@ -338,6 +323,8 @@ function OrdersList({
   setCancelingOrderId: (id: number | null) => void;
   openEditDialog: (order: PurchaseOrderWithItems) => void;
   openReceiveDialog: (order: PurchaseOrderWithItems) => void;
+  deleteMutation: ReturnType<typeof useDeletePurchaseOrder>;
+  onDelete: (order: PurchaseOrderWithItems) => void;
 }) {
   return (
     <>
@@ -379,25 +366,15 @@ function OrdersList({
                 </div>
 
                 {canWrite ? (
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     <Button size="sm" variant="outline" disabled={!canEdit} onClick={() => openEditDialog(order)}>
                       Editar
                     </Button>
                     <Button size="sm" variant="outline" disabled={!canReceive} onClick={() => openReceiveDialog(order)}>
                       Receber
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={!canCancel || cancelMutation.isPending}
-                      onClick={() => {
-                        setCancelingOrderId(order.id);
-                        cancelMutation.mutate(order.id, {
-                          onSettled: () => setCancelingOrderId(null),
-                        });
-                      }}
-                    >
-                      {cancelMutation.isPending && cancelingOrderId === order.id ? "..." : "Cancelar"}
+                    <Button size="sm" variant="destructive" disabled={deleteMutation.isPending} onClick={() => onDelete(order)}>
+                      Excluir
                     </Button>
                   </div>
                 ) : null}
@@ -433,6 +410,8 @@ function OrdersList({
                     setCancelingOrderId={setCancelingOrderId}
                     openEditDialog={openEditDialog}
                     openReceiveDialog={openReceiveDialog}
+                    deleteMutation={deleteMutation}
+                    onDelete={onDelete}
                   />
                 ))}
               </TableBody>
@@ -491,6 +470,7 @@ export default function PurchaseOrders() {
   const updateMutation = useUpdatePurchaseOrder();
   const receiveMutation = useReceivePurchaseOrder();
   const cancelMutation = useCancelPurchaseOrder();
+  const deleteMutation = useDeletePurchaseOrder();
   const reorderMutation = useReorderPurchaseOrders();
   const { toast } = useToast();
   const { canWrite } = useAuthz();
@@ -525,6 +505,11 @@ export default function PurchaseOrders() {
   const [materialDialogTargetItemId, setMaterialDialogTargetItemId] = useState<number | null>(null);
   const [materialDialogHideInitialStockField, setMaterialDialogHideInitialStockField] = useState(false);
   const [cancelingOrderId, setCancelingOrderId] = useState<number | null>(null);
+
+  const handleDeleteOrder = (order: PurchaseOrderWithItems) => {
+    if (!window.confirm(`Excluir definitivamente a ordem de compra #${order.id} e todos os seus itens? Essa ação não pode ser desfeita.`)) return;
+    deleteMutation.mutate(order.id);
+  };
 
   const isSavingOrder = bulkCreating || createMutation.isPending || updateMutation.isPending;
 
@@ -967,6 +952,8 @@ export default function PurchaseOrders() {
               setCancelingOrderId={setCancelingOrderId}
               openEditDialog={openEditDialog}
               openReceiveDialog={openReceiveDialog}
+              deleteMutation={deleteMutation}
+              onDelete={handleDeleteOrder}
             />
           ) : (
             <EmptyOrdersState
@@ -980,9 +967,9 @@ export default function PurchaseOrders() {
         </TabsContent>
 
         <TabsContent value="archived" className="mt-0">
-          {orderedOrders.length ? (
+          {archivedOrders.length ? (
             <OrdersList
-              orders={orderedOrders}
+              orders={archivedOrders}
               canWrite={canWrite}
               canReorder={canReorder}
               sensors={sensors}
@@ -992,6 +979,8 @@ export default function PurchaseOrders() {
               setCancelingOrderId={setCancelingOrderId}
               openEditDialog={openEditDialog}
               openReceiveDialog={openReceiveDialog}
+              deleteMutation={deleteMutation}
+              onDelete={handleDeleteOrder}
             />
           ) : (
             <EmptyOrdersState
